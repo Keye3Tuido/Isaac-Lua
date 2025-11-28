@@ -139,13 +139,13 @@ function handleSearch(){
 </body>
 </html>
 """
-    with open("Isaac-lua-Keye3Tuido.html", "w", encoding="utf-8") as out:
+    with open("index.html", "w", encoding="utf-8") as out:
         out.write(html_content)
 
 def main():
     files = get_files()
     generate_index(files)
-    print("✅ 已生成单页静态网页：Isaac-lua-Keye3Tuido.html")
+    print("✅ 已生成单页静态网页：index.html")
 
 if __name__ == "__main__":
     main()
