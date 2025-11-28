@@ -1,0 +1,13 @@
+--天降酸雨
+--角色限定：初始攻击方式为眼泪
+--输入下面的代码后，开始一局新游戏
+--除非重新加载了模组，否则不要重复输入代码！
+
+---- 代码效果(不用管中文，全选复制即可) ----
+
+--1. 强制锁定所有玩家射程为100（受谷底石、天秤影响）；锁定弹速为0（无法更改）
+l local f=Isaac.AddCallback f(_,4,function(_,p)p.ShotSpeed=0 end)f(_,8,function(_,p)p.TearRange=4e3 end,8)
+
+--2. 强制给予玩家道具149-吐根酊,315-怪异磁铁,330-豆奶,540-扁石。
+l Isaac.AddCallback({},31,function(c,p,n)if 40~=p:GetPlayerType()and not p:HasCurseMistEffect()then for _,i in pairs({149,315,330,540})do c,n=table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(c)do p:AddCollectible(c,Isaac.GetItemConfig():GetCollectible(c).InitCharge)end Game():GetItemPool():RemoveCollectible(c)end end end)
+--.
