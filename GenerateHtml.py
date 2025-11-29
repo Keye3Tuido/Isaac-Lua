@@ -1,13 +1,12 @@
 import os
 import json
-
+import html
 
 def clean_code(s):
     return "\n".join(
         l[2:] if l.startswith("l ") else l 
         for l in s.splitlines()
     )
-
 
 # 收集并排序 Lua 文件
 files = {
@@ -19,18 +18,18 @@ files = {
     for r in [open(f, encoding="utf-8").read()]
 }
 
-
 # 主页文件列表：序号在最左端，标题在右侧文本框
 def item(f):
     base = f[:-4]
     num, title = (base.split('.', 1) + [""])[:2]
+    safe_title = html.escape(title, quote=True)
+    safe_file = html.escape(f, quote=True)
     return (
-        f"<div class='file-row' data-search='{num} {title}'>"
+        f"<div class='file-row' data-search='{num} {safe_title}' data-fname='{safe_file}'>"
         f"<span class='file-num'>{num}</span>"
-        f"<a href='#' onclick=\"showFile('{f}')\" class='file-title'>{title}</a>"
+        f"<a href='#' class='file-title'>{safe_title}</a>"
         f"</div>"
     )
-
 
 links = "\n".join(item(f) for f in files)
 
@@ -303,6 +302,23 @@ html = f"""<!DOCTYPE html>
                 toast.style.display = 'none';
             }}, 2000);
         }}
+        
+        // HTML 反转义函数：把 &lt; &gt; &amp; &quot; &apos; 转回原始字符
+        function htmlUnescape(str) {{
+            const temp = document.createElement("textarea");
+            temp.innerHTML = str;
+            return temp.value;
+        }}
+
+        fileList.addEventListener('click', e => {{
+            const a = e.target.closest('.file-title');
+            if (!a) return;
+            const row = a.parentElement;
+            // 读取 data-fname 并反转义
+            const fname = htmlUnescape(row.dataset.fname);
+            showFile(fname);
+        }});
+
     </script>
 </body>
 </html>
