@@ -217,27 +217,47 @@ html = f"""<!DOCTYPE html>
             detail.style.display = 'flex';
             fileTitle.textContent = n;
             subLegend.textContent = n + " - @Keye3Tuido";
-            lineNumbers.innerHTML = codeLines.innerHTML = "";
+
+            lineNumbers.innerHTML = "";
+            codeLines.innerHTML = "";
             let p = null;
-            files[n].raw.split('\\n').forEach((l, i) => {{
-                lineNumbers.innerHTML += `<div class='row' onclick='copyLine(${{i}})'>${{i + 1}}</div>`;
+
+            const lines = files[n].raw.split('\\n');
+            lines.forEach((l, i) => {{
+                // 行号列：用 DOM + textContent，避免模板插值
+                const ln = document.createElement('div');
+                ln.className = 'row';
+                ln.textContent = i + 1;
+                ln.onclick = () => copyLine(i);
+                lineNumbers.appendChild(ln);
+
+                // 代码列：用 DOM + textContent，确保 < 不被当作标签
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.onclick = () => copyLine(i);
+
                 if (!l) {{
-                    codeLines.innerHTML += "<div class='row'></div>";
-                    p = null;
+                row.textContent = "";            // 空行
+                p = null;
                 }} else if (isComment(l)) {{
-                    let c;
-                    do c = COLORS[Math.floor(Math.random() * COLORS.length)];
-                    while (c === p);
-                    p = c;
-                    codeLines.innerHTML += `<div class='row comment' style='color:${{c}}' onclick='copyLine(${{i}})'>${{l}}</div>`;
+                let c;
+                do c = COLORS[Math.floor(Math.random() * COLORS.length)];
+                while (c === p);
+                p = c;
+                row.className = 'row comment';
+                row.style.color = c;
+                row.textContent = l;             // 关键：纯文本渲染
                 }} else {{
-                    codeLines.innerHTML += `<div class='row' onclick='copyLine(${{i}})'>${{l}}</div>`;
-                    p = null;
+                row.textContent = l;             // 关键：纯文本渲染
+                p = null;
                 }}
+
+                codeLines.appendChild(row);
             }});
+
             currentFile = n;
         }}
-        
+ 
         function showHome() {{
             detail.style.display = 'none';
             home.style.display = 'block';
