@@ -2,13 +2,18 @@ import os
 import json
 import html
 
+# ========== 配置 ==========
+SUBDIR = "pages"  # 子页输出目录
+TITLE = "以撒代码挑战 - Keye3Tuido"
+
+# ========== 文本清理 ==========
 def clean_code(s):
     return "\n".join(
-        l[2:] if l.startswith("l ") else l 
+        l[2:] if l.startswith("l ") else l
         for l in s.splitlines()
     )
 
-# 收集并排序 Lua 文件
+# ========== 收集并排序 Lua 文件 ==========
 files = {
     f: {"raw": r, "cleaned": clean_code(r)}
     for f in sorted(
@@ -18,313 +23,224 @@ files = {
     for r in [open(f, encoding="utf-8").read()]
 }
 
-# 主页文件列表：序号在最左端，标题在右侧文本框
+# ========== 主页条目 ==========
 def item(f):
     base = f[:-4]
     num, title = (base.split('.', 1) + [""])[:2]
     safe_title = html.escape(title, quote=True)
-    safe_file = html.escape(f, quote=True)
     return (
-        f"<div class='file-row' data-search='{num} {safe_title}' data-fname='{safe_file}'>"
+        f"<div class='file-row' data-search='{num} {safe_title}'>"
         f"<span class='file-num'>{num}</span>"
-        f"<a href='#' class='file-title'>{safe_title}</a>"
+        f"<a href='{SUBDIR}/file_{num}.html' class='file-title'>{safe_title}</a>"
         f"</div>"
     )
 
 links = "\n".join(item(f) for f in files)
 
-html = f"""<!DOCTYPE html>
+# ========== 公共样式 ==========
+COMMON_CSS = """
+body { font-family: Consolas, sans-serif; background: #f5f7fa; margin: 20px; }
+.container { max-width: 1100px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #0001; }
+h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
+.file-list { display: flex; flex-direction: column; gap: 6px; }
+.file-row { display: grid; grid-template-columns: 60px 1fr; align-items: center; }
+.file-num { text-align: center; color: #7f8c8d; font-weight: bold; }
+.file-title { padding: 8px; background: #ecf0f1; border-radius: 6px; text-decoration: none; color: #2c3e50; display: block; }
+.file-title:hover { background: #3498db; color: #fff; }
+.code-box { display: grid; grid-template-columns: max-content 1fr; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; }
+.col-ln, .col-code { display: grid; grid-auto-rows: minmax(1.6em, auto); }
+.col-ln { text-align: right; padding: 12px 10px; color: #7f8c8d; user-select: none; border-right: 1px solid #e0e0e0; }
+.col-code { padding: 12px 15px; white-space: pre; }
+.row.comment { font-weight: 500; }
+.col-ln .row:hover, .col-code .row:hover { background: #eef; color: #3498db; cursor: pointer; }
+.legend { font-size: 12px; color: #7f8c8d; margin-top: 8px; text-align: right; }
+.button-group { display: flex; gap: 8px; margin-top: 10px; }
+.button-group button { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; transition: .15s; }
+.copy-btn { background: #3498db; color: #fff; }
+.copy-btn:hover { background: #2b82c6; }
+.download-btn { background: #2ecc71; color: #fff; }
+.download-btn:hover { background: #27b866; }
+.back-btn { background: #95a5a6; color: #fff; text-decoration: none; display: inline-block; padding: 8px 12px; border-radius: 5px; }
+.back-btn:hover { background: #7f8c8d; }
+#toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
+#searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
+"""
+
+# ========== 主页 HTML ==========
+html_index = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>以撒代码挑战 - Keye3Tuido</title>
-    <style>
-        body {{
-            font-family: Consolas, sans-serif;
-            background: #f5f7fa;
-            margin: 20px;
-        }}
-        .container {{
-            max-width: 1100px;
-            margin: auto;
-            background: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px #0001;
-        }}
-        h1 {{
-            text-align: center;
-            color: #2c3e50;
-            margin-bottom: 12px;
-        }}
-        .file-list {{
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }}
-        .file-row {{
-            display: grid;
-            grid-template-columns: 60px 1fr;
-            align-items: center;
-        }}
-        .file-num {{
-            text-align: center;
-            color: #7f8c8d;
-            font-weight: bold;
-        }}
-        .file-title {{
-            padding: 8px;
-            background: #ecf0f1;
-            border-radius: 6px;
-            text-decoration: none;
-            color: #2c3e50;
-            display: block;
-        }}
-        .file-title:hover {{
-            background: #3498db;
-            color: #fff;
-        }}
-        .code-box {{
-            display: grid;
-            grid-template-columns: max-content 1fr;
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            overflow: auto;
-            font-size: 14px;
-            line-height: 1.6;
-        }}
-        .col-ln, .col-code {{
-            display: grid;
-            grid-auto-rows: minmax(1.6em, auto);
-        }}
-        .col-ln {{
-            text-align: right;
-            padding: 12px 10px;
-            color: #7f8c8d;
-            user-select: none;
-            border-right: 1px solid #e0e0e0;
-        }}
-        .col-code {{
-            padding: 12px 15px;
-            white-space: pre;
-        }}
-        .row.comment {{
-            font-weight: 500;
-        }}
-        .col-ln .row:hover, .col-code .row:hover {{
-            background: #eef;
-            color: #3498db;
-            cursor: pointer;
-        }}
-        .legend {{
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-top: 8px;
-            text-align: right;
-        }}
-        .button-group {{
-            display: flex;
-            gap: 8px;
-        }}
-        .button-group button {{
-            padding: 8px 12px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: .15s;
-        }}
-        .copy-btn {{
-            background: #3498db;
-            color: #fff;
-        }}
-        .copy-btn:hover {{
-            background: #2b82c6;
-        }}
-        .download-btn {{
-            background: #2ecc71;
-            color: #fff;
-        }}
-        .download-btn:hover {{
-            background: #27b866;
-        }}
-        .back-btn {{
-            background: #95a5a6;
-            color: #fff;
-        }}
-        .back-btn:hover {{
-            background: #7f8c8d;
-        }}
-        #toast {{
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #333;
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 5px;
-            opacity: 0;
-            transition: .3s;
-            pointer-events: none;
-            display: none;
-        }}
-        #searchInput {{
-            padding: 6px;
-            width: 70%;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin: 10px auto;
-            display: block;
-        }}
-    </style>
+    <title>{TITLE}</title>
+    <style>{COMMON_CSS}</style>
 </head>
 <body>
     <div class="container">
         <h1>以撒代码挑战</h1>
-        <div id="home">
-            <input id="searchInput" placeholder="搜索Lua文件..." oninput="handleSearch()">
-            <div id="fileList" class="file-list">{links}</div>
-        </div>
-        <div id="detail" style="display:none;flex-direction:column;gap:10px;">
-            <h2 id="fileTitle"></h2>
-            <div class="code-box">
-                <div class="col-ln" id="lineNumbers"></div>
-                <div class="col-code" id="codeLines"></div>
-            </div>
-            <div class="legend"><span id="subLegend"></span></div>
-            <div class="button-group">
-                <button onclick="copyToClipboard()" class="copy-btn">复制到剪贴板</button>
-                <button onclick="downloadLua()" class="download-btn">下载lua文件</button>
-                <button onclick="showHome()" class="back-btn">返回主页</button>
-            </div>
-            <div id="toast"></div>
-        </div>
+        <input id="searchInput" placeholder="搜索Lua文件..." oninput="handleSearch()">
+        <div id="fileList" class="file-list">{links}</div>
+        <div id="toast"></div>
     </div>
     <script>
-        const files = {json.dumps(files, ensure_ascii=False)};
-        const COLORS = ["#e74c3c", "#c0392b", "#d35400", "#e67e22", "#f39c12", "#2ecc71", 
-                        "#27ae60", "#1abc9c", "#16a085", "#3498db", "#2980b9", "#9b59b6", "#8e44ad"];
-        let currentFile = null;
-        
-        function isComment(l) {{
-            if (l.startsWith("l ")) l = l.slice(2);
-            return l.trim().startsWith("--");
-        }}
-        
-        function showFile(n) {{
-            home.style.display = 'none';
-            detail.style.display = 'flex';
-            fileTitle.textContent = n;
-            subLegend.textContent = n + " - @Keye3Tuido";
-
-            lineNumbers.innerHTML = "";
-            codeLines.innerHTML = "";
-            let p = null;
-
-            const lines = files[n].raw.split('\\n');
-            lines.forEach((l, i) => {{
-                // 行号列：用 DOM + textContent，避免模板插值
-                const ln = document.createElement('div');
-                ln.className = 'row';
-                ln.textContent = i + 1;
-                ln.onclick = () => copyLine(i);
-                lineNumbers.appendChild(ln);
-
-                // 代码列：用 DOM + textContent，确保 < 不被当作标签
-                const row = document.createElement('div');
-                row.className = 'row';
-                row.onclick = () => copyLine(i);
-
-                if (!l) {{
-                row.textContent = "";            // 空行
-                p = null;
-                }} else if (isComment(l)) {{
-                let c;
-                do c = COLORS[Math.floor(Math.random() * COLORS.length)];
-                while (c === p);
-                p = c;
-                row.className = 'row comment';
-                row.style.color = c;
-                row.textContent = l;             // 关键：纯文本渲染
-                }} else {{
-                row.textContent = l;             // 关键：纯文本渲染
-                p = null;
-                }}
-
-                codeLines.appendChild(row);
-            }});
-
-            currentFile = n;
-        }}
- 
-        function showHome() {{
-            detail.style.display = 'none';
-            home.style.display = 'block';
-            currentFile = null;
-        }}
-        
-        function copyLine(i) {{
-            const l = codeLines.children[i]?.textContent;
-            if (l) navigator.clipboard.writeText(l)
-                .then(() => showToast("已复制第 " + (i + 1) + " 行"))
-                .catch(e => showToast("复制失败:" + e));
-        }}
-        
-        function copyToClipboard() {{
-            if (currentFile) navigator.clipboard.writeText(files[currentFile].raw)
-                .then(() => showToast("已复制代码到剪贴板"))
-                .catch(() => showToast("复制失败"));
-        }}
-        
-        function downloadLua() {{
-            if (!currentFile) return;
-            const num = currentFile.split('.')[0];
-            const b = new Blob([files[currentFile].cleaned], {{type: 'text/plain'}});
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(b);
-            a.download = 'code' + num + '.lua';
-            a.click();
-            URL.revokeObjectURL(a.href);
-        }}
-        
         function handleSearch() {{
             const t = searchInput.value.toLowerCase();
             for (const item of fileList.children)
                 item.style.display = item.getAttribute('data-search').toLowerCase().includes(t) ? 'grid' : 'none';
         }}
-        
-        function showToast(m) {{
+        function showToastAt(m, x, y) {{
+            const toast = document.getElementById('toast');
             toast.textContent = m;
             toast.style.display = 'block';
+            const offset = 12;
+            let left = x + offset, top = y + offset;
+            toast.style.left = left + 'px';
+            toast.style.top = top + 'px';
             toast.style.opacity = 1;
-            setTimeout(() => {{
-                toast.style.opacity = 0;
-                toast.style.display = 'none';
-            }}, 2000);
+            const rect = toast.getBoundingClientRect();
+            if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
+            if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
+            setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 2000);
         }}
-        
-        // HTML 反转义函数：把 &lt; &gt; &amp; &quot; &apos; 转回原始字符
-        function htmlUnescape(str) {{
-            const temp = document.createElement("textarea");
-            temp.innerHTML = str;
-            return temp.value;
-        }}
-
-        fileList.addEventListener('click', e => {{
-            const a = e.target.closest('.file-title');
-            if (!a) return;
-            const row = a.parentElement;
-            // 读取 data-fname 并反转义
-            const fname = htmlUnescape(row.dataset.fname);
-            showFile(fname);
-        }});
-
     </script>
 </body>
 </html>
 """
 
+# ========== 子页生成函数（功能保持一致，JS精简 + 点击位置提示） ==========
+def generate_file_page(fname, raw, cleaned):
+    num, title = (fname[:-4].split('.', 1) + [""])[:2]
+    safe_title = html.escape(title, quote=True)
+    safe_fname = html.escape(fname, quote=True)
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{safe_title} - 以撒代码挑战</title>
+    <style>{COMMON_CSS}</style>
+</head>
+<body>
+    <div class="container">
+        <h1>{safe_title}</h1>
+        <div class="code-box">
+            <div class="col-ln" id="lineNumbers"></div>
+            <div class="col-code" id="codeLines"></div>
+        </div>
+        <div class="legend"><span id="subLegend">{safe_fname} - @Keye3Tuido</span></div>
+        <div class="button-group">
+            <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
+            <button onclick="downloadLua(event)" class="download-btn">下载lua文件</button>
+            <a href="../index.html" class="back-btn">返回主页</a>
+        </div>
+        <div id="toast"></div>
+    </div>
+    <script>
+        const FILE = {json.dumps({"raw": raw, "cleaned": cleaned}, ensure_ascii=False)};
+        const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
+
+        const lnRoot = document.getElementById('lineNumbers');
+        const codeRoot = document.getElementById('codeLines');
+        const toast = document.getElementById('toast');
+
+        function isComment(l) {{
+            if (l.startsWith("l ")) l = l.slice(2);
+            return l.trim().startsWith("--");
+        }}
+
+        function render() {{
+            lnRoot.innerHTML = "";
+            codeRoot.innerHTML = "";
+            let prevColor = null;
+
+            FILE.raw.split('\\n').forEach((l, i) => {{
+                const ln = document.createElement('div');
+                ln.className = 'row';
+                ln.textContent = i + 1;
+                ln.onclick = (e) => copyLine(i, e);
+                lnRoot.appendChild(ln);
+
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.onclick = (e) => copyLine(i, e);
+
+                if (!l) {{
+                    row.textContent = "";
+                    prevColor = null;
+                }} else if (isComment(l)) {{
+                    let c;
+                    do c = COLORS[Math.floor(Math.random() * COLORS.length)];
+                    while (c === prevColor);
+                    prevColor = c;
+                    row.className = 'row comment';
+                    row.style.color = c;
+                    row.textContent = l;
+                }} else {{
+                    row.textContent = l;
+                    prevColor = null;
+                }}
+                codeRoot.appendChild(row);
+            }});
+        }}
+
+        function showToastAt(m, x, y) {{
+            toast.textContent = m;
+            toast.style.display = 'block';
+            const offset = 12;
+            let left = x + offset, top = y + offset;
+            toast.style.left = left + 'px';
+            toast.style.top = top + 'px';
+            toast.style.opacity = 1;
+            const rect = toast.getBoundingClientRect();
+            if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
+            if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
+            setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 2000);
+        }}
+
+        function copyLine(i, e) {{
+            const l = codeRoot.children[i]?.textContent;
+            if (!l) return;
+            navigator.clipboard.writeText(l)
+                .then(() => showToastAt("已复制第 " + (i + 1) + " 行", e.clientX, e.clientY))
+                .catch(err => showToastAt("复制失败: " + err, e.clientX, e.clientY));
+        }}
+
+        function copyAll(e) {{
+            navigator.clipboard.writeText(FILE.raw)
+                .then(() => showToastAt("已复制代码到剪贴板", e.clientX, e.clientY))
+                .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
+        }}
+
+        function downloadLua(e) {{
+            const b = new Blob([FILE.cleaned], {{ type: 'text/plain' }});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(b);
+            a.download = 'code{num}.lua';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showToastAt("已开始下载", e.clientX, e.clientY);
+        }}
+
+        render();
+    </script>
+</body>
+</html>
+"""
+
+# ========== 主程序：输出主页与子页到目录 ==========
 if __name__ == "__main__":
+    # 生成主页
     with open("index.html", "w", encoding="utf-8") as f:
-        f.write(html)
-    print("✅ 已生成index.html")
+        f.write(html_index)
+    print("✅ 已生成 index.html")
+
+    # 创建子页目录
+    os.makedirs(SUBDIR, exist_ok=True)
+
+    # 生成子页
+    for fname, content in files.items():
+        num = fname.split('.')[0]
+        page_html = generate_file_page(fname, content["raw"], content["cleaned"])
+        out_path = os.path.join(SUBDIR, f"file_{num}.html")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(page_html)
+    print(f"✅ 已生成所有子页面到 ./{SUBDIR}/")

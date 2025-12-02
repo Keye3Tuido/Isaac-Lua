@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>烂醉如泥 - 以撒代码挑战</title>
+    <style>
+body { font-family: Consolas, sans-serif; background: #f5f7fa; margin: 20px; }
+.container { max-width: 1100px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #0001; }
+h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
+.file-list { display: flex; flex-direction: column; gap: 6px; }
+.file-row { display: grid; grid-template-columns: 60px 1fr; align-items: center; }
+.file-num { text-align: center; color: #7f8c8d; font-weight: bold; }
+.file-title { padding: 8px; background: #ecf0f1; border-radius: 6px; text-decoration: none; color: #2c3e50; display: block; }
+.file-title:hover { background: #3498db; color: #fff; }
+.code-box { display: grid; grid-template-columns: max-content 1fr; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; }
+.col-ln, .col-code { display: grid; grid-auto-rows: minmax(1.6em, auto); }
+.col-ln { text-align: right; padding: 12px 10px; color: #7f8c8d; user-select: none; border-right: 1px solid #e0e0e0; }
+.col-code { padding: 12px 15px; white-space: pre; }
+.row.comment { font-weight: 500; }
+.col-ln .row:hover, .col-code .row:hover { background: #eef; color: #3498db; cursor: pointer; }
+.legend { font-size: 12px; color: #7f8c8d; margin-top: 8px; text-align: right; }
+.button-group { display: flex; gap: 8px; margin-top: 10px; }
+.button-group button { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; transition: .15s; }
+.copy-btn { background: #3498db; color: #fff; }
+.copy-btn:hover { background: #2b82c6; }
+.download-btn { background: #2ecc71; color: #fff; }
+.download-btn:hover { background: #27b866; }
+.back-btn { background: #95a5a6; color: #fff; text-decoration: none; display: inline-block; padding: 8px 12px; border-radius: 5px; }
+.back-btn:hover { background: #7f8c8d; }
+#toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
+#searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
+</style>
+</head>
+<body>
+    <div class="container">
+        <h1>烂醉如泥</h1>
+        <div class="code-box">
+            <div class="col-ln" id="lineNumbers"></div>
+            <div class="col-code" id="codeLines"></div>
+        </div>
+        <div class="legend"><span id="subLegend">5.烂醉如泥.lua - @Keye3Tuido</span></div>
+        <div class="button-group">
+            <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
+            <button onclick="downloadLua(event)" class="download-btn">下载lua文件</button>
+            <a href="../index.html" class="back-btn">返回主页</a>
+        </div>
+        <div id="toast"></div>
+    </div>
+    <script>
+        const FILE = {"raw": "--烂醉如泥（注意！很晕！！！）\n--输入下面的代码后，开始一局新游戏\n--除非重新加载了模组，否则不要重复输入代码\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 所有实体贴图会旋转、变大或变小；游戏会不时变慢和变快（损坏的怀表效果）\nl local I,M,V,R,S=Isaac,math,Vector,'SpriteRotation','SpriteScale'I.AddCallback({},1,function()local t,r,a,b,d,g,s=I.GetTime()/1e3,Game():GetRoom()a,b=M.sin(t),M.cos(t)for _,e in pairs(I.GetRoomEntities())do if e.Type~=1 or e.Parent then d=e.InitSeed if d&1==0 then d=1 else d=-1 end e[R]=(e[R]+d)%360 e[S]=V(1.5*a,1+.5*b)e.SizeMulti=e[S]else e[R]=20*a end r:SetBrokenWatchState(t//1%3)end for i=0,r:GetGridSize()-1 do g=r:GetGridEntity(i)if g then s=g:GetSprite()d=i if d&1==0 then d=1 else d=-1 end s.Rotation=(s.Rotation+d)%360 s.Scale=V(1+.5*a,1.5*b)end end end)\n\n--2. 玩家眼泪获得追踪、幽灵和穿刺效果；每进入新楼层，都会在初始房间生成一个死亡证明\nl local A=Isaac.AddCallback A({},8,function(_,p)p.TearFlags=p.TearFlags|7 end,32)A({},18,function()Isaac.ExecuteCommand('spawn 5.100.628')end)\n--.", "cleaned": "--烂醉如泥（注意！很晕！！！）\n--输入下面的代码后，开始一局新游戏\n--除非重新加载了模组，否则不要重复输入代码\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 所有实体贴图会旋转、变大或变小；游戏会不时变慢和变快（损坏的怀表效果）\nlocal I,M,V,R,S=Isaac,math,Vector,'SpriteRotation','SpriteScale'I.AddCallback({},1,function()local t,r,a,b,d,g,s=I.GetTime()/1e3,Game():GetRoom()a,b=M.sin(t),M.cos(t)for _,e in pairs(I.GetRoomEntities())do if e.Type~=1 or e.Parent then d=e.InitSeed if d&1==0 then d=1 else d=-1 end e[R]=(e[R]+d)%360 e[S]=V(1.5*a,1+.5*b)e.SizeMulti=e[S]else e[R]=20*a end r:SetBrokenWatchState(t//1%3)end for i=0,r:GetGridSize()-1 do g=r:GetGridEntity(i)if g then s=g:GetSprite()d=i if d&1==0 then d=1 else d=-1 end s.Rotation=(s.Rotation+d)%360 s.Scale=V(1+.5*a,1.5*b)end end end)\n\n--2. 玩家眼泪获得追踪、幽灵和穿刺效果；每进入新楼层，都会在初始房间生成一个死亡证明\nlocal A=Isaac.AddCallback A({},8,function(_,p)p.TearFlags=p.TearFlags|7 end,32)A({},18,function()Isaac.ExecuteCommand('spawn 5.100.628')end)\n--."};
+        const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
+
+        const lnRoot = document.getElementById('lineNumbers');
+        const codeRoot = document.getElementById('codeLines');
+        const toast = document.getElementById('toast');
+
+        function isComment(l) {
+            if (l.startsWith("l ")) l = l.slice(2);
+            return l.trim().startsWith("--");
+        }
+
+        function render() {
+            lnRoot.innerHTML = "";
+            codeRoot.innerHTML = "";
+            let prevColor = null;
+
+            FILE.raw.split('\n').forEach((l, i) => {
+                const ln = document.createElement('div');
+                ln.className = 'row';
+                ln.textContent = i + 1;
+                ln.onclick = (e) => copyLine(i, e);
+                lnRoot.appendChild(ln);
+
+                const row = document.createElement('div');
+                row.className = 'row';
+                row.onclick = (e) => copyLine(i, e);
+
+                if (!l) {
+                    row.textContent = "";
+                    prevColor = null;
+                } else if (isComment(l)) {
+                    let c;
+                    do c = COLORS[Math.floor(Math.random() * COLORS.length)];
+                    while (c === prevColor);
+                    prevColor = c;
+                    row.className = 'row comment';
+                    row.style.color = c;
+                    row.textContent = l;
+                } else {
+                    row.textContent = l;
+                    prevColor = null;
+                }
+                codeRoot.appendChild(row);
+            });
+        }
+
+        function showToastAt(m, x, y) {
+            toast.textContent = m;
+            toast.style.display = 'block';
+            const offset = 12;
+            let left = x + offset, top = y + offset;
+            toast.style.left = left + 'px';
+            toast.style.top = top + 'px';
+            toast.style.opacity = 1;
+            const rect = toast.getBoundingClientRect();
+            if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
+            if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
+            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 2000);
+        }
+
+        function copyLine(i, e) {
+            const l = codeRoot.children[i]?.textContent;
+            if (!l) return;
+            navigator.clipboard.writeText(l)
+                .then(() => showToastAt("已复制第 " + (i + 1) + " 行", e.clientX, e.clientY))
+                .catch(err => showToastAt("复制失败: " + err, e.clientX, e.clientY));
+        }
+
+        function copyAll(e) {
+            navigator.clipboard.writeText(FILE.raw)
+                .then(() => showToastAt("已复制代码到剪贴板", e.clientX, e.clientY))
+                .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
+        }
+
+        function downloadLua(e) {
+            const b = new Blob([FILE.cleaned], { type: 'text/plain' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(b);
+            a.download = 'code5.lua';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showToastAt("已开始下载", e.clientX, e.clientY);
+        }
+
+        render();
+    </script>
+</body>
+</html>
