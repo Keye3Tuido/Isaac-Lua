@@ -16,8 +16,8 @@ l local H,I,J,K,M,N,O,P,U,V,X,T,A,B,C,D,E,F,G,L,Q='GetFrameCount',Isaac,1,Game,M
 
 --4. 游戏1.5倍速运行。
 -- 可通过指令 lua TimeScale = 数值 来调整默认游戏速率(默认1.5倍)。
--- 紧急按钮触发跳跃教程时，将会进入子弹时间状态 5 秒。
+-- 紧急按钮触发主动道具时，将会进入子弹时间状态 5 秒。
 -- 可通过指令 lua BulletTime = 数值 来调整子弹时间的持续时间(默认5秒)。
 -- 依赖代码3.
-l BulletTime=5;TimeScale=1.5;local A,B,M,T=Isaac.AddCallback,TimeScale,ModCallbacks,{}A(T,M.MC_PRE_USE_ITEM,function(_,_,_,p)if not Input.IsActionTriggered(ButtonAction.ACTION_ITEM,p.ControllerIndex)then B=.1 end end,CollectibleType.COLLECTIBLE_HOW_TO_JUMP)A(T,M.MC_POST_UPDATE,function()local t=TimeScale SetTimeScale(B<t and B or t)if B<t then B=B+.03/BulletTime end end)
+l BulletTime=5;TimeScale=1.5;local A,B,M,T=Isaac.AddCallback,TimeScale,ModCallbacks,{}A(T,M.MC_PRE_USE_ITEM,function(_,_,_,p)if not Input.IsActionTriggered(ButtonAction.ACTION_ITEM,p.ControllerIndex)then B=.1 end end)A(T,M.MC_POST_UPDATE,function()local t=TimeScale SetTimeScale(B<t and B or t)if B<t then B=B+.03/BulletTime end end)
 --.
