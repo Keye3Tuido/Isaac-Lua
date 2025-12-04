@@ -30,6 +30,8 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 #toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
 #searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
 </style>
+    <!-- 引入 JSZip，用于生成 zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -41,13 +43,14 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
         <div class="legend"><span id="subLegend">8.世界是最强的替身.lua - @Keye3Tuido</span></div>
         <div class="button-group">
             <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
-            <button onclick="downloadLua(event)" class="download-btn">下载lua文件</button>
+            <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <div id="toast"></div>
     </div>
     <script>
         const FILE = {"raw": "--世界是最强的替身\n--输入下面的代码后，开始一局新游戏\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 当游戏暂停时，玩家可以正常行动。\nl I,Y,U,P,T=Isaac,true,'Update','ToPlayer'T={['Trapdoor']=Y,['MinecartEnter']=Y,['FallIn']=Y,['LeapUp']=Y,['SuperLeapUp']=Y,['LeapDown']=Y,['SuperLeapDown']=Y}I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then for _,e in pairs(I.GetRoomEntities())do local p,r,l,k=e[P](e),e.Parent,e:ToLaser(),e:ToKnife()if p and not T[p:GetSprite():GetAnimation()]then p[U](p)elseif r and r[P](r)then if l then l.DisableFollowParent=Y elseif k and not k:IsFlying()then k[U](k)end end end end end)\n--.", "cleaned": "--世界是最强的替身\n--输入下面的代码后，开始一局新游戏\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 当游戏暂停时，玩家可以正常行动。\nI,Y,U,P,T=Isaac,true,'Update','ToPlayer'T={['Trapdoor']=Y,['MinecartEnter']=Y,['FallIn']=Y,['LeapUp']=Y,['SuperLeapUp']=Y,['LeapDown']=Y,['SuperLeapDown']=Y}I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then for _,e in pairs(I.GetRoomEntities())do local p,r,l,k=e[P](e),e.Parent,e:ToLaser(),e:ToKnife()if p and not T[p:GetSprite():GetAnimation()]then p[U](p)elseif r and r[P](r)then if l then l.DisableFollowParent=Y elseif k and not k:IsFlying()then k[U](k)end end end end end)\n--."};
+        const NUM = "8";  // 文件编号用于命名 zip
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -105,7 +108,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
             const rect = toast.getBoundingClientRect();
             if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
             if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 2000);
+            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 5000);
         }
 
         function copyLine(i, e) {
@@ -122,14 +125,24 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        function downloadLua(e) {
-            const b = new Blob([FILE.cleaned], { type: 'text/plain' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(b);
-            a.download = 'code8.lua';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showToastAt("已开始下载", e.clientX, e.clientY);
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        async function downloadZip(e) {
+            try {
+                const filename = "code" + NUM + ".zip";
+                const zip = new JSZip();
+                zip.file("main.lua", FILE.cleaned);
+
+                const blob = await zip.generateAsync({ type: "blob" });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+                showToastAt("已下载模组文件; 将文件解压至游戏mods目录下即可进行游戏", e.clientX, e.clientY);
+            } catch (err) {
+                showToastAt("下载失败: " + err, e.clientX, e.clientY);
+            }
         }
 
         render();

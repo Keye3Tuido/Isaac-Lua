@@ -79,7 +79,6 @@ html_index = f"""<!DOCTYPE html>
         <h1>以撒代码挑战</h1>
         <input id="searchInput" placeholder="搜索Lua文件..." oninput="handleSearch()">
         <div id="fileList" class="file-list">{links}</div>
-        <div id="toast"></div>
     </div>
     <script>
         function handleSearch() {{
@@ -87,26 +86,12 @@ html_index = f"""<!DOCTYPE html>
             for (const item of fileList.children)
                 item.style.display = item.getAttribute('data-search').toLowerCase().includes(t) ? 'grid' : 'none';
         }}
-        function showToastAt(m, x, y) {{
-            const toast = document.getElementById('toast');
-            toast.textContent = m;
-            toast.style.display = 'block';
-            const offset = 12;
-            let left = x + offset, top = y + offset;
-            toast.style.left = left + 'px';
-            toast.style.top = top + 'px';
-            toast.style.opacity = 1;
-            const rect = toast.getBoundingClientRect();
-            if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
-            if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 2000);
-        }}
     </script>
 </body>
 </html>
 """
 
-# ========== 子页生成函数（功能保持一致，JS精简 + 点击位置提示） ==========
+# ========== 子页生成函数（下载模组文件：codeXX.zip，内含 main.lua） ==========
 def generate_file_page(fname, raw, cleaned):
     num, title = (fname[:-4].split('.', 1) + [""])[:2]
     safe_title = html.escape(title, quote=True)
@@ -118,6 +103,8 @@ def generate_file_page(fname, raw, cleaned):
     <meta charset="UTF-8">
     <title>{safe_title} - 以撒代码挑战</title>
     <style>{COMMON_CSS}</style>
+    <!-- 引入 JSZip，用于生成 zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -129,13 +116,14 @@ def generate_file_page(fname, raw, cleaned):
         <div class="legend"><span id="subLegend">{safe_fname} - @Keye3Tuido</span></div>
         <div class="button-group">
             <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
-            <button onclick="downloadLua(event)" class="download-btn">下载lua文件</button>
+            <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <div id="toast"></div>
     </div>
     <script>
         const FILE = {json.dumps({"raw": raw, "cleaned": cleaned}, ensure_ascii=False)};
+        const NUM = "{num}";  // 文件编号用于命名 zip
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -193,7 +181,7 @@ def generate_file_page(fname, raw, cleaned):
             const rect = toast.getBoundingClientRect();
             if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
             if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 2000);
+            setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 5000);
         }}
 
         function copyLine(i, e) {{
@@ -210,14 +198,24 @@ def generate_file_page(fname, raw, cleaned):
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }}
 
-        function downloadLua(e) {{
-            const b = new Blob([FILE.cleaned], {{ type: 'text/plain' }});
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(b);
-            a.download = 'code{num}.lua';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showToastAt("已开始下载", e.clientX, e.clientY);
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        async function downloadZip(e) {{
+            try {{
+                const filename = "code" + NUM + ".zip";
+                const zip = new JSZip();
+                zip.file("main.lua", FILE.cleaned);
+
+                const blob = await zip.generateAsync({{ type: "blob" }});
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+                showToastAt("已下载模组文件; 将文件解压至游戏mods目录下即可进行游戏", e.clientX, e.clientY);
+            }} catch (err) {{
+                showToastAt("下载失败: " + err, e.clientX, e.clientY);
+            }}
         }}
 
         render();
@@ -231,7 +229,7 @@ if __name__ == "__main__":
     # 生成主页
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(html_index)
-    print("✅ 已生成 index.html")
+    print("已生成 index.html")
 
     # 创建子页目录
     os.makedirs(SUBDIR, exist_ok=True)
@@ -243,4 +241,4 @@ if __name__ == "__main__":
         out_path = os.path.join(SUBDIR, f"file_{num}.html")
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(page_html)
-    print(f"✅ 已生成所有子页面到 ./{SUBDIR}/")
+        print(f"已生成子页面 {out_path}")

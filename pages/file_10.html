@@ -30,6 +30,8 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 #toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
 #searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
 </style>
+    <!-- 引入 JSZip，用于生成 zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -41,13 +43,14 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
         <div class="legend"><span id="subLegend">10.天堂制造.lua - @Keye3Tuido</span></div>
         <div class="button-group">
             <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
-            <button onclick="downloadLua(event)" class="download-btn">下载lua文件</button>
+            <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <div id="toast"></div>
     </div>
     <script>
         const FILE = {"raw": "--天堂制造\n--禁用Goodtrip\n--输入下面的代码后，开始一局新游戏\n--除非重新加载了模组，否则不要重复输入代码!\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 游戏会缓慢加速\nl local a,s,I,u,i,f,Z,b,t,T,A,N=0,1,Isaac,0,0,0,{}T,A=I.GetFrameCount,I.AddCallback t=T()A(Z,1,function()u=T()if(u-t>59)then t=u s=s+.001 end if(b)then return end b=1 i=s//1 f=s-i a=a+f if(a>=1)then i=i+1 a=a-1 end for _=1,i-1 do Game():Update()end b=N end)A(Z,2,function()I.RenderText(string.format('%.3f',s),I.GetScreenWidth()/2,10,0,1,1,1)end)A(Z,15,function(_,c)if(not c)then s=1 end end)\n\n\n--2. [不适配手柄]禁止玩家暂停游戏、禁止使用控制台(忏悔+不生效)；可使用Esc返回游戏菜单\nl local A,B,M,T,O,P=Isaac.AddCallback,ButtonAction,ModCallbacks,{},Options,'PauseOnFocusLost'A(T,M.MC_POST_RENDER,function()O[P]=false for i=1,Game():GetNumPlayers()do local c=Isaac.GetPlayer(i-1).ControllerIndex if Input.IsActionPressed(B.ACTION_MENUBACK,c)then Game():Fadeout(1,2)end end end)A(T,M.MC_INPUT_ACTION,function(_,_,h,b)if b==B.ACTION_CONSOLE or b==B.ACTION_PAUSE then return h==InputHook.GET_ACTION_VALUE and 0 or false end end)A(T,M.MC_PRE_MOD_UNLOAD,function()O[P]=true end)\n--.", "cleaned": "--天堂制造\n--禁用Goodtrip\n--输入下面的代码后，开始一局新游戏\n--除非重新加载了模组，否则不要重复输入代码!\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 游戏会缓慢加速\nlocal a,s,I,u,i,f,Z,b,t,T,A,N=0,1,Isaac,0,0,0,{}T,A=I.GetFrameCount,I.AddCallback t=T()A(Z,1,function()u=T()if(u-t>59)then t=u s=s+.001 end if(b)then return end b=1 i=s//1 f=s-i a=a+f if(a>=1)then i=i+1 a=a-1 end for _=1,i-1 do Game():Update()end b=N end)A(Z,2,function()I.RenderText(string.format('%.3f',s),I.GetScreenWidth()/2,10,0,1,1,1)end)A(Z,15,function(_,c)if(not c)then s=1 end end)\n\n\n--2. [不适配手柄]禁止玩家暂停游戏、禁止使用控制台(忏悔+不生效)；可使用Esc返回游戏菜单\nlocal A,B,M,T,O,P=Isaac.AddCallback,ButtonAction,ModCallbacks,{},Options,'PauseOnFocusLost'A(T,M.MC_POST_RENDER,function()O[P]=false for i=1,Game():GetNumPlayers()do local c=Isaac.GetPlayer(i-1).ControllerIndex if Input.IsActionPressed(B.ACTION_MENUBACK,c)then Game():Fadeout(1,2)end end end)A(T,M.MC_INPUT_ACTION,function(_,_,h,b)if b==B.ACTION_CONSOLE or b==B.ACTION_PAUSE then return h==InputHook.GET_ACTION_VALUE and 0 or false end end)A(T,M.MC_PRE_MOD_UNLOAD,function()O[P]=true end)\n--."};
+        const NUM = "10";  // 文件编号用于命名 zip
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -105,7 +108,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
             const rect = toast.getBoundingClientRect();
             if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
             if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 2000);
+            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 5000);
         }
 
         function copyLine(i, e) {
@@ -122,14 +125,24 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        function downloadLua(e) {
-            const b = new Blob([FILE.cleaned], { type: 'text/plain' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(b);
-            a.download = 'code10.lua';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showToastAt("已开始下载", e.clientX, e.clientY);
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        async function downloadZip(e) {
+            try {
+                const filename = "code" + NUM + ".zip";
+                const zip = new JSZip();
+                zip.file("main.lua", FILE.cleaned);
+
+                const blob = await zip.generateAsync({ type: "blob" });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+                showToastAt("已下载模组文件; 将文件解压至游戏mods目录下即可进行游戏", e.clientX, e.clientY);
+            } catch (err) {
+                showToastAt("下载失败: " + err, e.clientX, e.clientY);
+            }
         }
 
         render();
