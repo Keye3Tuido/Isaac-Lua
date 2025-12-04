@@ -30,6 +30,8 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 #toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
 #searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
 </style>
+    <!-- 引入 JSZip，用于生成 zip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -41,13 +43,14 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
         <div class="legend"><span id="subLegend">11.异食游戏.lua - @Keye3Tuido</span></div>
         <div class="button-group">
             <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
-            <button onclick="downloadLua(event)" class="download-btn">下载lua文件</button>
+            <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <div id="toast"></div>
     </div>
     <script>
         const FILE = {"raw": "--异食游戏\n--输入下面的代码后，开始一局新游戏\n--除非重新加载了模组，否则不要重复输入代码！\n--注意：使用创世记仅最多生成一组3选1饰品。\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 死亡证明内的道具、任务道具之外的所有道具均被替换为饰品掉落；角色受伤时自动吃掉携带的饰品\nl local F,G=Isaac.AddCallback,Game()F({},11,function(_,e)e:ToPlayer():UseActiveItem(479,3339)SFXManager():Play(157)end,1)F({},37,function(_,_,v,s)if(v==100 and not Isaac.GetItemConfig():GetCollectible(s):HasTags(1<<15)and G:GetLevel():GetCurrentRoomDesc().Data.Name~='Death Certificate')then return{350,G:GetItemPool():GetTrinket()}end end)\n\n--2. 初始给予玩家道具139-妈妈的钱包，249-额外选择，414-更多选择，439-妈妈的盒子，670-选择?\nl local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs({139,249,414,439,670})do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(t)do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)\n--.", "cleaned": "--异食游戏\n--输入下面的代码后，开始一局新游戏\n--除非重新加载了模组，否则不要重复输入代码！\n--注意：使用创世记仅最多生成一组3选1饰品。\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 死亡证明内的道具、任务道具之外的所有道具均被替换为饰品掉落；角色受伤时自动吃掉携带的饰品\nlocal F,G=Isaac.AddCallback,Game()F({},11,function(_,e)e:ToPlayer():UseActiveItem(479,3339)SFXManager():Play(157)end,1)F({},37,function(_,_,v,s)if(v==100 and not Isaac.GetItemConfig():GetCollectible(s):HasTags(1<<15)and G:GetLevel():GetCurrentRoomDesc().Data.Name~='Death Certificate')then return{350,G:GetItemPool():GetTrinket()}end end)\n\n--2. 初始给予玩家道具139-妈妈的钱包，249-额外选择，414-更多选择，439-妈妈的盒子，670-选择?\nlocal I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs({139,249,414,439,670})do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(t)do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)\n--."};
+        const NUM = "11";  // 文件编号用于命名 zip
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -105,7 +108,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
             const rect = toast.getBoundingClientRect();
             if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
             if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 2000);
+            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 5000);
         }
 
         function copyLine(i, e) {
@@ -122,14 +125,24 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        function downloadLua(e) {
-            const b = new Blob([FILE.cleaned], { type: 'text/plain' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(b);
-            a.download = 'code11.lua';
-            a.click();
-            URL.revokeObjectURL(a.href);
-            showToastAt("已开始下载", e.clientX, e.clientY);
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        async function downloadZip(e) {
+            try {
+                const filename = "code" + NUM + ".zip";
+                const zip = new JSZip();
+                zip.file("main.lua", FILE.cleaned);
+
+                const blob = await zip.generateAsync({ type: "blob" });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+                showToastAt("已下载模组文件; 将文件解压至游戏mods目录下即可进行游戏", e.clientX, e.clientY);
+            } catch (err) {
+                showToastAt("下载失败: " + err, e.clientX, e.clientY);
+            }
         }
 
         render();

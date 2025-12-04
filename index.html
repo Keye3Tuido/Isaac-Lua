@@ -60,27 +60,12 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 <div class='file-row' data-search='22 快刀游戏'><span class='file-num'>22</span><a href='pages/file_22.html' class='file-title'>快刀游戏</a></div>
 <div class='file-row' data-search='23 水果蛋糕!'><span class='file-num'>23</span><a href='pages/file_23.html' class='file-title'>水果蛋糕!</a></div>
 <div class='file-row' data-search='24 子弹时间'><span class='file-num'>24</span><a href='pages/file_24.html' class='file-title'>子弹时间</a></div></div>
-        <div id="toast"></div>
     </div>
     <script>
         function handleSearch() {
             const t = searchInput.value.toLowerCase();
             for (const item of fileList.children)
                 item.style.display = item.getAttribute('data-search').toLowerCase().includes(t) ? 'grid' : 'none';
-        }
-        function showToastAt(m, x, y) {
-            const toast = document.getElementById('toast');
-            toast.textContent = m;
-            toast.style.display = 'block';
-            const offset = 12;
-            let left = x + offset, top = y + offset;
-            toast.style.left = left + 'px';
-            toast.style.top = top + 'px';
-            toast.style.opacity = 1;
-            const rect = toast.getBoundingClientRect();
-            if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
-            if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => { toast.style.opacity = 0; toast.style.display = 'none'; }, 2000);
         }
     </script>
 </body>
