@@ -29,6 +29,17 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 .back-btn:hover { background: #7f8c8d; }
 #toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
 #searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
+.tooltip {
+    position: absolute;
+    background: #333;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s;
+}
 </style>
     <!-- 引入 JSZip，用于生成 zip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -47,6 +58,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <div id="toast"></div>
+        <div id="hoverTip" class="tooltip"></div>
     </div>
     <script>
         const FILE = {"raw": "--世界是最强的替身\n--输入下面的代码后，开始一局新游戏\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 当游戏暂停时，玩家可以正常行动。\nl I,Y,U,P,T=Isaac,true,'Update','ToPlayer'T={['Trapdoor']=Y,['MinecartEnter']=Y,['FallIn']=Y,['LeapUp']=Y,['SuperLeapUp']=Y,['LeapDown']=Y,['SuperLeapDown']=Y}I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then for _,e in pairs(I.GetRoomEntities())do local p,r,l,k=e[P](e),e.Parent,e:ToLaser(),e:ToKnife()if p and not T[p:GetSprite():GetAnimation()]then p[U](p)elseif r and r[P](r)then if l then l.DisableFollowParent=Y elseif k and not k:IsFlying()then k[U](k)end end end end end)\n--.", "cleaned": "--世界是最强的替身\n--输入下面的代码后，开始一局新游戏\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 当游戏暂停时，玩家可以正常行动。\nI,Y,U,P,T=Isaac,true,'Update','ToPlayer'T={['Trapdoor']=Y,['MinecartEnter']=Y,['FallIn']=Y,['LeapUp']=Y,['SuperLeapUp']=Y,['LeapDown']=Y,['SuperLeapDown']=Y}I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then for _,e in pairs(I.GetRoomEntities())do local p,r,l,k=e[P](e),e.Parent,e:ToLaser(),e:ToKnife()if p and not T[p:GetSprite():GetAnimation()]then p[U](p)elseif r and r[P](r)then if l then l.DisableFollowParent=Y elseif k and not k:IsFlying()then k[U](k)end end end end end)\n--."};
@@ -56,6 +68,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
         const lnRoot = document.getElementById('lineNumbers');
         const codeRoot = document.getElementById('codeLines');
         const toast = document.getElementById('toast');
+        const hoverTip = document.getElementById('hoverTip');
 
         function isComment(l) {
             if (l.startsWith("l ")) l = l.slice(2);
@@ -77,6 +90,14 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 const row = document.createElement('div');
                 row.className = 'row';
                 row.onclick = (e) => copyLine(i, e);
+                
+                ln.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
+                ln.onmousemove = (e) => showHoverTip(e.clientX, e.clientY);
+                ln.onmouseleave = hideHoverTip;
+
+                row.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
+                row.onmousemove = (e) => showHoverTip(e.clientX, e.clientY);
+                row.onmouseleave = hideHoverTip;
 
                 if (!l) {
                     row.textContent = "";
@@ -143,6 +164,19 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
             } catch (err) {
                 showToastAt("下载失败: " + err, e.clientX, e.clientY);
             }
+        }
+        
+        function showHoverTip(x, y) {
+            hoverTip.textContent = "点击以复制该行文字";
+            hoverTip.style.left = (x + 12) + "px";
+            hoverTip.style.top = (y + 12) + "px";
+            hoverTip.style.opacity = 1;
+            hoverTip.style.display = 'block';
+        }
+
+        function hideHoverTip() {
+            hoverTip.style.opacity = 0;
+            hoverTip.style.display = 'none';
         }
 
         render();

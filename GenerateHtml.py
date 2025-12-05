@@ -64,6 +64,17 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 .back-btn:hover { background: #7f8c8d; }
 #toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
 #searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
+.tooltip {
+    position: absolute;
+    background: #333;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s;
+}
 """
 
 # ========== 主页 HTML ==========
@@ -120,6 +131,7 @@ def generate_file_page(fname, raw, cleaned):
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <div id="toast"></div>
+        <div id="hoverTip" class="tooltip"></div>
     </div>
     <script>
         const FILE = {json.dumps({"raw": raw, "cleaned": cleaned}, ensure_ascii=False)};
@@ -129,6 +141,7 @@ def generate_file_page(fname, raw, cleaned):
         const lnRoot = document.getElementById('lineNumbers');
         const codeRoot = document.getElementById('codeLines');
         const toast = document.getElementById('toast');
+        const hoverTip = document.getElementById('hoverTip');
 
         function isComment(l) {{
             if (l.startsWith("l ")) l = l.slice(2);
@@ -150,6 +163,14 @@ def generate_file_page(fname, raw, cleaned):
                 const row = document.createElement('div');
                 row.className = 'row';
                 row.onclick = (e) => copyLine(i, e);
+                
+                ln.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
+                ln.onmousemove = (e) => showHoverTip(e.clientX, e.clientY);
+                ln.onmouseleave = hideHoverTip;
+
+                row.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
+                row.onmousemove = (e) => showHoverTip(e.clientX, e.clientY);
+                row.onmouseleave = hideHoverTip;
 
                 if (!l) {{
                     row.textContent = "";
@@ -216,6 +237,19 @@ def generate_file_page(fname, raw, cleaned):
             }} catch (err) {{
                 showToastAt("下载失败: " + err, e.clientX, e.clientY);
             }}
+        }}
+        
+        function showHoverTip(x, y) {{
+            hoverTip.textContent = "点击以复制该行文字";
+            hoverTip.style.left = (x + 12) + "px";
+            hoverTip.style.top = (y + 12) + "px";
+            hoverTip.style.opacity = 1;
+            hoverTip.style.display = 'block';
+        }}
+
+        function hideHoverTip() {{
+            hoverTip.style.opacity = 0;
+            hoverTip.style.display = 'none';
         }}
 
         render();
