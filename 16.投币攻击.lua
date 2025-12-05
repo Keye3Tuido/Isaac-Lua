@@ -4,7 +4,7 @@
 
 ---- 代码效果(不用管中文，全选复制即可) ----
 --1. 强制敌人变为精英怪(不包括6无敌变种和25彩虹变种)。
-l local A,C={[0]=1,[1]=1,[2]=1,[3]=1,[4]=1,[5]=1,[6]=0,[7]=1,[8]=1,[9]=1,[10]=1,[11]=1,[12]=1,[13]=1,[14]=1,[15]=1,[16]=1,[17]=1,[18]=1,[19]=1,[20]=1,[21]=1,[22]=1,[23]=1,[24]=1,[25]=0},{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({}, ModCallbacks.MC_NPC_UPDATE, function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible() and not e:IsChampion()then e:MakeChampion(e.InitSeed,C[e.InitSeed%#C+1])end end)
+l local A,I,C={[0]=1,[1]=1,[2]=1,[3]=1,[4]=1,[5]=1,[6]=0,[7]=1,[8]=1,[9]=1,[10]=1,[11]=1,[12]=1,[13]=1,[14]=1,[15]=1,[16]=1,[17]=1,[18]=1,[19]=1,[20]=1,[21]=1,[22]=1,[23]=1,[24]=1,[25]=0},'InitSeed',{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({}, ModCallbacks.MC_NPC_UPDATE, function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible() and not e:IsChampion()then e:MakeChampion(e[I],C[e[I]%#C+1])end end)
 
 
 --2. 强制给予玩家道具202(弥达斯之触)、227(小猪存钱罐)、295(魔术手指)、304(天秤座)、416(深口袋)、501(贪婪的胃袋)、道具590(水星)。
