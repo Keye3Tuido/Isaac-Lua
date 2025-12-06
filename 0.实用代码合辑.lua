@@ -98,7 +98,8 @@ l local function Action(t)end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityTyp
 l local ItemId=612;Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(_,t,v)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then return{t,v,ItemId}end end)
 
 --29. 每层在初始房间生成1*道具247-好朋友一辈子!,2*道具612-迷失游魂。
-l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for k,v in pairs(Items)do local c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n do I.ExecuteCommand('spawn 5.100.'..c)end end end)
+--离开房间后道具消失。
+l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for k,v in pairs(Items)do local c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n do I.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,c,I.GetFreeNearPosition(Game():GetRoom():GetCenterPos(),0),Vector.Zero,nil):ToPickup().Timeout=9e9 end end end)
 
 --30. 删除每层的：宝箱房(类型为4)、星象房(类型为24)。
 l local Del={4,24};local D,S,T='Data','SafeGridIndex','Type'Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()local L,R,r=Game():GetLevel()R=L:GetRooms()for i=1,#R do r=R:Get(i-1)for k,v in pairs(Del)do if v==r[D][T]then L:GetRoomByIdx(r[S])[D]=L:GetCurrentRoomDesc()[D]break end end end L:UpdateVisibility()end)
