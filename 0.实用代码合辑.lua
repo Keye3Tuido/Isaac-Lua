@@ -102,4 +102,7 @@ l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_
 
 --30. 删除每层的：宝箱房(类型为4)、星象房(类型为24)。
 l local Del={4,24};local D,S,T='Data','SafeGridIndex','Type'Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()local L,R,r=Game():GetLevel()R=L:GetRooms()for i=1,#R do r=R:Get(i-1)for k,v in pairs(Del)do if v==r[D][T]then L:GetRoomByIdx(r[S])[D]=L:GetCurrentRoomDesc()[D]break end end end L:UpdateVisibility()end)
+
+--31. 每层给予所有玩家1*道具247-好朋友一辈子!,2*道具612-迷失游魂。
+l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for x=1,Game():GetNumPlayers()do local p,c,n=I.GetPlayer(x-1)for k,v in pairs(Items)do c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n do p:AddCollectible(c,I.GetItemConfig():GetCollectible(c).InitCharge)end end end end)
 --.
