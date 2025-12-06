@@ -1,4 +1,5 @@
 --失而复得
+--限定角色: 游魂
 --输入下面的代码后，重新开始一局新游戏
 --除非重新加载了模组，否则不要重复输入代码！
 
@@ -12,6 +13,12 @@ l local I,M,N,H,T,F,D,A=Isaac,ModCallbacks,'MC_POST_NEW_ROOM',function(e)return 
 -- 依赖代码1
 l local B,C,D,E,F,G,H,I,J,M,P,R,S,T,A,K=_Data,'Player','InitSeed',EntityType.ENTITY_FAMILIAR,FamiliarVariant.LOST_SOUL,'Position',GetPtrHash,Isaac,'ToFamiliar',ModCallbacks,'Parent','Remove','State',{}A,K=I.AddCallback,G..'Offset'A(T,M.MC_POST_NEW_LEVEL,function()for k,v in pairs(B())do v.N=0 end end)A(T,M.MC_POST_PLAYER_UPDATE,function(_,p)local a,b,c,h,n,e=I.FindByType(E,F),{},0,H(p)n=p:GetCollectibleNum(CollectibleType.COLLECTIBLE_LOST_SOUL)-(B(p).N or 0)for k,v in pairs(a)do e=v[J](v)if h==H(e[C])then c=c+1 if c>n then e[R](e)else b[#b+1]=e end end end while c<n do c,e=c+1,I.Spawn(E,F,0,p[G]+p[K],Vector.Zero,p)b[#b+1]=e[J](e)end table.sort(b,function(x,y)return x[D]<y[D]end)for k,v in pairs(b)do v[P]=k<2 and p or b[k-1]if k>1 then v:FollowPosition(v[P][G]+v[P][K])end end end)A(T,M.MC_FAMILIAR_UPDATE,function(_,f)local p=f[C]if f[S]==4 and f:GetSprite():IsFinished()then B(p).N=(B(p).N or 0)+1 f[R](f)end end,F)
 
---3. 在所有 迷失游魂 跟班处生成一个 复得游魂 跟班。
+--3. 强制角色为游魂。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_THELOST if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
 
+--4. 每开启新游戏时，在初始房间根据玩家人数n，生成n组多选一道具(247-好朋友一辈子!)
+l local V,g,N=Vector,{247}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game():GetNumPlayers()if not c then x,y=(720-#g*80)/2,(640-n*80)/2 for i=1,n do for j=1,#g do Isaac.Spawn(5,100,g[j],V(x+80*(j-1),y),V.Zero,N):ToPickup().OptionsPickupIndex=i end y=y+80 end end end)
+
+--5. 所有预生成道具替换为道具612-迷失游魂
+l local ItemId=612;Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(_,t,v)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then return{t,v,ItemId}end end)
 --.
