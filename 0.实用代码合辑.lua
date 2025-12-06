@@ -31,7 +31,7 @@ l local G,F,b=32768,Isaac.AddCallback,{85}F({},31,function(_,p)for _,i in pairs(
 --7. 每开启新游戏时，在初始房间根据玩家人数n，生成n组多选一道具(87-洛基的角,229-萌死戳的肺,233-小小星球)
 l local V,g,N=Vector,{87,229,233}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game():GetNumPlayers()if not c then x,y=(720-#g*80)/2,(640-n*80)/2 for i=1,n do for j=1,#g do Isaac.Spawn(5,100,g[j],V(x+80*(j-1),y),V.Zero,N):ToPickup().OptionsPickupIndex=i end y=y+80 end end end)
 
---8.  从游戏中移除道具329(鲁多维科科技)和579(英灵剑)
+--8. 从游戏中移除道具329(鲁多维科科技)和579(英灵剑)
 l local I,C,Y,T,A=Isaac,{329,579},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
 --9. [不适配手柄]禁止玩家暂停游戏、禁止使用控制台(忏悔+不生效)；可使用Esc返回游戏菜单
