@@ -63,6 +63,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
     <script>
         const FILE = {"raw": "--绯红之王\n--除非重新加载了模组，否则不要重复输入代码\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 每10秒会删除角色1.5秒的时间\nl local s,a,e,n=0,1 Isaac.AddCallback({},1,function()e=Isaac.GetTime()if a and e-s>1e4 then s=e a=n for _=1,45 do Game():Update()end a=1 end end)\n--.", "cleaned": "--绯红之王\n--除非重新加载了模组，否则不要重复输入代码\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 每10秒会删除角色1.5秒的时间\nlocal s,a,e,n=0,1 Isaac.AddCallback({},1,function()e=Isaac.GetTime()if a and e-s>1e4 then s=e a=n for _=1,45 do Game():Update()end a=1 end end)\n--."};
         const NUM = "9";  // 文件编号用于命名 zip
+        const TITLE_NAME = "绯红之王";  // 用于 metadata.xml
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -146,13 +147,27 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua 和 metadata.xml
         async function downloadZip(e) {
             try {
                 const filename = "code" + NUM + ".zip";
                 const zip = new JSZip();
+
+                // 添加 main.lua
                 zip.file("main.lua", FILE.cleaned);
 
+                // 添加 metadata.xml
+                const metadata = `
+                    <metadata>
+                        <name>code${NUM}-${TITLE_NAME}</name>
+                        <directory>code${NUM}</directory>
+                        <description/>
+                        <version>1.0</version>
+                        <visibility/>
+                    </metadata>`;
+                zip.file("metadata.xml", metadata.trim());
+
+                // 生成并下载 zip
                 const blob = await zip.generateAsync({ type: "blob" });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);

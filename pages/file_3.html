@@ -63,6 +63,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
     <script>
         const FILE = {"raw": "--丢雷佬\n--禁用角色：Lilith, Lilith(Tainted)\n--除非重新加载了模组，否则不要重复输入代码！\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。\nl Isaac.AddCallback({},31,function(s,p,g,c,f)f,s,g=1,'Challenge',Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)\n\n--2. 玩家放置炸弹改为托举炸弹（被托举的炸弹与道具-胎儿博士-拥有相同的伤害与特效），同时不再消耗炸弹数量：\nl local I,Z,F,P=Isaac,Vector.Zero,Isaac.AddCallback,'Position'F({},2,function()for i=0,Game():GetNumPlayers()-1 do local p,d,b=I.GetPlayer(i)d=p.ControllerIndex if Input.IsActionTriggered(8,d)and not p:IsHoldingItem()then if p:GetNumGigaBombs()>0 then b=I.Spawn(4,17,0,p[P],Z,p):ToBomb()p:AddGigaBombs(-1)else b=p:FireBomb(p[P],Z)end b.Flags=p:GetBombFlags()p:TryHoldEntity(b)end end end)F({},13,function(_,e,_,a)if e and e:ToPlayer()and a==8 then return false end end,1)\n\n--3. 炸弹掉落物50%替换为超级炸弹，50%替换为大笑脸炸弹：\nl local I,F=Isaac,Isaac.AddCallback F({},24,function(_,t,v,s,_,_,_,d)if t==5 and v==40 then if d&1==0 then s=7 else t,v,s=4,4,0 end end return{t,v,s,d}end)F({},34,function(_,e)if e.SubType~=7 then I.Spawn(5,40,0,e.Position,e.Velocity,e.SpawnerEntity)e:Remove()end end,40)\n--.", "cleaned": "--丢雷佬\n--禁用角色：Lilith, Lilith(Tainted)\n--除非重新加载了模组，否则不要重复输入代码！\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。\nIsaac.AddCallback({},31,function(s,p,g,c,f)f,s,g=1,'Challenge',Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)\n\n--2. 玩家放置炸弹改为托举炸弹（被托举的炸弹与道具-胎儿博士-拥有相同的伤害与特效），同时不再消耗炸弹数量：\nlocal I,Z,F,P=Isaac,Vector.Zero,Isaac.AddCallback,'Position'F({},2,function()for i=0,Game():GetNumPlayers()-1 do local p,d,b=I.GetPlayer(i)d=p.ControllerIndex if Input.IsActionTriggered(8,d)and not p:IsHoldingItem()then if p:GetNumGigaBombs()>0 then b=I.Spawn(4,17,0,p[P],Z,p):ToBomb()p:AddGigaBombs(-1)else b=p:FireBomb(p[P],Z)end b.Flags=p:GetBombFlags()p:TryHoldEntity(b)end end end)F({},13,function(_,e,_,a)if e and e:ToPlayer()and a==8 then return false end end,1)\n\n--3. 炸弹掉落物50%替换为超级炸弹，50%替换为大笑脸炸弹：\nlocal I,F=Isaac,Isaac.AddCallback F({},24,function(_,t,v,s,_,_,_,d)if t==5 and v==40 then if d&1==0 then s=7 else t,v,s=4,4,0 end end return{t,v,s,d}end)F({},34,function(_,e)if e.SubType~=7 then I.Spawn(5,40,0,e.Position,e.Velocity,e.SpawnerEntity)e:Remove()end end,40)\n--."};
         const NUM = "3";  // 文件编号用于命名 zip
+        const TITLE_NAME = "丢雷佬";  // 用于 metadata.xml
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -146,13 +147,27 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua 和 metadata.xml
         async function downloadZip(e) {
             try {
                 const filename = "code" + NUM + ".zip";
                 const zip = new JSZip();
+
+                // 添加 main.lua
                 zip.file("main.lua", FILE.cleaned);
 
+                // 添加 metadata.xml
+                const metadata = `
+                    <metadata>
+                        <name>code${NUM}-${TITLE_NAME}</name>
+                        <directory>code${NUM}</directory>
+                        <description/>
+                        <version>1.0</version>
+                        <visibility/>
+                    </metadata>`;
+                zip.file("metadata.xml", metadata.trim());
+
+                // 生成并下载 zip
                 const blob = await zip.generateAsync({ type: "blob" });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
