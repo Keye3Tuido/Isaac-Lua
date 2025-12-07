@@ -136,6 +136,7 @@ def generate_file_page(fname, raw, cleaned):
     <script>
         const FILE = {json.dumps({"raw": raw, "cleaned": cleaned}, ensure_ascii=False)};
         const NUM = "{num}";  // 文件编号用于命名 zip
+        const TITLE_NAME = "{safe_title}";  // 用于 metadata.xml
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -219,13 +220,27 @@ def generate_file_page(fname, raw, cleaned):
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }}
 
-        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua 和 metadata.xml
         async function downloadZip(e) {{
             try {{
                 const filename = "code" + NUM + ".zip";
                 const zip = new JSZip();
+
+                // 添加 main.lua
                 zip.file("main.lua", FILE.cleaned);
 
+                // 添加 metadata.xml
+                const metadata = `
+                    <metadata>
+                        <name>code${{NUM}}-${{TITLE_NAME}}</name>
+                        <directory>code${{NUM}}</directory>
+                        <description/>
+                        <version>1.0</version>
+                        <visibility/>
+                    </metadata>`;
+                zip.file("metadata.xml", metadata.trim());
+
+                // 生成并下载 zip
                 const blob = await zip.generateAsync({{ type: "blob" }});
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);

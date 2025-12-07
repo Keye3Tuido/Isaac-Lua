@@ -63,6 +63,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
     <script>
         const FILE = {"raw": "--网络延迟\n--除非重新加载了模组，否则不要重复输入代码！\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 将玩家的输入延迟15帧（0.25秒），可在控制台输入l Lag = 数值 来调整延迟帧数。\nl Lag = 15 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)\n--.", "cleaned": "--网络延迟\n--除非重新加载了模组，否则不要重复输入代码！\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 将玩家的输入延迟15帧（0.25秒），可在控制台输入l Lag = 数值 来调整延迟帧数。\nLag = 15 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)\n--."};
         const NUM = "19";  // 文件编号用于命名 zip
+        const TITLE_NAME = "网络延迟";  // 用于 metadata.xml
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -146,13 +147,27 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua 和 metadata.xml
         async function downloadZip(e) {
             try {
                 const filename = "code" + NUM + ".zip";
                 const zip = new JSZip();
+
+                // 添加 main.lua
                 zip.file("main.lua", FILE.cleaned);
 
+                // 添加 metadata.xml
+                const metadata = `
+                    <metadata>
+                        <name>code${NUM}-${TITLE_NAME}</name>
+                        <directory>code${NUM}</directory>
+                        <description/>
+                        <version>1.0</version>
+                        <visibility/>
+                    </metadata>`;
+                zip.file("metadata.xml", metadata.trim());
+
+                // 生成并下载 zip
                 const blob = await zip.generateAsync({ type: "blob" });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);

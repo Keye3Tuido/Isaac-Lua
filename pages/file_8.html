@@ -63,6 +63,7 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
     <script>
         const FILE = {"raw": "--世界是最强的替身\n--输入下面的代码后，开始一局新游戏\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 当游戏暂停时，玩家可以正常行动。\nl I,Y,U,P,T=Isaac,true,'Update','ToPlayer'T={['Trapdoor']=Y,['MinecartEnter']=Y,['FallIn']=Y,['LeapUp']=Y,['SuperLeapUp']=Y,['LeapDown']=Y,['SuperLeapDown']=Y}I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then for _,e in pairs(I.GetRoomEntities())do local p,r,l,k=e[P](e),e.Parent,e:ToLaser(),e:ToKnife()if p and not T[p:GetSprite():GetAnimation()]then p[U](p)elseif r and r[P](r)then if l then l.DisableFollowParent=Y elseif k and not k:IsFlying()then k[U](k)end end end end end)\n--.", "cleaned": "--世界是最强的替身\n--输入下面的代码后，开始一局新游戏\n\n---- 代码效果(不用管中文，全选复制即可) ----\n\n--1. 当游戏暂停时，玩家可以正常行动。\nI,Y,U,P,T=Isaac,true,'Update','ToPlayer'T={['Trapdoor']=Y,['MinecartEnter']=Y,['FallIn']=Y,['LeapUp']=Y,['SuperLeapUp']=Y,['LeapDown']=Y,['SuperLeapDown']=Y}I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then for _,e in pairs(I.GetRoomEntities())do local p,r,l,k=e[P](e),e.Parent,e:ToLaser(),e:ToKnife()if p and not T[p:GetSprite():GetAnimation()]then p[U](p)elseif r and r[P](r)then if l then l.DisableFollowParent=Y elseif k and not k:IsFlying()then k[U](k)end end end end end)\n--."};
         const NUM = "8";  // 文件编号用于命名 zip
+        const TITLE_NAME = "世界是最强的替身";  // 用于 metadata.xml
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
         const lnRoot = document.getElementById('lineNumbers');
@@ -146,13 +147,27 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
                 .catch(() => showToastAt("复制失败", e.clientX, e.clientY));
         }
 
-        // 下载模组文件：生成 codeXX.zip，内含 main.lua
+        // 下载模组文件：生成 codeXX.zip，内含 main.lua 和 metadata.xml
         async function downloadZip(e) {
             try {
                 const filename = "code" + NUM + ".zip";
                 const zip = new JSZip();
+
+                // 添加 main.lua
                 zip.file("main.lua", FILE.cleaned);
 
+                // 添加 metadata.xml
+                const metadata = `
+                    <metadata>
+                        <name>code${NUM}-${TITLE_NAME}</name>
+                        <directory>code${NUM}</directory>
+                        <description/>
+                        <version>1.0</version>
+                        <visibility/>
+                    </metadata>`;
+                zip.file("metadata.xml", metadata.trim());
+
+                // 生成并下载 zip
                 const blob = await zip.generateAsync({ type: "blob" });
                 const a = document.createElement('a');
                 a.href = URL.createObjectURL(blob);
