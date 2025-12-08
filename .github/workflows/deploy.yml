@@ -24,4 +24,4 @@ jobs:
 
       # 部署到 CloudBase 静态托管
       - name: Deploy to CloudBase Hosting
-        run: tcb hosting deploy ./ /home -e ${{ secrets.TCB_ENV_ID }}
+        run: tcb hosting deploy -e ${{ secrets.TCB_ENV_ID }}
