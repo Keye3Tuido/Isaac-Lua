@@ -1,10 +1,9 @@
 name: Deploy static HTML to CloudBase
 
-# 当 main 分支有更新时自动触发
 on:
   push:
     branches:
-      - main
+      - main   # 每次 main 分支有更新时触发
 
 jobs:
   deploy:
@@ -22,6 +21,12 @@ jobs:
       - name: Login CloudBase CLI
         run: tcb login --apiKeyId ${{ secrets.TCB_SECRET_ID }} --apiKey ${{ secrets.TCB_SECRET_KEY }}
 
-      # 部署到 CloudBase 静态托管
+      # 准备部署目录（避免上传 .git）
+      - name: Prepare deploy folder
+        run: |
+          mkdir deploy
+          cp -r *.html *.css *.js deploy/
+
+      # 部署到 CloudBase Hosting
       - name: Deploy to CloudBase Hosting
-        run: tcb hosting deploy -e ${{ secrets.TCB_ENV_ID }}
+        run: tcb hosting deploy ./deploy /home -e ${{ secrets.TCB_ENV_ID }}
