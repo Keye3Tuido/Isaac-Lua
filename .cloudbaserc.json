@@ -1,0 +1,10 @@
+{
+  "hosting": {
+    "public": "./",
+    "ignore": [
+      ".git",
+      ".github",
+      "node_modules"
+    ]
+  }
+}
