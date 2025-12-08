@@ -25,8 +25,8 @@ jobs:
       - name: Prepare deploy folder
         run: |
           mkdir deploy
-          cp -r *.html deploy/
+          cp -r *.html *.lua deploy/
 
       # 部署到 CloudBase Hosting
       - name: Deploy to CloudBase Hosting
-        run: tcb hosting deploy ./deploy /home -e ${{ secrets.TCB_ENV_ID }}
+        run: tcb hosting deploy ./deploy /IsaacLua -e ${{ secrets.TCB_ENV_ID }}
