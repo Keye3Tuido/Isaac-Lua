@@ -25,7 +25,7 @@ jobs:
       - name: Prepare deploy folder
         run: |
           mkdir deploy
-          cp -r *.html *.lua deploy/
+          rsync -av --exclude='.git' --exclude='.github' . ./deploy
 
       # 部署到 CloudBase Hosting
       - name: Deploy to CloudBase Hosting
