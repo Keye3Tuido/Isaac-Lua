@@ -1,38 +1,27 @@
-name: Deploy to CloudBase Static Hosting
+name: Deploy static HTML to CloudBase
 
+# 当 main 分支有更新时自动触发
 on:
   push:
     branches:
-      - main # 主分支推送时触发
-  pull_request:
-    branches:
-      - main # PR时触发（可选）
+      - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      # 拉取最新代码
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm' # 启用npm缓存加速构建
+      # 安装 CloudBase CLI
+      - name: Install CloudBase CLI
+        run: npm install -g @cloudbase/cli
 
-    - name: Install dependencies
-      run: npm ci # 使用npm ci替代npm install，更适合CI环境
+      # 登录 CloudBase（使用 GitHub Secrets）
+      - name: Login CloudBase CLI
+        run: tcb login --apiKeyId ${{ secrets.TCB_SECRET_ID }} --apiKey ${{ secrets.TCB_SECRET_KEY }}
 
-    - name: Build project
-      run: npm run build
-
-    - name: Install CloudBase CLI
-      run: npm install -g @cloudbase/cli
-
-    - name: Login CloudBase CLI
-      run: tcb login --apiKeyId ${{ secrets.TCB_SECRET_ID }} --apiKey ${{ secrets.TCB_SECRET_KEY }}
-
-    - name: Deploy to CloudBase Static Hosting
-      run: tcb hosting deploy ./dist /home -e ${{ secrets.TCB_ENV_ID }}
+      # 部署到 CloudBase 静态托管
+      - name: Deploy to CloudBase Hosting
+        run: tcb hosting deploy ./ /home -e ${{ secrets.TCB_ENV_ID }}
