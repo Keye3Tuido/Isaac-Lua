@@ -20,7 +20,7 @@ l local H,I,J,K,M,N,O,P,U,V,X,T,A,B,C,D,E,F,G,L,Q='GetFrameCount',Isaac,1,Game,M
 -- 紧急按钮触发主动道具时，将会进入子弹时间状态 5 秒。
 -- 可通过指令 lua BulletTime = 数值 来调整子弹时间的持续时间(默认5秒)。
 -- 依赖代码3.
-l BulletTime=5;TimeScale=1.5;local A,B,M,T=Isaac.AddCallback,TimeScale,ModCallbacks,{}A(T,M.MC_PRE_USE_ITEM,function(_,_,_,p)if not Input.IsActionTriggered(ButtonAction.ACTION_ITEM,p.ControllerIndex)then B=.1 end end)A(T,M.MC_POST_UPDATE,function()local t=TimeScale SetTimeScale(B<t and B or t)if B<t then B=B+.03/BulletTime end end)
+l BulletTime=5;TimeScale=1.5;local A,B,C,I,M,T=Isaac.AddCallback,TimeScale,ButtonAction,Input.IsActionTriggered,ModCallbacks,{}A(T,M.MC_PRE_USE_ITEM,function(_,_,_,p)local x=p.ControllerIndex if not(I(C.ACTION_ITEM,x)or I(C.ACTION_PILLCARD,x))then B=.1 end end)A(T,M.MC_POST_UPDATE,function()local t=TimeScale SetTimeScale(B<t and B or t)if B<t then B=B+.03/BulletTime end end)
 
 --5. 强制非精英敌人变为精英怪(仅包括10粉色变种，“0”和“1”可替换为非负整数表示权重)。
 l local A,I,C={[0]=0,[1]=0,[2]=0,[3]=0,[4]=0,[5]=0,[6]=0,[7]=0,[8]=0,[9]=0,[10]=1,[11]=0,[12]=0,[13]=0,[14]=0,[15]=0,[16]=0,[17]=0,[18]=0,[19]=0,[20]=0,[21]=0,[22]=0,[23]=0,[24]=0,[25]=0},'InitSeed',{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({}, ModCallbacks.MC_NPC_UPDATE, function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible()and not e:IsChampion()then e:MakeChampion(e[I],C[e[I]%#C+1])end end)
