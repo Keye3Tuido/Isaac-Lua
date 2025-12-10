@@ -120,6 +120,12 @@ def generate_file_page(fname, raw, cleaned):
 <body>
     <div class="container">
         <h1>{safe_title}</h1>
+        <div class="button-group">
+            <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
+            <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
+            <a href="../index.html" class="back-btn">返回主页</a>
+        </div>
+        <br>
         <div class="code-box">
             <div class="col-ln" id="lineNumbers"></div>
             <div class="col-code" id="codeLines"></div>
