@@ -172,11 +172,11 @@ def generate_file_page(fname, raw, cleaned):
                 row.onclick = (e) => copyLine(i, e);
                 
                 ln.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
-                ln.onmousemove = (e) => showHoverTip(e.clientX, e.clientY);
+                ln.onmousemove = (e) => showHoverTip(e.pageX, e.pageY);
                 ln.onmouseleave = hideHoverTip;
 
                 row.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
-                row.onmousemove = (e) => showHoverTip(e.clientX, e.clientY);
+                row.onmousemove = (e) => showHoverTip(e.pageX, e.pageY);
                 row.onmouseleave = hideHoverTip;
 
                 if (!l) {{
@@ -264,8 +264,8 @@ def generate_file_page(fname, raw, cleaned):
             hoverTip.textContent = "点击以复制该行文字";
             hoverTip.style.left = (x + 12) + "px";
             hoverTip.style.top = (y + 12) + "px";
+            hoverTip.style.display = "block";
             hoverTip.style.opacity = 1;
-            hoverTip.style.display = 'block';
         }}
 
         function hideHoverTip() {{
