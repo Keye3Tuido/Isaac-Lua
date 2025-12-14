@@ -1,4 +1,4 @@
---* 包装AddPriorityCallback和RemoveCallback，防止因回调函数报错导致游戏崩溃。
+--* 包装AddPriorityCallback、RemoveCallback、RunCallback、RunCallbackWithParam和GetCallbacks，防止因回调函数报错导致回调崩溃。
 --对忏悔龙Repentogon不生效。
 --控制台输入 lua Wrap() 启用安全包装，输入lua Unwrap() 关闭安全包装。
 --重复输入该代码不会产生额外影响。多次Wrap、Unwrap不会额外生效。
