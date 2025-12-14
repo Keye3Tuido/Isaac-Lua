@@ -5,10 +5,10 @@
 l Isaac.AddCallback({},ModCallbacks.XXX,func,arg)
 --1<回调数N<=4 | 总字数=41+8N
 l local A,M=Isaac.AddCallback,ModCallbacks;A({},M.XXX,func,arg)
---4<回调数N<=11 | 总字数=45+7N
+--4<回调数N<=10 | 总字数=45+7N
 l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.XXX,func,arg)
---11<回调数N | 总字数=68+5N
-l local M,A=ModCallbacks;A=function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,arg)
+--10<回调数N | 总字数=65+5N
+l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,arg)
 
 --0. 删除匿名模组的回调。
 --控制台输入 lua CLM() 可删除所有匿名模组的回调，用于预防重复输入代码和清理代码效果。
