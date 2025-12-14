@@ -110,4 +110,8 @@ l local Del={4,24};local D,G,S,T='Data','GetRoomByIdx','SafeGridIndex','Type'Isa
 
 --31. 每层给予所有玩家1*道具247-好朋友一辈子!,2*道具612-迷失游魂。
 l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for x=1,Game():GetNumPlayers()do local p,c,n=I.GetPlayer(x-1)for k,v in pairs(Items)do c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n*(0<LevelCurse.CURSE_OF_LABYRINTH&Game():GetLevel():GetCurses()and 2 or 1)do p:AddCollectible(c,I.GetItemConfig():GetCollectible(c).InitCharge)end end end end)
+
+--32. 若未开启鼠标控制功能则显示鼠标位置。
+l Isaac.AddCallback({},2,function(p)if not Options.MouseControl then p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end end)
+--.
 --.

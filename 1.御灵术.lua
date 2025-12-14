@@ -29,6 +29,6 @@ l local Ve,Af,Hf,Ga,Is,Re,Di,Q,R,I,F,B,J,C,Z,O,Y,E,K,G,P,D,L,A,U,M,S,V,W,T,H,N,X
 --3. 游戏开始时根据玩家数生成道具653-“驱魔护符”。
 l Isaac.AddCallback({},15,function(_,c)if not c then for i=1,Game():GetNumPlayers()do Isaac.Spawn(5,100,653,Isaac.GetPlayer(i).Position,Vector.Zero,nil)end end end)
 
---4. 打开鼠标控制功能并显示鼠标位置。
-l Options.MouseControl=true Isaac.AddCallback({},2,function(p)p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end)
+--4. 若未开启鼠标控制功能则显示鼠标位置。
+l Isaac.AddCallback({},2,function(p)if not Options.MouseControl then p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end end)
 --.
