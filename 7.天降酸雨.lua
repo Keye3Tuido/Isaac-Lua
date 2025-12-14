@@ -7,7 +7,7 @@
 
 --0. 删除匿名模组的回调。
 --控制台输入 lua CLM() 可删除所有匿名模组的回调，用于预防重复输入代码和清理代码效果。
-l function CLM()local I,M,t=Isaac,'Mod'for i,j in pairs(ModCallbacks)do t=I.GetCallbacks(j)for x=#t,1,-1 do if not(t[x][M]and t[x][M].Name)then table.remove(t,x)end if #t<1 then I.SetBuiltInCallbackState(j,false)end end end end CLM()
+l function CLM()local I,M,t,m=Isaac,'Mod'for i,j in pairs(ModCallbacks)do t=I.GetCallbacks(j)for x=#t,1,-1 do m=t[x][M]if not(m and m.Name)then I.RemoveCallback(m,j,t[x].Function)end end end end CLM()
 
 --1. 强制锁定所有玩家射程为100（受谷底石、天秤影响）；锁定弹速为0（无法更改）
 l local f=Isaac.AddCallback f(_,4,function(_,p)p.ShotSpeed=0 end)f(_,8,function(_,p)p.TearRange=4e3 end,8)

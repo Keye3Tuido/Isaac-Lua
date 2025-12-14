@@ -6,7 +6,7 @@
 
 --0. 删除匿名模组的回调。
 --控制台输入 lua CLM() 可删除所有匿名模组的回调，用于预防重复输入代码和清理代码效果。
-l function CLM()local I,M,t=Isaac,'Mod'for i,j in pairs(ModCallbacks)do t=I.GetCallbacks(j)for x=#t,1,-1 do if not(t[x][M]and t[x][M].Name)then table.remove(t,x)end if #t<1 then I.SetBuiltInCallbackState(j,false)end end end end CLM()
+l function CLM()local I,M,t,m=Isaac,'Mod'for i,j in pairs(ModCallbacks)do t=I.GetCallbacks(j)for x=#t,1,-1 do m=t[x][M]if not(m and m.Name)then I.RemoveCallback(m,j,t[x].Function)end end end end CLM()
 
 --1. 每开始新游戏时，主角色P1为当前角色、副角色P2为上一轮游戏的P1，可通过连续开始两次新游戏实现自选双子进行游戏。
 --仅支持单人角色的搭配，不支持雅各&以扫、(堕化)遗骸、(堕化、长子权)拉撒路。
