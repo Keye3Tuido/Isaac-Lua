@@ -4,6 +4,9 @@
 
 ---- 代码效果(不用管中文，全选复制即可) ----
 
+--0. 控制台输入 lua CLM() 可删除所有匿名模组的回调，用于预防重复输入代码和清理代码效果。
+l function CLM()local I,M,t=Isaac,'Mod'for i,j in pairs(ModCallbacks)do t=I.GetCallbacks(j)for x=#t,1,-1 do if not(t[x][M]and t[x][M].Name)then table.remove(t,x)end if #t<1 then I.SetBuiltInCallbackState(j,false)end end end end CLM()
+
 --1. 房间中吹起微风，可在控制台输入lua Windy = 数值 来调整风力系数(默认25)。
 --屏幕上方会显示当前房间的风力大小，风力大小和楼层数、房间难度和风力系数有关。
 --风会从进入房间的门吹向其他门，实体会被风吹动。
