@@ -76,9 +76,9 @@ l local I,C=Isaac,{36,74,667}I.AddCallback({},ModCallbacks.MC_POST_PICKUP_INIT,f
 --20. 强制角色为游魂。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_THELOST if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
 
---21. 用于储存数据，无实际效果（兼容发光沙漏，不兼容rewind）
---_Data()返回的数据兼容发光沙漏,_Data(entity)=entity:GetData(),_rew()返回当前是否处于rew状态（不更新数据）,_Pata()返回的数据仅在游戏结束时重置;rewind会触发游戏结束和游戏开始。
-l local I,M,N,H,T,F,D,A=Isaac,ModCallbacks,'MC_POST_NEW_ROOM',function(e)return e.InitSeed end,true,false D,A={B={},D={},T={},R=F,C=F,G=F,M={}},function(S,...)I.AddPriorityCallback(D.M,S,CallbackPriority.IMPORTANT,...)end local function C(s)if type(s)=='table'then local c={}for k,v in pairs(s)do c[k]=C(v)end return c end return s end A(M.MC_USE_ITEM,function()D.T=C(D.B)D.R,D.C=T,F end,CollectibleType.COLLECTIBLE_GLOWING_HOUR_GLASS)A(M[N],function()if not D.G then D.G=T return end if D.R then if D.C then D.R=F end D.C=not D.C end if not D.R then D.B=C(D.T)end end)A(M.MC_POST_GAME_STARTED,function(_,c)D.R,D.C=F,F if c then D.T=C(D.B)else D.T,D.B,D.D={},{},{}end I.RunCallback(M[N])end)A(M.MC_PRE_GAME_EXIT,function(_,d)if d then D.B=C(D.T)else D.D,D.B={},{}end D.R,D.C,D.G,D.T=F,F,F,{}end)A(M.MC_POST_ENTITY_REMOVE,function(_,e)D.T[H(e)]=nil end)function _Data(e)if e then local k=H(e)D.T[k]=D.T[k]or{}return D.T[k]end return D.T end function _rew()return D.R end function _Pata()return D.D end
+--21. 用于储存数据，无实际效果。
+-- _Data()返回的表兼容发光沙漏和rewind（可回溯）,_Data(entity)=entity:GetData()（可回溯）,_rew()返回当前是否处于rew状态（不要更新表中的数据）,_Pata()返回的数据仅在游戏结束时重置（不回溯）。
+l local B,I,M,H,T,F,A,C,D,R,S='MC_POST_NEW_ROOM',Isaac,ModCallbacks,function(e)return e.InitSeed end,true,false A,C,R,S,D=function(S,...)I.AddPriorityCallback(D.M,S,CallbackPriority.IMPORTANT,...)end,function(s)if type(s)=='table'then local c={}for k,v in pairs(s)do c[k]=C(v)end return c end return s end,function()D.R,D.C,D.T=T,F,C(D.B)end,I.GetFrameCount,{B={},D={},T={},R=F,C=F,G=F,M={},W={}}A(M.MC_USE_ITEM,R,CollectibleType.COLLECTIBLE_GLOWING_HOUR_GLASS)A(M[B],function()if D.G then if D.R then if D.C then D.R=F end D.C=not D.C end if not D.R then D.W=C(D.B)D.B=C(D.T)end end end)A(M.MC_POST_GAME_STARTED,function(_,c)D.R,D.C,D.G=F,F,T if c then if D.E==S()then D.B=C(D.W)R()I.RunCallback(M[B])else D.B=C(D.T)end else D.T,D.B,D.D={},{},{}end end)A(M.MC_PRE_GAME_EXIT,function(_,d)D.E=d and S()if not d then D.D,D.B,D.T={},{},{}end D.R,D.C,D.G=F,F,F end)A(M.MC_POST_ENTITY_REMOVE,function(_,e)D.T[H(e)]=nil end)function _Data(e)if e then local k=H(e)D.T[k]=D.T[k]or{}return D.T[k]end return D.T end function _rew()return D.R or not D.G end function _Pata()return D.D end
 
 --22. 固定开启下列彩蛋种子：G_FUEL。
 l local S={SeedEffect.SEED_G_FUEL}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local D,f=Game():GetSeeds()for _,d in pairs(S)do if D:CanAddSeedEffect(d)then D:AddSeedEffect(d)f=true end end if f then Isaac.ExecuteCommand('restart')end end)
@@ -115,5 +115,7 @@ l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_
 
 --32. 若未开启鼠标控制功能则显示鼠标位置。
 l Isaac.AddCallback({},2,function(p)if not Options.MouseControl then p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end end)
---.
+
+--33. 检测到控制台输入rewind后，执行OnRewind函数。
+l local function OnRewind()end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCallback,I.GetFrameCount;A({},M.MC_PRE_GAME_EXIT,function(_,s)E=s and T()end)A({},M.MC_POST_GAME_STARTED,function()if E==T()then OnRewind()end end)
 --.
