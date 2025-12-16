@@ -1,24 +1,7 @@
 -- 实用代码合辑
 
---代码模板(总字数指排除XXX,func,arg外的总字数)
---回调数N=1 | 总字数=35
-l Isaac.AddCallback({},ModCallbacks.XXX,func,arg)
---1<回调数N<=4 | 总字数=41+8N
-l local A,M=Isaac.AddCallback,ModCallbacks;A({},M.XXX,func,arg)
---4<=回调数N<=10 | 总字数=45+7N
-l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.XXX,func,arg)
---10<=回调数N | 总字数=65+5N
-l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,arg)
-
---0. 删除匿名模组的回调，用于预防重复输入代码和清理代码效果。
---游戏胜利后自动清理代码效果。
---控制台输入 lua CLM() 可手动删除所有匿名模组的回调，
---重复输入此代码不额外生效。
-l local A,I,M,t,m=ModCallbacks,Isaac,'Mod'function CLM()for i,j in pairs(A)do t=I.GetCallbacks(j)for x=#t,1,-1 do m=t[x][M]if not(m and m.Name)then I.RemoveCallback(m,j,t[x].Function)end end end end CLM()I.AddCallback({},A.MC_POST_GAME_END,function(_,f)if not f then CLM()end end)
-
---1. 用于储存数据，无实际效果。
--- _Data()返回的表兼容发光沙漏和rewind（可回溯）,_Data(entity)=entity:GetData()（可回溯）,_rew()返回当前是否处于rew状态（不要更新表中的数据）,_Pata()返回的数据仅在游戏结束时重置（不回溯）。
-l local B,I,M,H,T,F,A,C,D,R,S='MC_POST_NEW_ROOM',Isaac,ModCallbacks,function(e)return e.InitSeed end,true,false A,C,R,S,D=function(S,...)I.AddPriorityCallback(D.M,S,CallbackPriority.IMPORTANT,...)end,function(s)if type(s)=='table'then local c={}for k,v in pairs(s)do c[k]=C(v)end return c end return s end,function()D.R,D.C,D.T=T,F,C(D.B)end,I.GetFrameCount,{B={},D={},T={},R=F,C=F,G=F,M={},W={}}A(M.MC_USE_ITEM,R,CollectibleType.COLLECTIBLE_GLOWING_HOUR_GLASS)A(M[B],function()if D.G then if D.R then if D.C then D.R=F end D.C=not D.C end if not D.R then D.W=C(D.B)D.B=C(D.T)end end end)A(M.MC_POST_GAME_STARTED,function(_,c)D.R,D.C,D.G=F,F,T if c then if D.E==S()then D.B=C(D.W)R()I.RunCallback(M[B])else D.B=C(D.T)end else D.T,D.B,D.D={},{},{}end end)A(M.MC_PRE_GAME_EXIT,function(_,d)D.E=d and S()if not d then D.D,D.B,D.T={},{},{}end D.R,D.C,D.G=F,F,F end)A(M.MC_POST_ENTITY_REMOVE,function(_,e)D.T[H(e)]=nil end)function _Data(e)if e then local k=H(e)D.T[k]=D.T[k]or{}return D.T[k]end return D.T end function _rew()return D.R or not D.G end function _Pata()return D.D end
+--1. 检测到控制台输入rewind后，执行OnRewind函数。
+l local function OnRewind()end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCallback,I.GetFrameCount;A({},M.MC_PRE_GAME_EXIT,function(_,s)E=s and T()end)A({},M.MC_POST_GAME_STARTED,function()if E==T()then OnRewind()end end)
 
 --2. 长按道具键/副手键1s以上=连续多次按键
 l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACTION_ITEM','ACTION_PILLCARD'},{M={}}A(G.M,M.MC_POST_PLAYER_RENDER,function(_,p)local k,n,a=H(p)G[k]=G[k]or{}n=G[k]for _,b in pairs(K)do a=B[b]if Input.IsActionPressed(a,p.ControllerIndex)then n[a]=n[a]or Isaac.GetTime()else n[a]=nil end end end)A(G.M,M.MC_INPUT_ACTION,function(_,e,_,a)e=e and e:ToPlayer()if e then local k,t,s=H(e),Isaac.GetTime()s=G[k]and G[k][a]if s and s<t then return t>1e3+s end end end,InputHook.IS_ACTION_TRIGGERED)A(G.M,M.MC_POST_ENTITY_REMOVE,function(_,e)G[H(e)]=nil end,EntityType.ENTITY_PLAYER)
@@ -116,6 +99,4 @@ l local Items={247,{612,2}};local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_
 --32. 若未开启鼠标控制功能则显示鼠标位置。
 l Isaac.AddCallback({},2,function(p)if not Options.MouseControl then p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end end)
 
---33. 检测到控制台输入rewind后，执行OnRewind函数。
-l local function OnRewind()end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCallback,I.GetFrameCount;A({},M.MC_PRE_GAME_EXIT,function(_,s)E=s and T()end)A({},M.MC_POST_GAME_STARTED,function()if E==T()then OnRewind()end end)
 --.
