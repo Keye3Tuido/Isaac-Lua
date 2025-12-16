@@ -10,7 +10,7 @@ l if not(REPENTOGON or _CBH)then local D,E,F,I,J,O,P,Y,W,A,B,C,G,H,K,L,Q,R=requi
 l local A,I,M=ModCallbacks,Isaac,'Mod'function CLM(t,m)for i,j in pairs(A)do t=I.GetCallbacks(j)for x=#t,1,-1 do m=t[x][M]if not(m and m.Name)then I.RemoveCallback(m,j,t[x].Function)end end end end -- 清理匿名模组回调,预防代码污染
 --0. 避免代码污染和模组不兼容问题，游戏胜利后自动清除代码效果。
 --依赖代码* | 提供接口: CLM()删除匿名回调; Wrap()包装模组回调; Unwrap()取消包装。
-l Wrap()CLM()Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_END,function(_,f)if not f then Unwrap()CLM()end end)
+l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_END,function(_,f)if not f then Unwrap()CLM()end end)
 
 --1. 游戏会缓慢加速
 l local a,s,I,u,i,f,Z,b,t,T,A,N=0,1,Isaac,0,0,0,{}T,A=I.GetFrameCount,I.AddCallback t=T()A(Z,1,function()u=T()if(u-t>59)then t=u s=s+.001 end if(b)then return end b=1 i=s//1 f=s-i a=a+f if(a>=1)then i=i+1 a=a-1 end for _=1,i-1 do Game():Update()end b=N end)A(Z,2,function()I.RenderText(string.format('%.3f',s),I.GetScreenWidth()/2,10,0,1,1,1)end)A(Z,15,function(_,c)if(not c)then s=1 end end)
