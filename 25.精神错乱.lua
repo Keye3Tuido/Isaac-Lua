@@ -22,7 +22,7 @@ l function D4(EntityPlayer,BlackList)local B,C,N,T,p,m,t,G,H='Collectible',Isaac
 l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{},Isaac.GetItemConfig(),'GetTrinket',-1 for i=1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then table.insert(A,math.random(#A+1),i)end end end return A end
 
 --4. 函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。该函数依赖函数原型 RandomTrinkets([BlackList:table]) -> {}。
-l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{64,75,180}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 Isaac.DebugString(T[m])p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
+l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{64,75,180}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
 
 --5. 房间未清理时，玩家每帧触发可兼容错误道具的 D4 效果。
 --不会随机到：道具59(被动形式彼列之书)、道具122(巴比伦大淫妇)、道具584(美德之书)。
