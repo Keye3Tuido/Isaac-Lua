@@ -13,12 +13,19 @@ l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()Isaac.AddCallback({},ModCallb
 
 --1. 函数 RandomItems([BlackList]) 返回一个表，包含两个子表：Active和Passive，分别存储随机排序的主动道具和被动道具的道具ID列表。BlackList为可选参数，是一个包含不希望被选择的道具ID的黑名单表。
 --道具列表中包含本局已经存在的错误道具。
-l function RandomItems(BlackList)local A,B,C,E,G,T,P,t,c,f,Q={},BlackList or{},Isaac.GetItemConfig(),'Type','GetCollectible',ItemType,{},-1 while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then Q=T.ITEM_ACTIVE==c[E]and A or T.ITEM_NULL~=c[E]and P or{}table.insert(Q,math.random(#Q+1),i)end end end return {Active=A,Passive=P}end
+l function RandomItems(BlackList)local A,B,C,E,G,T,P,t,c,f,Q={},BlackList or{59},Isaac.GetItemConfig(),'Type','GetCollectible',ItemType,{},-1 while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then Q=T.ITEM_ACTIVE==c[E]and A or T.ITEM_NULL~=c[E]and P or{}table.insert(Q,math.random(#Q+1),i)end end end return{Active=A,Passive=P}end
 
 --2. 函数 D4(EntityPlayer[,BlackList]) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。该函数依赖函数原型 RandomItems([BlackList:table]) -> {Active={},Passive={}}。
 l function D4(EntityPlayer,BlackList)local B,C,N,T,p,m,t,G,H='Collectible',Isaac.GetItemConfig(),0,RandomItems(BlackList or{59,584}),EntityPlayer,0,-1 G,H='Get'..B,'Add'..B while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do while p['Has'..B](p,i,true)do N=N+1 p['Remove'..B](p,i,true)end end if N>0 then t=T.Active[1]p[H](p,t,C[G](C,t).InitCharge,false)t=T.Passive for i=2,N do m=m%#t+1 p[H](p,t[m],0,false)end end end
 
---3. 房间未清理时，玩家每帧触发可兼容错误道具的 D4 效果。
---不会随机到：道具59(被动形式彼列之书)、122(巴比伦大淫妇)、584(美德之书)。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{59,122,584})end end)
+--3. 函数 RandomTrinkets([BlackList]) 返回一个表,存储随机排序的饰品ID列表。BlackList为可选参数，是一个包含不希望被选择的饰品ID的黑名单表。
+l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{},Isaac.GetItemConfig(),'GetTrinket',-1 for i=1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then table.insert(A,math.random(#A+1),i)end end end return A end
+
+--4. 函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。该函数依赖函数原型 RandomTrinkets([BlackList:table]) -> {}。
+l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{64,75,180}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 Isaac.DebugString(T[m])p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
+
+--5. 房间未清理时，玩家每帧触发可兼容错误道具的 D4 效果。
+--不会随机到：道具59(被动形式彼列之书)、道具122(巴比伦大淫妇)、道具584(美德之书)。
+--不会随机到：饰品64(彩虹蠕虫)、饰品75(错误)、饰品154(骰子袋)、饰品180(复得游魂)。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{59,122,584})D4_1(p,{64,75,154,180})end end)
 --.
