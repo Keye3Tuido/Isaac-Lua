@@ -15,9 +15,10 @@ l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()Isaac.AddCallback({},ModCallb
 --道具列表中包含本局已经存在的错误道具。
 l function RandomItems(BlackList)local A,B,C,E,G,T,P,t,c,f,Q={},BlackList or{},Isaac.GetItemConfig(),'Type','GetCollectible',ItemType,{},-1 while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then Q=T.ITEM_ACTIVE==c[E]and A or T.ITEM_NULL~=c[E]and P or{}table.insert(Q,math.random(#Q+1),i)end end end return {Active=A,Passive=P}end
 
---2. 函数 D4(EntityPlayer) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。该函数依赖函数原型 RandomItems([BlackList:table]) -> {Active={},Passive={}}。
-l function D4(EntityPlayer)local B,C,N,T,p,m,t,G,H='Collectible',Isaac.GetItemConfig(),0,RandomItems({59,584}),EntityPlayer,0,-1 G,H='Get'..B,'Add'..B while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do while p['Has'..B](p,i,true)do N=N+1 p['Remove'..B](p,i,true)end end if N>0 then t=T.Active[1]p[H](p,t,C[G](C,t).InitCharge,false)t=T.Passive for i=2,N do m=m%#t+1 p[H](p,t[m],0,false)end end end
+--2. 函数 D4(EntityPlayer[,BlackList]) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。该函数依赖函数原型 RandomItems([BlackList:table]) -> {Active={},Passive={}}。
+l function D4(EntityPlayer,BlackList)local B,C,N,T,p,m,t,G,H='Collectible',Isaac.GetItemConfig(),0,RandomItems(BlackList or{59,584}),EntityPlayer,0,-1 G,H='Get'..B,'Add'..B while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do while p['Has'..B](p,i,true)do N=N+1 p['Remove'..B](p,i,true)end end if N>0 then t=T.Active[1]p[H](p,t,C[G](C,t).InitCharge,false)t=T.Passive for i=2,N do m=m%#t+1 p[H](p,t[m],0,false)end end end
 
 --3. 房间未清理时，玩家每帧触发可兼容错误道具的 D4 效果。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p)end end)
+--不会随机到：道具59(被动形式彼列之书)、122(巴比伦大淫妇)、584(美德之书)。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{59,122,584})end end)
 --.
