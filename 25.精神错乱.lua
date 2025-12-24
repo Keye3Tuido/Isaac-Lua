@@ -25,7 +25,10 @@ l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{},Isaac.Ge
 l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{64,75,180}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
 
 --5. 房间未清理时，玩家每帧触发可兼容错误道具的 D4 效果。
---不会随机到：道具59(被动形式彼列之书)、道具122(巴比伦大淫妇)、道具584(美德之书)。
+--不会随机到：道具59(被动形式彼列之书)、道具122(巴比伦大淫妇)、道具584(美德之书)、道具703(小以扫)。
 --不会随机到：饰品64(彩虹蠕虫)、饰品75(错误)、饰品154(骰子袋)、饰品180(复得游魂)。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{59,122,584})D4_1(p,{64,75,154,180})end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{59,122,584,703})D4_1(p,{64,75,154,180})end end)
+
+--6. 从游戏中移除道具703(小以扫)。
+l local I,C,Y,T,A=Isaac,{703},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 --.
