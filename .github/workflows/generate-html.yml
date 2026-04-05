@@ -1,0 +1,32 @@
+name: Generate HTML
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.lua'
+      - 'GenerateHtml.py'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run GenerateHtml.py
+        run: python GenerateHtml.py
+
+      - name: Commit and push generated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html pages/
+          git diff --cached --quiet || git commit -m "chore: auto-generate HTML pages"
+          git push
