@@ -64,6 +64,9 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 .back-btn:hover { background: #7f8c8d; }
 #toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
 #searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
+.contact { text-align: center; margin-top: 18px; font-size: 14px; color: #7f8c8d; }
+.contact a { color: #3498db; text-decoration: none; }
+.contact a:hover { text-decoration: underline; }
 .tooltip {
     position: absolute;
     background: #333;
@@ -91,8 +94,8 @@ html_index = f"""<!DOCTYPE html>
         <input id="searchInput" placeholder="搜索Lua文件..." oninput="handleSearch()">
         <div id="fileList" class="file-list">{links}</div>
     </div>
+    <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
     <script>
-        function handleSearch() {{
             const t = searchInput.value.toLowerCase();
             for (const item of fileList.children)
                 item.style.display = item.getAttribute('data-search').toLowerCase().includes(t) ? 'grid' : 'none';
@@ -275,6 +278,7 @@ def generate_file_page(fname, raw, cleaned):
 
         render();
     </script>
+    <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
 </body>
 </html>
 """
