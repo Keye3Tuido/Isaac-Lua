@@ -18,7 +18,7 @@ files = {
     f: {"raw": r, "cleaned": clean_code(r)}
     for f in sorted(
         (x for x in os.listdir('.') if x.endswith('.lua') and not x.startswith('$')),
-        key=lambda x: int(x.split('.')[0]) if x.split('.')[0].isdigit() else float('inf')
+        key=lambda x: (0, int(x.split('.')[0])) if x.split('.')[0].lstrip('-').isdigit() else (1, x)
     )
     for r in [open(f, encoding="utf-8").read()]
 }
