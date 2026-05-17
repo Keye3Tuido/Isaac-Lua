@@ -11,16 +11,6 @@ l local A,I,M=ModCallbacks,Isaac,'Mod'function CLM(t,m)for i,j in pairs(A)do t=I
 --依赖代码* | 提供接口: CLM()删除匿名回调; Wrap()包装模组回调; Unwrap()取消包装。
 l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_END,function(_,f)if not f then Unwrap()CLM()end end)
 
---代码模板(总字数指排除XXX,func,arg外的总字数)
---回调数N=1 | 总字数=35
-l Isaac.AddCallback({},ModCallbacks.XXX,func,arg)
---1<回调数N<=4 | 总字数=41+8N
-l local A,M=Isaac.AddCallback,ModCallbacks;A({},M.XXX,func,arg)
---4<=回调数N<=10 | 总字数=45+7N
-l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.XXX,func,arg)
---10<=回调数N | 总字数=65+5N
-l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,arg)
-
 --1. 每WaitFrames(默认90)帧随机BrokenKeys(默认3,最多12)个按键失灵。
 -- 可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
 -- 可在控制台输入lua WaitFrames = 数值 来调整失灵按键刷新间隔的帧数。
