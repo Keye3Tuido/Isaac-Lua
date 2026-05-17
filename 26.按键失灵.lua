@@ -30,5 +30,5 @@ l BrokenKeys=2;WaitFrames=60;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCoun
 --2. 实时显示当前失灵的按键。
 -- 可在控制台输入lua DisplayBroken = false 来关闭显示，true来开启显示。
 --依赖代码1
-l DisplayBroken=true;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if DisplayBroken then for i,s in pairs(GetBrokenKeys())do I.RenderText(s,(I.GetScreenWidth()-I.GetTextWidth(s))/2,10*(i+1),1,1,1,1)end end end)
+l DisplayBroken=true;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if DisplayBroken then for i,s in pairs(GetBrokenKeys())do I.RenderScaledText(s,(I.GetScreenWidth()-I.GetTextWidth(s)/2)/2,5*(i+1),.5,.5,1,0,0,1)end end end)
 --.
