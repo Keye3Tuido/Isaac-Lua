@@ -112,4 +112,9 @@ l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{},Isaac.Ge
 --36. 函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。该函数依赖函数原型 RandomTrinkets([BlackList:table]) -> {}。
 l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{64,75,180}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
 
+--37. 每WaitFrames(默认90)帧随机BrokenKeys(默认3,最多12)个按键失灵。
+-- 可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
+-- 可在控制台输入lua WaitFrames = 数值 来调整失灵按键刷新间隔的帧数。
+-- GetBrokenKeys()可获取顺序表格，包含当前失灵的按键名称字符串。
+l BrokenKeys=3;WaitFrames=90;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCount',ModCallbacks,{'LEFT','RIGHT','UP','DOWN','SHOOTLEFT','SHOOTRIGHT','SHOOTUP','SHOOTDOWN','BOMB','ITEM','PILLCARD','DROP'},{}A(T,M.MC_POST_UPDATE,function()local g,t,p=Game()t=g[D](g)if t<C or t>=C+WaitFrames then for i=#N,1,-1 do p=Random()%i+1 N[i],N[p]=N[p],N[i]end C=t end end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)for i=1,BrokenKeys do if a==ButtonAction['ACTION_'..N[i]]then return h==InputHook.GET_ACTION_VALUE and 0 end end end)function GetBrokenKeys()return table.move(N,1,BrokenKeys,1,{})end
 --.

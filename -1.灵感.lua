@@ -16,16 +16,10 @@ l local A,C,H,I,B=ButtonAction,Isaac,InputHook,Input,{'LEFT','RIGHT','UP','DOWN'
 --5. 迷失游魂死亡时，杀死角色。
 l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)if f.State==4 then f.Player:Die()end end,FamiliarVariant.LOST_SOUL)
 
---6. 每WaitFrames(默认90)帧随机BrokenKeys(默认3,最多12)个按键失灵。
--- 可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
--- 可在控制台输入lua WaitFrames = 数值 来调整失灵按键刷新间隔的帧数。
--- GetBrokenKeys()可获取顺序表格，包含当前失灵的按键名称字符串。
-l BrokenKeys=3;WaitFrames=90;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCount',ModCallbacks,{'LEFT','RIGHT','UP','DOWN','SHOOTLEFT','SHOOTRIGHT','SHOOTUP','SHOOTDOWN','BOMB','ITEM','PILLCARD','DROP'},{}A(T,M.MC_POST_UPDATE,function()local g,t,p=Game()t=g[D](g)if t<C or t>=C+WaitFrames then for i=#N,1,-1 do p=Random()%i+1 N[i],N[p]=N[p],N[i]end C=t end end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)for i=1,BrokenKeys do if a==ButtonAction['ACTION_'..N[i]]then return h==InputHook.GET_ACTION_VALUE and 0 end end end)function GetBrokenKeys()return table.move(N,1,BrokenKeys,1,{})end
-
---7. 冰雹雨：每隔Hail(默认0.1)秒，随机天降HailNum(默认3)个冰雹。
+--6. 冰雹雨：每隔Hail(默认0.1)秒，随机天降HailNum(默认3)个冰雹。
 l Hail,HailNum=0.1,3;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()if Game():GetFrameCount()%(30*Hail)<1 then for i=1,HailNum do local p=I.Spawn(EntityType.ENTITY_TEAR,TearVariant.ICE,0,I.GetRandomPosition(),Vector.Zero,nil):ToTear()p.FallingAcceleration,p.Height,p.Scale=10,-1e3,.5+math.random()p:AddTearFlags(TearFlags.TEAR_ICE)end end end)
 
---8. 抵近攻击：敌人距离玩家超过Dist(默认3)格远时，受到的伤害按距离衰减。
+--7. 抵近攻击：敌人距离玩家超过Dist(默认3)格远时，受到的伤害按距离衰减。
 l local Dist=3;local H,G,P,T,O=GetPtrHash,40,'Position',{}O=P..'Offset'Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,...)local h,p,q=H(e),Game():GetRandomPlayer(Vector.Zero,0)if not T[h]and e:IsEnemy()then q=(p[O]+p[P]-e[O]-e[P]):Length()-G*Dist if q>0 then T[h]=true e:TakeDamage(G*a/(G+q),...)T[h]=nil return false end end end)
 --[Repentogon]
 l local Dist=3;local G,P,O=40,'Position'O=P..'Offset'Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,d)if e:IsEnemy()then local p,q=Game():GetRandomPlayer(Vector.Zero,0)q=(p[O]+p[P]-e[O]-e[P]):Length()-G*Dist if q>0 then return{Damage=G*d/(G+q)}end end end)
