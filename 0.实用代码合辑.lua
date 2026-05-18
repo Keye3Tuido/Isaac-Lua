@@ -81,7 +81,7 @@ l local function Action(p,a,f,s,c)end;local D,E=DamageFlag,EntityType Isaac.AddC
 l local H,I,J,K,M,N,O,P,U,V,X,T,A,B,C,D,E,F,G,L,Q='GetFrameCount',Isaac,1,Game,ModCallbacks,math.max,1,1,1,1,true,{}A,D,L,B,C=I.AddCallback,I.GetTime,K().IsPaused,I[H],K()[H]Q,E,F,G=X,B(),C(K()),D()A(T,M.MC_POST_RENDER,function()local c,r,g,d=D(),B(),C(K())d=c-G G,E,O=c,r,50/d/3*(r-E)if r&1<1 then F,P=g,50/d/3*(g-F)end if J<1 and not L(K())then if J<O then U=U*1.2 elseif J>O then U=N(U/2,.5)end for i=1,U do I.GetRoomEntities()end end end)A(T,M.MC_POST_UPDATE,function()if Q and J>1 and not L(K())then if J>P then V=V*1.2 elseif J<P then V=N(V/2,.5)end Q=false for i=1,V do K():Update()end Q=X end end)function SetTimeScale(v)J=N(tonumber(v)or 1,0)end function GetTimeScale()return{O,P}end
 
 --27. 玩家的眼泪未命中实体时，执行Action函数(参数：眼泪实体)。
-l local function Action(t)end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityType,GetPtrHash,ModCallbacks,{}A(T,M.MC_POST_TEAR_INIT,function(_,e)B[H(e)]=e.SpawnerType==E.ENTITY_PLAYER end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,e)B[H(e)]=N end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)local h=H(e)e=e:ToTear()if B[h]then Action(e)end B[h]=N end,E.ENTITY_TEAR)
+l local function Action(t)end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityType,GetPtrHash,ModCallbacks,{}A(T,M.MC_POST_FIRE_TEAR,function(_,e)B[H(e)]=e.SpawnerType==E.ENTITY_PLAYER end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,e)B[H(e)]=N end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)local h=H(e)e=e:ToTear()if B[h]then Action(e)end B[h]=N end,E.ENTITY_TEAR)
 
 --28. 所有预生成道具替换为道具612-迷失游魂
 l local ItemId=612;Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(_,t,v)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then return{t,v,ItemId}end end)
@@ -121,6 +121,6 @@ l BrokenKeys=3;WaitFrames=90;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCoun
 --38. 将玩家的输入延迟15帧（约0.5秒），可在控制台输入l Lag = 数值 来调整延迟帧数。
 l Lag = 15;local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
 
---39. 将眼泪替换为混沌卡(CHAOS_CARD)/还可替换为橡皮擦(ERAZER)。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_INIT,function(_,t)t:ChangeVariant(TearVariant.CHAOS_CARD)end)
+--39. 将眼泪替换为混沌卡(CHAOS_CARD)/还可替换为橡皮擦(ERASER)。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)t:ChangeVariant(TearVariant.CHAOS_CARD)end)
 --.
