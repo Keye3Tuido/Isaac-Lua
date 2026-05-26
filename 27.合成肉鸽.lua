@@ -29,4 +29,7 @@ l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _
 
 --5. 击杀怪物掉落金币
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(t,p)t='TearFlags'p[t]=_G[t].TEAR_COIN_DROP_DEATH|p[t]end,CacheFlag.CACHE_TEARFLAG)
+
+--6. 角色吸引硬币
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_UPDATE,function(_,p)local e,l=Game():GetNearestPlayer(p.Position+p.PositionOffset)l=e.Position+e.PositionOffset-p.Position-p.PositionOffset p.Velocity=3*(l:Length()>10 and math.log(l:Length())or 0)*l:Normalized()p.GridCollisionClass=EntityGridCollisionClass.GRIDCOLL_NONE end,PickupVariant.PICKUP_COIN)
 --.
