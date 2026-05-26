@@ -23,4 +23,10 @@ l local F,I,J,K,L,G,H,D,M,N,O,S,T,U,V,W,X,Y,Z,E,Q,R,A,B,C,P=1,Isaac,Game,true,fa
 
 --3. 从游戏中移除道具422(发光沙漏)、482(遥控器)
 l local I,C,Y,T,A=Isaac,{422,482},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+
+--4. 初始给予玩家道具376(补货)、402(混沌)、416(深口袋)、602(会员卡)。
+l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs({376,402,416,602})do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(t)do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
+
+--5. 击杀怪物掉落金币
+l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(t,p)t='TearFlags'p[t]=_G[t].TEAR_COIN_DROP_DEATH|p[t]end,CacheFlag.CACHE_TEARFLAG)
 --.
