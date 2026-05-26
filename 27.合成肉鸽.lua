@@ -35,4 +35,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_UPDATE,function(_,p)local e,l
 
 --7. 黏币变为镍币
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_INIT,function(_,p)if p.SubType==CoinSubType.COIN_STICKYNICKEL then p:Morph(p.Type,p.Variant,CoinSubType.COIN_NICKEL,true)end end,PickupVariant.PICKUP_COIN)
+
+--8. 抽取道具时不再抽取淫魔和作孽双子
+l Isaac.AddCallback({},ModCallbacks.MC_PRE_GET_COLLECTIBLE,function()for _,c in pairs{360,698}do Game():GetItemPool():AddRoomBlacklist(c)end end)
 --.
