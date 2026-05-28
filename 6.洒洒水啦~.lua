@@ -23,7 +23,4 @@ l local I,C,Y,T,A=Isaac,{329,579},true,{}A=I.AddCallback A(T,23,function(_,c)for
 
 --4. 所有玩家攻击方式变更为自动攻击
 l local F,T,S,D=Isaac.AddCallback,{},'InitSeed'D=function(e)local k=e[S]T[k]=T[k]or{}return T[k]end F(T,8,function(d,p)d=D(p)if d.s then d.s:Remove()d.s=nil end end,1<<8)F(T,31,function(d,p)d=D(p)if d.s and d.s:Exists()then d.s.TargetPosition=p.Position d.s.Visible=false else if d.s then d.s:Remove()end d.s=Isaac.Spawn(3,120,1,p.Position,Vector.Zero,p)d.s:AddEntityFlags(1<<37)end end)F(T,67,function(_,e)T[e[S]]=nil end)
-
---5. 炸弹更难推动
-l Isaac.AddCallback({},ModCallbacks.MC_POST_BOMB_UPDATE,function(_,b)b:MultiplyFriction(0)end)
 --.
