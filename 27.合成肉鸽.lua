@@ -27,7 +27,7 @@ l local I,C,Y,T,A=Isaac,{482},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v
 l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs({376,402,416,602})do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(t)do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
 
 --5. 击杀怪物掉落金币
-l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(t,p)t='TearFlags'p[t]=_G[t].TEAR_COIN_DROP_DEATH|p[t]end,CacheFlag.CACHE_TEARFLAG)
+l local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_ENTITY_KILL,function(n,e)e=e:ToNPC()if e then n=e:IsActiveEnemy(true)and(e:IsChampion()and 2 or e:IsBoss()and 3 or 1)or 0 for i=1,n do I.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COIN,0,I.GetFreeNearPosition(e.Position,0),Vector.Zero,e)end end end)
 
 --6. 角色吸引硬币
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_UPDATE,function(_,p)local e,l=Game():GetNearestPlayer(p.Position+p.PositionOffset)l=e.Position+e.PositionOffset-p.Position-p.PositionOffset p.Velocity=3*(l:Length()>10 and math.log(l:Length())or 0)*l:Normalized()p.GridCollisionClass=EntityGridCollisionClass.GRIDCOLL_NONE end,PickupVariant.PICKUP_COIN)
