@@ -38,7 +38,4 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_INIT,function(_,p)if p.SubTyp
 
 --8. 抽取道具时不再抽取淫魔和作孽双子
 l Isaac.AddCallback({},ModCallbacks.MC_PRE_GET_COLLECTIBLE,function()for _,c in pairs{360,698}do Game():GetItemPool():AddRoomBlacklist(c)end end)
-
---9. 炸弹更难推动
-l Isaac.AddCallback({},ModCallbacks.MC_POST_BOMB_UPDATE,function(_,b)if not b.IsFetus then b:MultiplyFriction(0)end end)
 --.
