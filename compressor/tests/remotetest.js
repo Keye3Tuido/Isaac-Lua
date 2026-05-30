@@ -4,9 +4,9 @@
 //   node remotetest.js            # 有缓存用缓存，无缓存联网拉
 //   node remotetest.js --refresh  # 强制重新联网拉取并刷新缓存
 const fs=require('fs'), path=require('path');
-const luaparse=require('./node_modules/luaparse');
+const luaparse=require('../node_modules/luaparse');
 const fengari=require('fengari');
-require('./core.js');
+require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 
 const REFRESH=process.argv.includes('--refresh');

@@ -1,11 +1,11 @@
 // 把仓库里真实的 l 段抽出来逐段压缩 + 按文件合并全段压缩，验证不崩、语义等价
 const fs=require('fs'), path=require('path');
-const luaparse=require('./node_modules/luaparse');
+const luaparse=require('../node_modules/luaparse');
 const fengari=require('fengari');
-require('./core.js');
+require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 
-const dir=path.join(__dirname,'..');
+const dir=path.join(__dirname,'../..');
 const files=fs.readdirSync(dir).filter(f=>f.endsWith('.lua'));
 let segTotal=0, segOk=0, segReject=0, errs=[];
 let bytesIn=0, bytesOut=0;

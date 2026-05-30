@@ -1,6 +1,6 @@
-const luaparse=require('./node_modules/luaparse');
+const luaparse=require('../node_modules/luaparse');
 const fengari=require('fengari');
-require('./core.js');
+require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 
 // 一段“正常编写格式”的代码（带缩进、长变量名、注释），看压缩效果
