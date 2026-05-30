@@ -373,6 +373,12 @@
     // 收集 obj.Field 形式的成员访问（仅 indexer '.'），按字段名分组。
     // 记录每处的 baseEnd（base 结束位置=“.”所在）与 idEnd（字段名结束位置），
     // 改写时把 [baseEnd, idEnd) 这段（即 ".Field"）替换为 "[alias]"。
+    //
+    // 重要例外：FunctionDeclaration 的 identifier 链（如 `function a.b.c:d()` 里的 a.b.c:d 整条）
+    // 在 Lua 语法上必须是 `name(.name)*(:name)?` 的形式，不能写成 a[k]。这些位置上的 `.field`
+    // 一旦被改写为 `[alias]`/`[alias..'rest']`，整段会变成语法错误。所以必须把
+    // FunctionDeclaration.identifier 的整棵子树排除在外（它的 base 里若有读访问也属于这棵子树，
+    // 不参与折叠是保守但安全的选择；这种位置的同字段的"读访问"会出现在函数体或别处，仍可独立折叠）。
     function collectMemberAccess(ast, groups){
       function add(field, baseEnd, idEnd){
         if(!groups.has(field)) groups.set(field, []);
@@ -381,6 +387,11 @@
       (function walk(n){
         if(!n||typeof n!=='object') return;
         if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='FunctionDeclaration'){
+          // 跳过 identifier 链整棵（不可折叠）；只递归函数体
+          walk(n.body);
+          return;
+        }
         if(n.type==='MemberExpression' && n.indexer==='.' && n.identifier && n.base && n.base.range && n.identifier.range){
           add(n.identifier.name, n.base.range[1], n.identifier.range[1]);
         }
@@ -488,12 +499,17 @@
           assigned[ni]=(pick!==null && pick.length < nd.b.name.length) ? pick : nd.b.name;
         }else if(nd.kind==='G'){
           // 全局：用最终名长 L 做精确盈亏复核，不赚则不折叠
+          // 嵌进 batched local 的真实开销：',U' (1+L) 在名列表 + ',G' (1+m) 在值列表 = m+L+2
+          // 收益：每处省 m-L 字。
+          // 闸门用 (m-L)*k > m+L+1（不严格 +1：临界情况下 break-even 别名占位 0 字符开销，
+          // 但保留它能给后续多因子分解 buildDeclParts 提供更多字符串值，可能间接得益。
+          // 实测放开此约束在 guidepost 等用例上更优；严格 +2 反而 -13 字）。
           var m=nd.g.m, kk=nd.g.k, L=pick?pick.length:99;
           if(pick!==null && (m-L)*kk > (m+L+1)) assigned[ni]=pick;
           else assigned[ni]=null;
         }else{
-          // 成员字段：.Field(m+1)/处 → [x](L+2)/处；声明 x='Field' = L+m+3（引号2+等号1）
-          // 盈亏：(m+1)*k > (L+2)*k + (L+m+3)
+          // 成员字段：.Field(1+m)/处 → [x](2+L)/处；嵌进 batched local 的声明 ',x'(1+L) + ',\'Field\''(1+m+2) = L+m+4
+          // 同样保留 +3 而非 +4 的容忍（边缘情况留作 buildDeclParts 的字符串库）。
           var fm=nd.mc.m, fk=nd.mc.k, fL=pick?pick.length:99;
           if(pick!==null && (fm+1)*fk > (fL+2)*fk + (fL+fm+3)) assigned[ni]=pick;
           else assigned[ni]=null;
@@ -668,11 +684,20 @@
       var byName=(aliasMap&&aliasMap.byName)||null;
       var memberByLocal=(aliasMap&&aliasMap.memberByLocal)||null;
       var factorLocals=(aliasMap&&aliasMap.factorLocals)||null;
+      // 前缀因子：local U='ACTION_' 之类——其本身用于声明侧 'X'..U 拼接，但更重要的是
+      // foldFieldPrefix 阶段会把 obj.PREFIX_X 改写为 obj[U..'rest']。这里登记 U→prefix 字符串，
+      // 让 IndexExpression 的归一识别 obj[U..'lit'] 与 obj.<prefix+lit> 等价。
+      var prefixFoldByLocal=(aliasMap&&aliasMap.prefixFoldByLocal)||null;
+      // 字符串字面量内联：local u='X' 后，对 u 的所有读（作为表达式）等价于字面量 'X'。
+      // 这条登记让 canonical 把读 u 归一为字符串 'X'，从而 'X' 直接出现的位置和 u 等价。
+      var stringAliasByLocal=(aliasMap&&aliasMap.stringAliasByLocal)||null;
 
-      var aliasLocalNames=new Set(), globalOfAlias={}, fieldOfAlias={};
+      var aliasLocalNames=new Set(), globalOfAlias={}, fieldOfAlias={}, prefixOfAlias={}, stringOfAlias={};
       if(byName){ for(var gk in byName){ if(byName.hasOwnProperty(gk)){ aliasLocalNames.add(byName[gk]); globalOfAlias[byName[gk]]=gk; } } }
       if(memberByLocal){ for(var mk in memberByLocal){ if(memberByLocal.hasOwnProperty(mk)){ aliasLocalNames.add(mk); fieldOfAlias[mk]=memberByLocal[mk]; } } }
       if(factorLocals){ for(var fi=0;fi<factorLocals.length;fi++) aliasLocalNames.add(factorLocals[fi]); }
+      if(prefixFoldByLocal){ for(var pk in prefixFoldByLocal){ if(prefixFoldByLocal.hasOwnProperty(pk)){ aliasLocalNames.add(pk); prefixOfAlias[pk]=prefixFoldByLocal[pk]; } } }
+      if(stringAliasByLocal){ for(var sk in stringAliasByLocal){ if(stringAliasByLocal.hasOwnProperty(sk)){ aliasLocalNames.add(sk); stringOfAlias[sk]=stringAliasByLocal[sk]; } } }
 
       var varOf=info.varOf;
 
@@ -696,7 +721,10 @@
         if(node.type!=='StringLiteral') return null;
         var raw=node.raw;
         if(typeof raw!=='string'||raw.length<2) return raw;
-        var q=raw[0]; return (q==='"'||q==="'")?raw.slice(1,-1):null;
+        var q=raw[0];
+        if(q==='"'||q==="'") return raw.slice(1,-1);
+        // 长字符串 [[...]] 在 Lua 里不处理转义，与 '...' / "..." 内容含义不同，不归一化。
+        return null;
       }
       function normAccess(base, fieldName, keyExprNode){
         if(fieldName!=null) return {type:'Access', base:normExpr(base), key:{field:fieldName}};
@@ -713,9 +741,19 @@
           if(b){
             if(aliasLocalNames.has(b.name) && globalOfAlias.hasOwnProperty(b.name))
               return {type:'Identifier', kind:'global', name:globalOfAlias[b.name]};
+            // 字符串字面量别名：读 u 等价于读字符串字面量 'X'。归一为 StringLiteral 节点
+            // （内容用 X，与 normExpr 在 StringLiteral 自然路径上的产出一致）。
+            if(aliasLocalNames.has(b.name) && stringOfAlias.hasOwnProperty(b.name))
+              return {type:'StringLiteral', content:stringOfAlias[b.name]};
             return {type:'Identifier', kind:'local', n: idFor(b, curVersion(b))};
           }
           return {type:'Identifier', kind:'global', name:node.name};
+        }
+        // StringLiteral：归一为内容（去掉引号），消除 'X' 与 "X" 的差异。
+        // 长字符串 [[X]] 也由 stringContent 统一返回内容。
+        if(node.type==='StringLiteral'){
+          var sc=stringContent(node);
+          return {type:'StringLiteral', content: sc!==null ? sc : node.raw};
         }
         if(node.type==='MemberExpression' && node.indexer==='.')
           return normAccess(node.base, node.identifier.name, null);
@@ -735,6 +773,33 @@
           if(idx && idx.type==='Identifier' && varOf.has(idx)){
             var ib=varOf.get(idx);
             if(ib && fieldOfAlias.hasOwnProperty(ib.name)) return normAccess(node.base, fieldOfAlias[ib.name], null);
+            // 字符串字面量别名：obj[u] 与 obj['X'] 等价 → obj.X
+            if(ib && stringOfAlias.hasOwnProperty(ib.name)) return normAccess(node.base, stringOfAlias[ib.name], null);
+          }
+          // 前缀因子拼接：obj[U..'rest']  其中 U 是已登记的前缀因子局部 → 还原为 obj.<prefix+rest>
+          //   也支持 obj['lit'..U]（虽然当前只用前缀拼接，对称处理使后续后缀因子也能用同一机制）
+          //   也支持 obj[U..u] / obj[u..U]（u 是字符串字面量别名）
+          if(idx && idx.type==='BinaryExpression' && idx.operator==='..'){
+            function asPrefixLocal(n){
+              if(n && n.type==='Identifier' && varOf.has(n)){
+                var b=varOf.get(n);
+                return (b && prefixOfAlias.hasOwnProperty(b.name)) ? prefixOfAlias[b.name] : null;
+              }
+              return null;
+            }
+            function asLiteralOrStringAlias(n){
+              if(!n) return null;
+              if(n.type==='StringLiteral') return stringContent(n);
+              if(n.type==='Identifier' && varOf.has(n)){
+                var b=varOf.get(n);
+                if(b && stringOfAlias.hasOwnProperty(b.name)) return stringOfAlias[b.name];
+              }
+              return null;
+            }
+            var lp=asPrefixLocal(idx.left), ls=asLiteralOrStringAlias(idx.left);
+            var rp=asPrefixLocal(idx.right), rs=asLiteralOrStringAlias(idx.right);
+            if(lp!=null && rs!=null) return normAccess(node.base, lp+rs, null);
+            if(ls!=null && rp!=null) return normAccess(node.base, ls+rp, null);
           }
           var sc=idx?stringContent(idx):null;
           if(sc!==null) return normAccess(node.base, sc, null);
@@ -875,11 +940,71 @@
             for(var v=0; v<ns.vars.length; v++){
               out.push({type:'LocalDecl', vars:[ns.vars[v]], init:[ ns.init[v]!==undefined?ns.init[v]:{type:'NilLiteral'} ]});
             }
+          }else if(ns && ns.type==='Assign' && ns.targets.length>1
+                   && ns.targets.length===ns.init.length
+                   && multiAssignSafeToSplit(stmts[i])){
+            // 多目标赋值若满足"安全分裂"条件（目标都是简单标识符、目标互不重名、
+            // RHS 不读任何目标），则归一为单目标序列。
+            // 这样 `a,b,c=v1,v2,v3` 与 `a=v1 b=v2 c=v3` 在 canonical 中等价，
+            // 让"多重赋值拆分"优化能通过等价校验。
+            //
+            // 注意：每个目标可能是局部或全局，需独立判定其归一节点类型——
+            // 与原始 AssignmentStatement 节点的 allLocalTargets 全有/全无判定不同，
+            // 拆分后每条单赋值各自的 allLocalTargets 取决于该单条目标。
+            for(var v2=0; v2<ns.targets.length; v2++){
+              var rawVar=stmts[i].variables[v2];
+              var isLocalTgt=(rawVar.type==='Identifier' && varOf.has(rawVar) && varOf.get(rawVar)
+                              && !aliasLocalNames.has(varOf.get(rawVar).name));
+              if(isLocalTgt){
+                out.push({type:'LocalDecl', vars:[ns.targets[v2]], init:[ns.init[v2]]});
+              }else{
+                out.push({type:'Assign', targets:[ns.targets[v2]], init:[ns.init[v2]]});
+              }
+            }
           }else{
             out.push(ns);
           }
         }
         return out;
+      }
+
+      // 判断一条 AssignmentStatement 是否能安全拆成单赋值序列：
+      //   1. 目标全是 Identifier（非 IndexExpression / MemberExpression — 否则下标求值序敏感）
+      //   2. 目标互不重名
+      //   3. RHS 任何 init 不引用任何【与目标解析到同一绑定】的标识符
+      //      （全局目标 a 与同名全局 a 是同一绑定；同名局部 a 是不同绑定，不耦合）
+      //   4. #init == #vars（避免末值 call/vararg 的多返回值在 multi 中扩展、在 split 中被截断为 1 的差异）
+      //      当 #init==#vars 时，每个 init 都被截断为 1 值，multi 与 split 行为一致。
+      function multiAssignSafeToSplit(rawStmt){
+        if(!rawStmt || rawStmt.type!=='AssignmentStatement') return false;
+        var vars=rawStmt.variables, inits=rawStmt.init||[];
+        if(vars.length<2 || vars.length!==inits.length) return false;
+        var nameSeen=Object.create(null);
+        var targetGlobalNames=Object.create(null);
+        var targetBindings=new Set();
+        for(var i=0;i<vars.length;i++){
+          if(vars[i].type!=='Identifier') return false;
+          if(nameSeen[vars[i].name]) return false;
+          nameSeen[vars[i].name]=true;
+          var b=varOf.get(vars[i]);
+          if(b) targetBindings.add(b);
+          else targetGlobalNames[vars[i].name]=true;
+        }
+        // RHS 是否读任何目标：
+        //   - 局部目标：通过 varOf 比较 binding 身份
+        //   - 全局目标：通过 name 字符串（且该 Identifier 解析为全局即 binding=null）
+        var coupled=false;
+        (function w(n){
+          if(coupled||!n||typeof n!=='object') return;
+          if(Array.isArray(n)){ for(var k=0;k<n.length;k++) w(n[k]); return; }
+          if(n.type==='Identifier'){
+            var b2=varOf.get(n);
+            if(b2){ if(targetBindings.has(b2)) { coupled=true; return; } }
+            else { if(targetGlobalNames[n.name]) { coupled=true; return; } }
+          }
+          for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); }
+        })(inits);
+        return !coupled;
       }
 
       var body=ast.body;
@@ -1042,12 +1167,507 @@
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: memberByLocal,
         factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
+        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+        stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + 1   // 多了一条 local 声明
       };
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.5-method/等价', steps);
       if(rec) rec(':method 折叠(提交)', src.length, candidate.length,
                   '折叠 '+chosen.map(function(c){return c.method+'×'+c.sites.length;}).join(', '));
       return {code:candidate, aliasMap:newAlias};
+    }
+
+    // ---------- 字段前缀折叠（点：obj.PREFIX_X 系列共享前缀提取因子） ----------
+    // 对每个共享公共前缀 P 的成员访问族群（如 obj.ACTION_LEFT/RIGHT/UP/DOWN/SHOOTLEFT...），
+    // 提取 local U='P'，把每处 obj.P_X 改写成 obj[U..'rest']，前提是【实测严格更短】。
+    // 等价校验由 canonical 的 prefixFoldByLocal 还原识别。
+    //
+    // 收益分析（per-site，字符级精算）：
+    //   原 .PREFIX_REST 长度 = 1（'.'）+ |P| + |R|
+    //   新 [U..'REST']  长度 = 1（'['）+ |U| + 2（'..'）+ 1（'\''）+ |R| + 1（'\''）+ 1（']'）= 6+|U|+|R|
+    //   per-site 省 = |P| − |U| − 5。|U|=1 时 |P|≥7 才有 ≥1 字/处的纯收益。
+    //   独立 local 声明开销 = 'local '（6）+ |U| + '='（1）+ '\''（1）+ |P| + '\''（1）+ ' '（1，分隔后续）= |U|+|P|+10
+    //   总判定：站点数 N，per-site_gain*N > 声明开销。这里用真实 candidate.length 做最终闸门。
+    function foldFieldPrefix(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+
+      // 收集所有 obj.Field（indexer '.'），按字段名分组并记录每处 [baseEnd, idEnd) 区间。
+      // 注意：FunctionDeclaration 的 identifier 链（function a.b.c:d() 里的整条 a.b.c:d）必须保持
+      // `name(.name)*(:name)?` 语法形态，不能改写成 [alias]，否则真·Lua 语法校验会拒绝。
+      // 因此整棵 identifier 子树跳过，只递归函数体。
+      var fieldSites=Object.create(null); // field -> [{baseEnd, idEnd}]
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='FunctionDeclaration'){ walk(n.body); return; }
+        if(n.type==='MemberExpression' && n.indexer==='.' && n.identifier && n.base && n.base.range && n.identifier.range){
+          var f=n.identifier.name;
+          (fieldSites[f]=fieldSites[f]||[]).push({baseEnd:n.base.range[1], idEnd:n.identifier.range[1]});
+        }
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+
+      // 已占名字（不与现有标识符 / 关键字冲突）
+      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
+      (function collectNames(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){n.forEach(collectNames);return;}
+        if(n.type==='Identifier'&&n.name) taken.add(n.name);
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
+      })(ast.body);
+      var POOL=candidateGenerator();
+      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+
+      // 候选前缀枚举：对每个 field 名拆出所有长度 ≥2 的前缀，找命中最多 + 长度最长的，
+      // 进一步用乐观估算 (|P|−|U|−6)*sites − (|U|+|P|+4) > 0 预筛；最终仍由 candidate.length 闸门决定。
+      // 候选前缀来源：
+      //  (1) 字段名以 '_' 切分得到的所有 '_'-结尾前缀（覆盖 ACTION_、ACTION_SHOOT_… 之类的常量分段）；
+      //  (2) 任意两个字段的最长公共前缀（覆盖如 ACTION_SHOOT 这种不以 '_' 结尾、但仍共享的前缀）。
+      // 复杂度 O(F^2 + ΣL)，对常见规模可控。
+      var fields=Object.keys(fieldSites);
+      if(fields.length<2) return null;
+
+      function prefixCandidates(field){
+        var out=[], i=0;
+        while(i<field.length){
+          var u=field.indexOf('_', i);
+          if(u<0) break;
+          out.push(field.slice(0,u+1));    // 含尾部 '_'
+          i=u+1;
+        }
+        return out;
+      }
+      function lcp(a, b){
+        var i=0, n=Math.min(a.length, b.length);
+        while(i<n && a.charCodeAt(i)===b.charCodeAt(i)) i++;
+        return a.slice(0, i);
+      }
+      var prefixGroups=Object.create(null); // prefix -> [{field, sites:N}]
+      function add(p, f){
+        if(p.length<2) return;
+        var cur=prefixGroups[p]=prefixGroups[p]||[];
+        for(var i=0;i<cur.length;i++) if(cur[i].field===f) return;     // 去重
+        cur.push({field:f, sites:fieldSites[f].length});
+      }
+      fields.forEach(function(f){ prefixCandidates(f).forEach(function(p){ add(p, f); }); });
+      // 两两 LCP：把每对的 LCP 加为候选（覆盖非 '_' 结尾的共享前缀）。
+      for(var i=0;i<fields.length;i++){
+        for(var j=i+1;j<fields.length;j++){
+          var pp=lcp(fields[i], fields[j]);
+          add(pp, fields[i]); add(pp, fields[j]);
+        }
+      }
+
+      // 选取候选：贪心，每轮选"乐观收益最高"的前缀，提取后从字段集合里移除已用到的字段。
+      // 因为一个字段一次只能挂一个前缀因子（不能同时被两个前缀重写），需互斥分配。
+      // 真实因子名长度 |U| 在 nextName() 之后才确定（可能 1 也可能 2），用真实长度复核单因子收益，
+      // 防止"批次总收益正、个别因子单看是负"的次优选择。
+      // 声明开销取决于注入模式：能否合并进 priorAlias 的 batched local 决定每因子是 |U|+|P|+4 还是 |U|+|P|+10。
+      // 这里先用乐观（注入模式）估算预筛，注入路径在后面统一判断；最终由 candidate.length 闸门兜底。
+      var priorDrop=(priorAlias && priorAlias.dropLeading) || 0;
+      var canInject=false;
+      if(priorDrop>0 && priorDrop<=ast.body.length){
+        var probeSt=ast.body[priorDrop-1];
+        if(probeSt && probeSt.type==='LocalStatement' && probeSt.variables && probeSt.variables.length
+           && probeSt.init && probeSt.init.length){
+          var lastI=probeSt.init[probeSt.init.length-1];
+          if(!(lastI && (lastI.type==='CallExpression'||lastI.type==='StringCallExpression'
+                         ||lastI.type==='TableCallExpression'||lastI.type==='VarargLiteral'))){
+            canInject=true;
+          }
+        }
+      }
+      var declOverhead = canInject ? 4 : 10;       // ',U=\'P\'' 或 'local U=\'P\' '
+      var usedFields=Object.create(null);
+      var chosen=[]; // {prefix, alias, fields:[{field,sites}], totalSites}
+      while(true){
+        var bestPref=null, bestGain=0;
+        for(var p in prefixGroups){
+          if(!Object.prototype.hasOwnProperty.call(prefixGroups,p)) continue;
+          if(p.length<2) continue;
+          var grp=prefixGroups[p].filter(function(x){return !usedFields[x.field];});
+          if(grp.length<2) continue;
+          var totalSites=grp.reduce(function(s,x){return s+x.sites;},0);
+          // 乐观估算（|U|=1）：每处省 |P|−6，单因子声明 |P|+1+declOverhead
+          var perSite=p.length-6;
+          var declCost=p.length+1+declOverhead;
+          var gain=perSite*totalSites - declCost;
+          if(gain>bestGain){ bestGain=gain; bestPref={prefix:p, fields:grp, totalSites:totalSites}; }
+        }
+        if(!bestPref) break;
+        var alias=nextName();
+        if(!alias) break;
+        // 用真实 |U| 复核：每处省 = |P|−|U|−5，单因子声明 = |U|+|P|+declOverhead
+        var realPer = bestPref.prefix.length - alias.length - 5;
+        var realDecl = alias.length + bestPref.prefix.length + declOverhead;
+        var realGain = realPer * bestPref.totalSites - realDecl;
+        if(realGain<=0){
+          delete prefixGroups[bestPref.prefix];
+          continue;
+        }
+        chosen.push({prefix:bestPref.prefix, alias:alias, fields:bestPref.fields, totalSites:bestPref.totalSites});
+        bestPref.fields.forEach(function(x){ usedFields[x.field]=true; });
+      }
+      if(!chosen.length) return null;
+
+      // 构造 edits：把每处 .PREFIX_X (区间 [baseEnd, idEnd)) 替换为 [alias..'rest']
+      var edits=[];
+      var declAdd=[]; // alias='PREFIX_'
+      var newPrefixMap={};
+      chosen.forEach(function(c){
+        declAdd.push(c.alias+"='"+c.prefix+"'");
+        newPrefixMap[c.alias]=c.prefix;
+        c.fields.forEach(function(x){
+          var rest=x.field.slice(c.prefix.length);
+          fieldSites[x.field].forEach(function(s){
+            edits.push({start:s.baseEnd, end:s.idEnd, name:"["+c.alias+"..'"+rest+"']"});
+          });
+        });
+      });
+
+      // 只注入到「dropLeading 范围内的最后一条 batched local」——也就是 planAll 阶段
+      // 产生的别名声明 `local A,B,C,...=v1,v2,v3,...`。注入形式 `,U='P'` 比独立
+      // `local U='P' ` 省 6 字（一个 `local ` 关键字 + 一个分隔空格）。
+      // 关键约束：必须只在 priorAlias 已宣告为别名头的前 N 条语句内注入；超出范围的
+      // 普通 `local x=foo()` 不能注入，否则会改变其语义（多/少返回值截断）且引入
+      // 一个 canonical 看不到 dropLeading 跳过的新变量，破坏等价校验。
+      function findInjectableLocal(astNode){
+        if(!astNode || !astNode.body) return null;
+        var priorDrop=(priorAlias && priorAlias.dropLeading) || 0;
+        if(priorDrop<=0) return null;             // 没有别名头时不能注入
+        var idx=priorDrop-1;                       // 别名头的最后一条
+        if(idx>=astNode.body.length) return null;
+        var st=astNode.body[idx];
+        if(!st || st.type!=='LocalStatement') return null;
+        if(!st.variables||!st.variables.length) return null;
+        if(!st.init||!st.init.length) return null;
+        // 末值是多返回值表达式（call/vararg）时插入会被截断；保守拒绝注入。
+        var lastInit=st.init[st.init.length-1];
+        if(lastInit && (lastInit.type==='CallExpression'||lastInit.type==='StringCallExpression'
+                        ||lastInit.type==='TableCallExpression'||lastInit.type==='VarargLiteral')) return null;
+        return st;
+      }
+      var injectStmt=findInjectableLocal(ast, src);
+      var candidate;
+      var dropDelta;
+      if(injectStmt){
+        // 在最后一个变量名后插入 ',aliases'，在整条语句末尾插入 ',values'
+        var lastVar=injectStmt.variables[injectStmt.variables.length-1];
+        var stmtEnd=injectStmt.range[1];
+        var injectNames=','+chosen.map(function(c){return c.alias;}).join(',');
+        var injectVals=','+chosen.map(function(c){return "'"+c.prefix+"'";}).join(',');
+        // edits 已经基于原 src 偏移；把这两条注入也加进去
+        var allEdits=edits.concat([
+          {start:lastVar.range[1], end:lastVar.range[1], name:injectNames},
+          {start:stmtEnd, end:stmtEnd, name:injectVals}
+        ]);
+        candidate=applyEdits(src, allEdits);
+        dropDelta=0;     // 没新增 local 语句，dropLeading 不增
+      }else{
+        // 退路：独立 local
+        var newBody = applyEdits(src, edits);
+        candidate = 'local '+declAdd.join(',')+' '+newBody;
+        dropDelta=1;
+      }
+
+      if(candidate.length >= src.length){
+        if(rec) rec('字段前缀折叠(放弃: 不缩短)', src.length, src.length, '候选 '+candidate.length+' ≥ 当前 '+src.length);
+        return null;
+      }
+
+      assertParses(candidate, '阶段1.6-字段前缀/语法', steps);
+      var newAlias = {
+        byName: (priorAlias&&priorAlias.byName)||{},
+        memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
+        factorLocals: ((priorAlias&&priorAlias.factorLocals)||[]).concat(Object.keys(newPrefixMap)),
+        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}, newPrefixMap),
+        stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
+        // 注入到现有 batched local 时不产生新的 local 语句，dropLeading 不增；
+        // 退路独立 local 时 +1
+        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
+      };
+      assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.6-字段前缀/等价', steps);
+      if(rec) rec('字段前缀折叠(提交)', src.length, candidate.length,
+                  '提取 '+chosen.map(function(c){return c.alias+"='"+c.prefix+"'×"+c.totalSites+'处';}).join('；'));
+      return {code:candidate, aliasMap:newAlias};
+    }
+
+    // ---------- 字符串字面量内联（同字面量重复出现 → 提取 local 别名） ----------
+    // 扫描 src 里所有"作为表达式出现的 StringLiteral"（不包括 TableKeyString 这种语法位置上的字段名）。
+    // 当同一字面量内容出现 ≥2 次且收益为正时，注入 ,u='X' 到现有 batched local，并把每处 'X' 替换为 u。
+    //
+    // 收益分析（per-site，字符级精算，单字母别名 |u|=1）：
+    //   原 'X' 长度 = |X|+2（带引号）
+    //   新 u   长度 = |u|
+    //   per-site 省 = |X|+2−|u|
+    //   注入开销（嵌进 batched local） = ',u=\'X\'' = |u|+|X|+4
+    //   总判定：站点数 N，per-site*N > 注入开销
+    //   即 (|X|+1)*N > |u|+1。|u|=1 时 N≥1 + |X|≥3 即赚（实际 N=2+|X|≥3 起赚）
+    //   实测以 candidate.length < src.length 兜底。
+    //
+    // 安全约束：
+    //  1. 仅注入到 priorAlias.dropLeading 范围内的最后一条 batched local（同 foldFieldPrefix）；否则 fallback 独立 local。
+    //  2. canonical 通过 stringAliasByLocal 把读 u 还原为 'X'，故等价校验自动覆盖。
+    //  3. 字面量内容须 [A-Za-z_][A-Za-z0-9_]* 且长度 ≥3——这是个简单筛选避开短字符串净亏，
+    //     真实闸门由 candidate.length 兜底。
+    function foldStringLiterals(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+
+      // 收集所有 StringLiteral 节点（作为表达式的位置——StringCallExpression 的 argument 也算，
+      // TableKeyString 的 key 不是 StringLiteral 节点而是 Identifier，不会被匹配，自然跳过）。
+      // 但要排除一个位置：注入目标 batched local 的 init 列表里那些 StringLiteral——
+      // 它们将作为别名值，不可被重写为对自己的引用（自引用循环且 dropLeading 跳过它们已经看不到）。
+      var priorDrop=(priorAlias && priorAlias.dropLeading) || 0;
+      var injectStmt=null;
+      if(priorDrop>0 && priorDrop<=ast.body.length){
+        var probeSt=ast.body[priorDrop-1];
+        if(probeSt && probeSt.type==='LocalStatement' && probeSt.variables && probeSt.variables.length
+           && probeSt.init && probeSt.init.length){
+          var lastI=probeSt.init[probeSt.init.length-1];
+          if(!(lastI && (lastI.type==='CallExpression'||lastI.type==='StringCallExpression'
+                         ||lastI.type==='TableCallExpression'||lastI.type==='VarargLiteral'))){
+            injectStmt=probeSt;
+          }
+        }
+      }
+      // 标记 dropLeading 范围内所有节点的 range，用于排除其内部的 StringLiteral
+      var headerRanges=[];
+      for(var hi=0; hi<priorDrop && hi<ast.body.length; hi++){
+        var hs=ast.body[hi];
+        if(hs && hs.range) headerRanges.push(hs.range);
+      }
+      function inHeader(node){
+        if(!node || !node.range) return false;
+        for(var i=0;i<headerRanges.length;i++){
+          if(node.range[0]>=headerRanges[i][0] && node.range[1]<=headerRanges[i][1]) return true;
+        }
+        return false;
+      }
+
+      var lit2sites=Object.create(null);  // content -> [{start, end}]
+      // 收集到一组"被排除"的 StringLiteral 节点（语法糖位置：require'X' / f{...}）。
+      // 这些位置上字符串字面量与"无括号调用"是绑定的：require'X' 的 'X' 是 StringCallExpression 的
+      // argument，去掉引号换成 identifier 会产生 requireu 这种合并 token——可能 parse 通过但语义不等。
+      // 同理 TableCallExpression（f{...}）也不能改写。
+      var excluded=new Set();
+      (function markExcluded(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ n.forEach(markExcluded); return; }
+        if(n.type==='StringCallExpression' && n.argument && n.argument.type==='StringLiteral'){
+          excluded.add(n.argument);
+        }
+        // TableCallExpression 的 arguments 是 TableConstructorExpression，不会是 StringLiteral，无须处理
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) markExcluded(n[k]); }
+      })(ast.body);
+
+      (function walk(n, parent, parentKey){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i], n, i); return; }
+        if(n.type==='StringLiteral' && !inHeader(n) && !excluded.has(n)){
+          var raw=n.raw;
+          if(typeof raw==='string' && raw.length>=4 && (raw[0]==="'"||raw[0]==='"')){
+            var content=raw.slice(1,-1);
+            if(content.length>=3 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(content)){
+              (lit2sites[content]=lit2sites[content]||[]).push({start:n.range[0], end:n.range[1]});
+            }
+          }
+        }
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) walk(n[k], n, k); }
+      })(ast.body, null, null);
+
+      var candidates=[];
+      for(var c in lit2sites){
+        if(!Object.prototype.hasOwnProperty.call(lit2sites,c)) continue;
+        if(lit2sites[c].length<2) continue;
+        candidates.push({content:c, sites:lit2sites[c]});
+      }
+      if(!candidates.length) return null;
+      // 按 (站点数 × 字面量长度) 降序优先
+      candidates.sort(function(a,b){
+        return b.sites.length*b.content.length - a.sites.length*a.content.length;
+      });
+
+      // 已占名（防冲突）
+      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
+      (function collectNames(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){n.forEach(collectNames);return;}
+        if(n.type==='Identifier'&&n.name) taken.add(n.name);
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
+      })(ast.body);
+      var POOL=candidateGenerator();
+      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+
+      // 选择候选：每个分配一个名，按真实 |u| 复核收益；不赚则跳过。
+      var chosen=[];   // {content, sites, alias}
+      var declOverhead = injectStmt ? 4 : 10;     // ',u=\'X\'' 或 'local u=\'X\' '
+      for(var ci=0;ci<candidates.length;ci++){
+        var cand=candidates[ci];
+        var alias=nextName();
+        if(!alias) break;
+        var perSite = cand.content.length + 2 - alias.length;        // 'X' → u 每处省
+        var declCost = alias.length + cand.content.length + declOverhead;
+        var realGain = perSite*cand.sites.length - declCost;
+        if(realGain<=0) continue;
+        chosen.push({content:cand.content, sites:cand.sites, alias:alias});
+      }
+      if(!chosen.length) return null;
+
+      // 构造 edits：每处 [start, end) 的 'X' 替换为 alias 名
+      var edits=[];
+      var newStringMap={};
+      chosen.forEach(function(c){
+        newStringMap[c.alias]=c.content;
+        c.sites.forEach(function(s){
+          edits.push({start:s.start, end:s.end, name:c.alias});
+        });
+      });
+
+      var candidate;
+      var dropDelta;
+      if(injectStmt){
+        var lastVar=injectStmt.variables[injectStmt.variables.length-1];
+        var stmtEnd=injectStmt.range[1];
+        var injectNames=','+chosen.map(function(c){return c.alias;}).join(',');
+        var injectVals=','+chosen.map(function(c){return "'"+c.content+"'";}).join(',');
+        var allEdits=edits.concat([
+          {start:lastVar.range[1], end:lastVar.range[1], name:injectNames},
+          {start:stmtEnd, end:stmtEnd, name:injectVals}
+        ]);
+        candidate=applyEdits(src, allEdits);
+        dropDelta=0;
+      }else{
+        var newBody=applyEdits(src, edits);
+        var declAdd=chosen.map(function(c){return c.alias+"='"+c.content+"'";});
+        candidate='local '+declAdd.join(',')+' '+newBody;
+        dropDelta=1;
+      }
+
+      if(candidate.length >= src.length){
+        if(rec) rec('字面量内联(放弃: 不缩短)', src.length, src.length, '候选 '+candidate.length+' ≥ 当前 '+src.length);
+        return null;
+      }
+
+      assertParses(candidate, '阶段1.65-字面量内联/语法', steps);
+      var newAlias = {
+        byName: (priorAlias&&priorAlias.byName)||{},
+        memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
+        factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
+        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+        stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}, newStringMap),
+        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
+      };
+      assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.65-字面量内联/等价', steps);
+      if(rec) rec('字面量内联(提交)', src.length, candidate.length,
+                  '提取 '+chosen.map(function(c){return c.alias+"='"+c.content+"'×"+c.sites.length;}).join('；'));
+      return {code:candidate, aliasMap:newAlias};
+    }
+
+    // ---------- 多重赋值拆分（点：a,b=v1,v2 → a=v1 b=v2 当 v1 符号结尾时省间隔） ----------
+    // 对【非 local 的多重赋值】，当满足"安全分裂"条件且至少有 1 个非末值符号结尾时，拆成单赋值序列。
+    // 安全条件由 canonical 的 multiAssignSafeToSplit 同步识别（语义等价的充要保守条件），
+    // 故等价校验自然通过。
+    //
+    // 收益分析（per-statement）：
+    //   原 a,b,c=v1,v2,v3 长度 = Σ|name|+(N-1)+1+Σ|val|+(N-1)
+    //   拆 a=v1 b=v2 c=v3：每对 (ai, vi) 之间需要分隔 ai 与上一段尾 token；
+    //     若上一段末值 vi 以符号结尾（) ] ' " }），紧贴 ai 不需分隔（省 1 字）；否则需 1 字空格。
+    //   原成本：(N-1) 个名字间逗号 + 1 等号 + (N-1) 个值间逗号 = 2N-1
+    //   新成本：N 等号 + (N-1) 个段间分隔（每个 0~1 字） + (N-1) 个目标-值之间不需分隔（=直接连接）
+    //         = N + (N-1)*sep_avg
+    //   差 = (2N-1) - (N + (N-1)*sep) = N-1 - (N-1)*sep = (N-1)(1-sep)
+    //   每个非末值 vi 符号结尾 → 该位置 sep=0，省 1 字。
+    //   只要至少 1 个非末值符号结尾就净赚（其余位置打平）。
+    function splitMultiAssign(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+
+      // 找候选 AssignmentStatement
+      var candidates=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='AssignmentStatement'){
+          if(isSplitSafe(n, info)){
+            // 估算 gain（保守估计：每个非末值符号结尾省 1 字）
+            var inits=n.init||[];
+            var symbolEndingNonLast=0;
+            for(var i=0;i<inits.length-1;i++){
+              var t=inits[i].type;
+              if(t==='CallExpression'||t==='StringCallExpression'||t==='TableCallExpression'
+                 ||t==='IndexExpression'||t==='TableConstructorExpression'||t==='StringLiteral'){
+                symbolEndingNonLast++;
+              }
+            }
+            if(symbolEndingNonLast>0) candidates.push(n);
+          }
+        }
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+
+      if(!candidates.length) return null;
+
+      // 构造 edits：把整条 `a,b,c=v1,v2,v3` 替换为 `a=v1 b=v2 c=v3`，段间统一加空格——
+      // 编码层后续会把"上段末值符号结尾 + 下段首字母"间的多余空格去掉，等效兑现"省 1 字"。
+      var edits=[];
+      for(var ci=0;ci<candidates.length;ci++){
+        var st=candidates[ci];
+        var vars=st.variables, inits=st.init;
+        var parts=[];
+        for(var i=0;i<vars.length;i++){
+          parts.push(src.slice(vars[i].range[0], vars[i].range[1])
+                    +'='
+                    +src.slice(inits[i].range[0], inits[i].range[1]));
+        }
+        edits.push({start:st.range[0], end:st.range[1], name:parts.join(' ')});
+      }
+
+      var candidate=applyEdits(src, edits);
+      assertParses(candidate, '阶段1.75-多赋值拆分/语法', steps);
+
+      // 用编码层模拟一遍：只有"编码后真的更短"才提交（结构层加空格后通常打平）
+      var bodyCur = applyEncoding(src);
+      var bodyCand = applyEncoding(candidate);
+      if(bodyCand.length >= bodyCur.length){
+        if(rec) rec('多赋值拆分(放弃: 不缩短)', src.length, src.length,
+                    '编码后 '+bodyCand.length+' ≥ '+bodyCur.length);
+        return null;
+      }
+
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.75-多赋值拆分/等价', steps);
+      if(rec) rec('多赋值拆分(提交)', src.length, candidate.length,
+                  '拆分 '+candidates.length+' 条多重赋值');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // 与 canonical.multiAssignSafeToSplit 同步：判定一条 AssignmentStatement 是否能安全
+    // 拆成单赋值序列。两份独立实现是因为各自访问的 info.varOf 来自不同的 analyze 调用。
+    function isSplitSafe(stmt, info){
+      var vars=stmt.variables, inits=stmt.init||[];
+      if(vars.length<2 || vars.length!==inits.length) return false;
+      var nameSeen=Object.create(null);
+      var targetGlobalNames=Object.create(null);
+      var targetBindings=new Set();
+      for(var i=0;i<vars.length;i++){
+        if(vars[i].type!=='Identifier') return false;
+        if(nameSeen[vars[i].name]) return false;
+        nameSeen[vars[i].name]=true;
+        var b=info.varOf.get(vars[i]);
+        if(b) targetBindings.add(b);
+        else targetGlobalNames[vars[i].name]=true;
+      }
+      var coupled=false;
+      (function w(n){
+        if(coupled||!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var k=0;k<n.length;k++) w(n[k]); return; }
+        if(n.type==='Identifier'){
+          var b2=info.varOf.get(n);
+          if(b2){ if(targetBindings.has(b2)) { coupled=true; return; } }
+          else { if(targetGlobalNames[n.name]) { coupled=true; return; } }
+        }
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); }
+      })(inits);
+      return !coupled;
     }
 
     // ---------- local 合并（点4：消除多余 local 关键字） ----------
@@ -1286,7 +1906,7 @@
 
         assertParses(afterRename, '阶段1-结构/语法', steps);
         var aliasMap = declStr
-          ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], dropLeading: dropN }
+          ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
           : null;
         assertEquivalentAlias(code, afterRename, aliasMap, '阶段1-结构/等价', steps);
         activeAliasMap = aliasMap;
@@ -1309,12 +1929,43 @@
         }
       }
 
+      // 阶段 1.6：字段前缀折叠（obj.PREFIX_X 系列共享前缀提取因子；严格"只缩短"闸门）
+      if(doRename){
+        var prefixRes = foldFieldPrefix(current, activeAliasMap, steps, rec, code);
+        if(prefixRes){
+          current = prefixRes.code;
+          activeAliasMap = prefixRes.aliasMap;
+          report.aliasMapInfo = activeAliasMap;
+          report.stages.push({name:'字段前缀折叠', code:current, len:current.length});
+        }
+      }
+
+      // 阶段 1.65：字符串字面量内联（同字面量重复 ≥2 次 → 提取 local 别名；严格"只缩短"闸门）
+      if(doRename){
+        var litRes = foldStringLiterals(current, activeAliasMap, steps, rec, code);
+        if(litRes){
+          current = litRes.code;
+          activeAliasMap = litRes.aliasMap;
+          report.aliasMapInfo = activeAliasMap;
+          report.stages.push({name:'字面量内联', code:current, len:current.length});
+        }
+      }
+
       // 阶段 1.7：local 合并（消除多余 local 关键字；严格"只缩短"闸门）
       if(doRename){
         var localRes = foldLocals(current, activeAliasMap, steps, rec, code);
         if(localRes){
           current = localRes.code;
           report.stages.push({name:'local 合并', code:current, len:current.length});
+        }
+      }
+
+      // 阶段 1.75：多重赋值拆分（非 local 场景：a,b=B(),C[x] → a=B()b=C[x] 当符号结尾时省间隔符）
+      if(doRename){
+        var splitRes = splitMultiAssign(current, activeAliasMap, steps, rec, code);
+        if(splitRes){
+          current = splitRes.code;
+          report.stages.push({name:'多赋值拆分', code:current, len:current.length});
         }
       }
 
