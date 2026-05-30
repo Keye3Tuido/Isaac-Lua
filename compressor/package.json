@@ -1,0 +1,26 @@
+{
+  "name": "isaac-lua",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SoarCaxton/Isaac-Lua.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/SoarCaxton/Isaac-Lua/issues"
+  },
+  "homepage": "https://github.com/SoarCaxton/Isaac-Lua#readme",
+  "dependencies": {
+    "fengari": "^0.1.5",
+    "fengari-web": "^0.1.4",
+    "luaparse": "^0.3.1"
+  }
+}
