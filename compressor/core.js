@@ -244,8 +244,17 @@
         }
       }
 
-      function walkFunction(node, scope){
+      function walkFunction(node, scope, isMethod){
         var inner=newScope(scope, true);
+        // `:` 方法定义有隐式 self 形参（luaparse 不放进 node.parameters）。
+        // 必须声明为内层局部，否则 self 会被当成自由全局而被折叠/上提到模块顶层
+        // （此时 self 为 nil），运行期 `self:m()` 即 index nil。pinned=不可重命名，
+        // 否则破坏 `:` 语法（隐式 self 名字不能改）。
+        if(isMethod){
+          var sb={id:bindings.length, name:'self', scope:inner, decls:[], uses:[], captured:false, pinned:true};
+          bindings.push(sb);
+          inner.vars['self']=sb;
+        }
         for(var i=0;i<node.parameters.length;i++){
           var p=node.parameters[i];
           if(p.type==='Identifier') declare(inner,p);
@@ -320,11 +329,12 @@
               walkFunction(node, scope);
             }else{
               // function a.b:c() ：identifier 是 (Member/Index/Identifier) 解析其 base 变量
+              var isMethod=false;
               if(node.identifier){
                 if(node.identifier.type==='Identifier'){ resolve(scope,node.identifier); assignedGlobals.add(node.identifier.name); }
-                else walkExpr(node.identifier, scope);
+                else { walkExpr(node.identifier, scope); if(node.identifier.indexer===':') isMethod=true; }
               }
-              walkFunction(node, scope);
+              walkFunction(node, scope, isMethod);
             }
             break;
           case 'LabelStatement': case 'GotoStatement': case 'BreakStatement': break;
@@ -472,6 +482,8 @@
           pick=cand; break;
         }
         if(nd.kind==='L'){
+          // pinned（如 `:` 方法的隐式 self）绝不改名，否则破坏 `:` 语法/捕获语义
+          if(nd.b.pinned){ assigned[ni]=nd.b.name; continue; }
           // 局部：仅当严格更短才改名，否则保留原名
           assigned[ni]=(pick!==null && pick.length < nd.b.name.length) ? pick : nd.b.name;
         }else if(nd.kind==='G'){
@@ -523,45 +535,71 @@
 
       return {edits:edits, aliasByName:aliasByName, memberByLocal:memberByLocal, declParts:declParts.parts,
               factorLocals:declParts.factorLocals,
+              declDropLeading:declParts.dropLeading,
               aliasedCount: Object.keys(aliasByName).length, memberCount: Object.keys(memberByLocal).length};
     }
 
     // 把 (names, vals) 组装成 declParts，并尝试仿射因子分解字符串字面量值。
+    // 迭代提取多个公共仿射因子（前缀/后缀）：每轮在"仍是纯字符串字面量"的值里找最优
+    // 因子，gain>0 才提取，重写命中项为 f..'rest' / 'rest'..f，并把该项移出后续轮次。
+    // 直到再也找不到正收益因子。每个因子各自一条 local（与 gain 公式的 'local ' 计费一致）。
     // avoid: 不可用作因子名的名字集合（全局/局部/别名名/关键字）。
-    // 返回 { parts:[...], factorLocals:[factorName,...] }
+    // 返回 { parts:[...], factorLocals:[factorName,...], dropLeading:int }
     function buildDeclParts(names, vals, avoid){
-      if(!names.length) return {parts:[], factorLocals:[]};
-      var strItems=[];
-      for(var i=0;i<vals.length;i++){
-        var v=vals[i];
-        if(v.length>=2 && v[0]==="'" && v[v.length-1]==="'"){
-          strItems.push({idx:i, content:v.slice(1,-1)});
+      if(!names.length) return {parts:[], factorLocals:[], dropLeading:0};
+      var newNames=names.slice(), newVals=vals.slice();
+      // 仍可参与因子分解的纯字符串项：{idx, content}（content 为去引号原文）
+      function plainStrItems(){
+        var out=[];
+        for(var i=0;i<newVals.length;i++){
+          var v=newVals[i];
+          if(v.length>=2 && v[0]==="'" && v[v.length-1]==="'" && v.indexOf("'",1)===v.length-1)
+            out.push({idx:i, content:v.slice(1,-1)});
         }
+        return out;
       }
-      if(strItems.length<2) return {parts:[names.join(',')+'='+vals.join(',')], factorLocals:[]};
 
       var taken=new Set(avoid||[]);
       names.forEach(function(n){taken.add(n);});
       Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
       var POOL=candidateGenerator();
-      var fname=null;
-      for(var p=0;p<POOL.length;p++){ if(!taken.has(POOL[p])&&!KEYWORDS[POOL[p]]){ fname=POOL[p]; break; } }
-      if(!fname) return {parts:[names.join(',')+'='+vals.join(',')], factorLocals:[]};
+      function nextFactorName(){
+        for(var p=0;p<POOL.length;p++){ if(!taken.has(POOL[p])&&!KEYWORDS[POOL[p]]){ taken.add(POOL[p]); return POOL[p]; } }
+        return null;
+      }
 
-      var best=affixCandidate(strItems, fname.length);
-      if(!best){ return {parts:[names.join(',')+'='+vals.join(',')], factorLocals:[]}; }
+      var factorDecls=[]; // 'f=\'ROOMSHAPE_\''
+      var factorNames=[];
+      while(true){
+        var items=plainStrItems();
+        if(items.length<2) break;
+        // 先探一个名字长度（用 1 估算；实际分配后长度一致，单字母池足够时恒为 1）
+        var probeLen=1;
+        var best=affixCandidate(items, probeLen);
+        if(!best) break;
+        var fname=nextFactorName();
+        if(!fname) break;
+        // 用真实因子名长度复核收益；不赚则回退该名并停止
+        var realPerItem = best.affix.length - fname.length - 2;
+        var realGain = realPerItem*best.members.length - (fname.length+best.affix.length+9);
+        if(realGain<=0){ break; }
+        best.members.forEach(function(si){
+          var rest = best.kind==='prefix' ? si.content.slice(best.affix.length)
+                                          : si.content.slice(0, si.content.length-best.affix.length);
+          newVals[si.idx] = best.kind==='prefix' ? (fname+".."+"'"+rest+"'")
+                                                 : ("'"+rest+"'"+".."+fname);
+        });
+        factorDecls.push(fname+"='"+best.affix+"'");
+        factorNames.push(fname);
+      }
 
-      var newNames=names.slice(), newVals=vals.slice();
-      best.members.forEach(function(si){
-        var rest = best.kind==='prefix' ? si.content.slice(best.affix.length)
-                                        : si.content.slice(0, si.content.length-best.affix.length);
-        var expr = best.kind==='prefix' ? (fname+".."+"'"+rest+"'")
-                                        : ("'"+rest+"'"+".."+fname);
-        newVals[si.idx]=expr;
-      });
-      var factorDecl = 'local '+fname+"='"+best.affix+"'";
       var mainDecl = newNames.join(',')+'='+newVals.join(',');
-      return {parts:['@RAW@'+factorDecl+' local '+mainDecl], factorLocals:[fname]};
+      if(!factorNames.length){
+        return {parts:[mainDecl], factorLocals:[], dropLeading:1};
+      }
+      // 每个因子各自一条 local；最后主声明一条 local。dropLeading = 因子数 + 1。
+      var raw = factorDecls.map(function(d){return 'local '+d;}).join(' ') + ' local ' + mainDecl;
+      return {parts:['@RAW@'+raw], factorLocals:factorNames, dropLeading:factorNames.length+1};
     }
 
     // 在字符串内容集合中寻找最优公共仿射（前缀或后缀）。fl=因子名长度。
@@ -1241,7 +1279,7 @@
         var declStr='', dropN=0;
         if(plan.declParts.length){
           var dp=plan.declParts[0];
-          if(dp.indexOf('@RAW@')===0){ declStr=dp.slice(5); dropN=2; }   // 因子分解：两条 local
+          if(dp.indexOf('@RAW@')===0){ declStr=dp.slice(5); dropN=plan.declDropLeading; }  // 因子分解：因子数+1 条 local
           else { declStr='local '+plan.declParts.join(','); dropN=1; }    // 普通：一条 local
         }
         var afterRename = declStr ? (declStr+' '+body) : body;
