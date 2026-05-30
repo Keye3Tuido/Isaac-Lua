@@ -295,6 +295,25 @@ html_index = f"""<!DOCTYPE html>
     </div>
     <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
     <script>
+        // 数字标签配色：每次加载随机，且相邻卡片不同
+        const PALETTE = [
+            ["#a31e1e","#cf3a2c"], ["#b5611f","#d98a33"], ["#6e7d2e","#9bb04a"],
+            ["#2f7d63","#46b08a"], ["#6b4080","#9a5fb0"], ["#b8902f","#e6c24a"],
+            ["#a85a55","#c98a86"]
+        ];
+        function paintRows() {{
+            let prev = -1;
+            document.querySelectorAll('.file-row').forEach(row => {{
+                let idx;
+                do {{ idx = Math.floor(Math.random() * PALETTE.length); }}
+                while (idx === prev && PALETTE.length > 1);
+                prev = idx;
+                row.style.setProperty('--c', PALETTE[idx][0]);
+                row.style.setProperty('--c2', PALETTE[idx][1]);
+            }});
+        }}
+        paintRows();
+
         function handleSearch() {{
             const t = searchInput.value.toLowerCase();
             let shown = 0;
