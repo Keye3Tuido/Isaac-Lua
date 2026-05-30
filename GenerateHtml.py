@@ -295,24 +295,40 @@ html_index = f"""<!DOCTYPE html>
     </div>
     <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
     <script>
-        // 数字标签配色：每次加载随机，且相邻卡片不同
+        // 数字标签配色：每次加载随机，且左、上相邻的卡片均不同色
         const PALETTE = [
             ["#a31e1e","#cf3a2c"], ["#b5611f","#d98a33"], ["#6e7d2e","#9bb04a"],
             ["#2f7d63","#46b08a"], ["#6b4080","#9a5fb0"], ["#b8902f","#e6c24a"],
             ["#a85a55","#c98a86"]
         ];
-        function paintRows() {{
-            let prev = -1;
-            document.querySelectorAll('.file-row').forEach(row => {{
-                let idx;
-                do {{ idx = Math.floor(Math.random() * PALETTE.length); }}
-                while (idx === prev && PALETTE.length > 1);
-                prev = idx;
-                row.style.setProperty('--c', PALETTE[idx][0]);
-                row.style.setProperty('--c2', PALETTE[idx][1]);
+        function paintGrid(list) {{
+            const cards = Array.from(list.querySelectorAll('.file-row'));
+            if (!cards.length) return;
+            // 通过首行 offsetTop 推断列数（对 auto-fill 网格有效）
+            const firstTop = cards[0].offsetTop;
+            let cols = 0;
+            for (const c of cards) {{
+                if (c.offsetTop === firstTop) cols++; else break;
+            }}
+            if (cols < 1) cols = 1;
+            const used = [];
+            cards.forEach((card, i) => {{
+                const left  = (i % cols !== 0) ? used[i - 1] : -1;   // 左邻居
+                const above = (i >= cols)      ? used[i - cols] : -1; // 上邻居
+                const candidates = [];
+                for (let k = 0; k < PALETTE.length; k++) {{
+                    if (k !== left && k !== above) candidates.push(k);
+                }}
+                const idx = candidates[Math.floor(Math.random() * candidates.length)];
+                used[i] = idx;
+                card.style.setProperty('--c',  PALETTE[idx][0]);
+                card.style.setProperty('--c2', PALETTE[idx][1]);
             }});
         }}
-        paintRows();
+        function paintAll() {{ document.querySelectorAll('.file-list').forEach(paintGrid); }}
+        paintAll();
+        let _rt;
+        window.addEventListener('resize', () => {{ clearTimeout(_rt); _rt = setTimeout(paintAll, 150); }});
 
         function handleSearch() {{
             const t = searchInput.value.toLowerCase();
