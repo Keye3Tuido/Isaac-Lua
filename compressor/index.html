@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>以撒控制台代码压缩器 - LuaMin</title>
+<title>以撒代码压缩器 - LuaMin</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Pirata+One&family=VT323&display=swap');
   :root{
@@ -29,24 +29,30 @@
       radial-gradient(760px 520px at 100% 100%, #1a1d12 0%, transparent 58%),
       repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 46px),
       repeating-linear-gradient(90deg, rgba(0,0,0,.22) 0 2px, transparent 2px 92px),
+      radial-gradient(circle at 20% 80%, rgba(163,30,30,.08) 0%, transparent 40%),
+      radial-gradient(circle at 80% 20%, rgba(122,74,134,.06) 0%, transparent 35%),
       var(--bg);
     background-attachment:fixed; -webkit-font-smoothing:antialiased;
   }
-  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;box-shadow:inset 0 0 220px 60px rgba(0,0,0,.85);}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;box-shadow:inset 0 0 220px 60px rgba(0,0,0,.85);background-image:repeating-linear-gradient(0deg,transparent 0,rgba(0,0,0,.03) 1px,transparent 2px),repeating-linear-gradient(90deg,transparent 0,rgba(0,0,0,.03) 1px,transparent 2px);background-size:3px 3px;opacity:.6;}
   @keyframes rise{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
   @keyframes beat{0%,100%{transform:scale(1);}12%{transform:scale(1.22);}24%{transform:scale(1);}36%{transform:scale(1.16);}}
+  @keyframes float{0%,100%{transform:translateY(0) translateX(0);opacity:.3;}50%{transform:translateY(-120px) translateX(20px);opacity:.6;}}
+  body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:2;background-image:radial-gradient(1px 1px at 20% 30%,rgba(233,221,198,.4),transparent),radial-gradient(1px 1px at 60% 70%,rgba(233,221,198,.3),transparent),radial-gradient(1px 1px at 80% 10%,rgba(233,221,198,.35),transparent),radial-gradient(1px 1px at 40% 80%,rgba(233,221,198,.25),transparent);background-size:200% 200%;background-position:0% 0%;animation:float 25s ease-in-out infinite;opacity:.4;}
   .wrap{
     position:relative; z-index:1; max-width:1100px; margin:auto;
-    background:linear-gradient(180deg, rgba(48,35,26,.96), rgba(24,17,13,.97));
+    background:linear-gradient(135deg,transparent 0%,rgba(0,0,0,.15) 100%),repeating-linear-gradient(90deg,rgba(0,0,0,.04) 0px,transparent 1px,transparent 8px),linear-gradient(180deg,rgba(48,35,26,.96),rgba(24,17,13,.97));
     border:2px solid var(--line-2); border-radius:var(--radius); padding:28px 26px 22px;
-    box-shadow:var(--shadow), inset 0 0 0 2px rgba(0,0,0,.6), inset 0 0 60px rgba(0,0,0,.55); animation:rise .4s ease;
+    box-shadow:var(--shadow),inset 0 0 0 2px rgba(0,0,0,.6),inset 0 0 60px rgba(0,0,0,.55),inset 0 0 120px rgba(163,30,30,.08); animation:rise .4s ease;
   }
+  .wrap::before{content:'';position:absolute;inset:0;pointer-events:none;border-radius:var(--radius);background:radial-gradient(circle at 15% 25%,rgba(163,30,30,.12) 0%,transparent 20%),radial-gradient(circle at 85% 75%,rgba(122,74,134,.08) 0%,transparent 18%);mix-blend-mode:multiply;}
   h1{
     text-align:center; margin:2px 0 4px; font-size:2.2rem; font-weight:700; letter-spacing:.05em;
     font-family:var(--display); color:var(--blood-l);
-    text-shadow:0 0 2px #000, 2px 2px 0 #2a0a0a, 0 0 18px rgba(207,58,44,.55), 0 3px 0 #4a0e0e;
+    text-shadow:0 0 4px #000,2px 2px 0 #2a0a0a,0 0 24px rgba(207,58,44,.7),0 0 40px rgba(163,30,30,.5),0 3px 0 #4a0e0e,0 0 60px rgba(207,58,44,.3);
+    filter:drop-shadow(0 0 8px rgba(207,58,44,.6));
   }
-  h1::before,h1::after{content:'\2665';color:var(--blood);margin:0 .4em;font-size:.7em;vertical-align:.1em;display:inline-block;animation:beat 2.4s ease-in-out infinite;}
+  h1::before,h1::after{content:'\2020';color:var(--blood);margin:0 .4em;font-size:.7em;vertical-align:.1em;display:inline-block;animation:beat 2.4s ease-in-out infinite;}
   .home-btn{display:inline-block;color:var(--gold-l);text-decoration:none;font-size:1rem;font-weight:600;font-family:var(--hud);letter-spacing:.04em;margin-bottom:4px;transition:.15s;}
   .home-btn:hover{color:var(--blood-l);transform:translateX(-2px);}
   .sub{text-align:center;color:var(--muted);font-size:1.05rem;font-family:var(--hud);margin-bottom:18px;}
@@ -54,23 +60,24 @@
   @media(max-width:820px){.grid{grid-template-columns:1fr;}}
   .card{background:linear-gradient(180deg,var(--stone-3),var(--stone));border:2px solid var(--line);border-radius:var(--radius-sm);padding:16px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.5),0 4px 10px rgba(0,0,0,.4);transition:.15s;}
   .card:hover{border-color:var(--line-2);}
-  .card h2{font-size:14px;margin:0 0 10px;color:var(--gold-l);font-weight:700;letter-spacing:.02em;}
+  .card h2{font-size:14px;margin:0 0 6px;color:var(--gold-l);font-weight:700;letter-spacing:.02em;}
   .card h2 .badge{margin-left:6px;}
+  .stat{display:block;font-size:.9rem;color:var(--muted);font-family:var(--hud);letter-spacing:.03em;margin-bottom:8px;}
   textarea{
-    width:100%; height:340px; border:2px solid var(--line); border-radius:8px; padding:12px;
-    font-family:var(--mono); font-size:13px; line-height:1.6; resize:vertical; white-space:pre; overflow:auto;
-    background:#0e0a07; color:#d8cbb2; outline:none; transition:.15s; box-shadow:inset 0 2px 10px rgba(0,0,0,.6);
+    width:100%; min-height:120px; max-height:600px; border:2px solid var(--line); border-radius:8px; padding:12px; margin-top:10px;
+    font-family:var(--mono); font-size:13px; line-height:1.6; resize:none; white-space:pre-wrap; overflow-y:auto; overflow-x:hidden;
+    background:#0e0a07; color:#d8cbb2; outline:none; transition:.15s; box-shadow:inset 0 3px 10px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.4);
   }
   textarea::placeholder{color:var(--muted);}
-  textarea:focus{border-color:var(--blood);box-shadow:inset 0 2px 10px rgba(0,0,0,.6),0 0 0 3px rgba(163,30,30,.28);}
+  textarea:focus{border-color:var(--blood);box-shadow:inset 0 3px 10px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.5),0 0 0 3px rgba(163,30,30,.28);}
   #out{background:#0e0a07;white-space:pre-wrap;word-break:break-all;}
   .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center;}
   button{padding:9px 18px;border:2px solid rgba(0,0,0,.45);border-radius:10px;cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:700;transition:.12s;color:#fff5e6;letter-spacing:.03em;text-shadow:0 1px 2px rgba(0,0,0,.5);}
-  .primary{background:linear-gradient(180deg,var(--blood-l),var(--blood-d));box-shadow:0 5px 0 #520d0d,0 8px 14px rgba(0,0,0,.45);}
-  .primary:hover{transform:translateY(-2px);filter:brightness(1.08);}
+  .primary{background:linear-gradient(180deg,var(--blood-l),var(--blood-d));box-shadow:0 6px 0 #520d0d,0 10px 18px rgba(0,0,0,.55),inset 0 1px 2px rgba(255,255,255,.2);}
+  .primary:hover{transform:translateY(-2px);filter:brightness(1.08);box-shadow:0 8px 0 #520d0d,0 12px 24px rgba(0,0,0,.6),0 0 16px rgba(207,58,44,.4),inset 0 1px 2px rgba(255,255,255,.2);}
   .primary:active{transform:translateY(3px);box-shadow:0 2px 0 #520d0d;}
-  .ghost{background:linear-gradient(180deg,var(--stone-3),var(--stone));color:var(--ink);box-shadow:0 5px 0 #120c09,0 8px 14px rgba(0,0,0,.45);}
-  .ghost:hover{transform:translateY(-2px);filter:brightness(1.12);}
+  .ghost{background:linear-gradient(180deg,var(--stone-3),var(--stone));color:var(--ink);box-shadow:0 6px 0 #120c09,0 10px 18px rgba(0,0,0,.55),inset 0 1px 2px rgba(255,255,255,.1);}
+  .ghost:hover{transform:translateY(-2px);filter:brightness(1.12);box-shadow:0 8px 0 #120c09,0 12px 24px rgba(0,0,0,.6),inset 0 1px 2px rgba(255,255,255,.1);}
   .ghost:active{transform:translateY(3px);box-shadow:0 2px 0 #120c09;}
   .stat{font-size:1rem;color:var(--muted);font-family:var(--hud);letter-spacing:.03em;}
   .badge{font-size:1rem;padding:1px 11px;border-radius:999px;color:#fff5e6;font-weight:600;font-family:var(--hud);border:1px solid rgba(0,0,0,.4);}
@@ -82,34 +89,34 @@
   footer{text-align:center;color:var(--muted);font-size:1rem;margin-top:20px;font-family:var(--hud);}
   code{background:#0e0a07;border:1px solid var(--line-2);padding:1px 6px;border-radius:5px;font-family:var(--mono);color:var(--gold-l);}
   ::-webkit-scrollbar{width:12px;height:12px;}
-  ::-webkit-scrollbar-track{background:#0e0a07;}
-  ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px;border:2px solid #0e0a07;}
-  ::-webkit-scrollbar-thumb:hover{background:var(--blood-d);}
+  ::-webkit-scrollbar-track{background:#0e0a07;box-shadow:inset 0 0 6px rgba(0,0,0,.6);}
+  ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--line-2),#3a2a1f);border-radius:6px;border:2px solid #0e0a07;box-shadow:inset 0 0 6px rgba(0,0,0,.5);}
+  ::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--blood-d),#7a1313);box-shadow:inset 0 0 6px rgba(0,0,0,.5),0 0 8px rgba(163,30,30,.4);}
 </style>
 </head>
 <body>
 <div class="wrap">
   <a href="../index.html" class="home-btn">← 返回主页</a>
-  <h1>以撒控制台代码压缩器</h1>
+  <h1>以撒代码压缩器</h1>
 
   <div class="grid">
     <div class="card">
       <h2>输入（可含 <code>l</code>/<code>lua</code> 前缀、多行、注释）</h2>
-      <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
+      <span class="stat" id="inStat"></span>
       <div class="row">
         <button class="primary" id="run">压缩</button>
         <button class="ghost" id="clear">清空</button>
-        <span class="stat" id="inStat"></span>
       </div>
+      <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
     </div>
 
     <div class="card">
       <h2>输出 <span id="badge"></span></h2>
-      <textarea id="out" readonly spellcheck="false"></textarea>
+      <span class="stat" id="outStat"></span>
       <div class="row">
         <button class="primary" id="copy">复制结果</button>
-        <span class="stat" id="outStat"></span>
       </div>
+      <textarea id="out" readonly spellcheck="false"></textarea>
     </div>
   </div>
 
@@ -134,10 +141,13 @@
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
 
-  function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; }
+  function autoResize(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+  function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; autoResize($in); }
   $in.addEventListener('input', updateInStat);
+  $out.addEventListener('input', function(){ autoResize($out); });
+  autoResize($in); autoResize($out);
 
-  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $badge.innerHTML=''; clearMsg(); updateInStat(); };
+  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $badge.innerHTML=''; clearMsg(); updateInStat(); autoResize($out); };
 
   document.getElementById('copy').onclick=function(){
     if(!$out.value) return;
@@ -153,12 +163,14 @@
     try{
       var rep=engine.compress(input);   // 全部技巧默认启用
       $out.value=rep.output;
+      autoResize($out);
       $badge.className='badge ok'; $badge.textContent='校验通过';
       var pct=rep.originalLength? Math.round((rep.originalLength-rep.output.length)/rep.originalLength*100):0;
       $inStat.textContent='输入 '+rep.originalLength+' 字符';
       $outStat.textContent='输出 '+rep.output.length+' 字符　压缩比 '+pct+'%';
     }catch(e){
       $out.value='';
+      autoResize($out);
       $badge.className='badge err'; $badge.textContent='已拒绝';
       $outStat.textContent='';
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
