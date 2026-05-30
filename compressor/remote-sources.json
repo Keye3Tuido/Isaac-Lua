@@ -1,0 +1,20 @@
+{
+  "_comment": "外部真实模组 main.lua 的 raw content 链接；remotetest.js 拉取后压缩并做 SSA 等价校验。首次拉取会缓存到 .remote-cache/（已 gitignore），之后离线可跑。",
+  "sources": [
+    {
+      "name": "guidepost_3584860771",
+      "repo": "https://github.com/Keye3Tuido/guidepost_3584860771",
+      "raw": "https://raw.githubusercontent.com/Keye3Tuido/guidepost_3584860771/main/main.lua"
+    },
+    {
+      "name": "urnh_3726578912",
+      "repo": "https://github.com/Keye3Tuido/urnh_3726578912",
+      "raw": "https://raw.githubusercontent.com/Keye3Tuido/urnh_3726578912/main/main.lua"
+    },
+    {
+      "name": "drop2shoot_3571474342",
+      "repo": "https://github.com/Keye3Tuido/drop2shoot_3571474342",
+      "raw": "https://raw.githubusercontent.com/Keye3Tuido/drop2shoot_3571474342/main/main.lua"
+    }
+  ]
+}
