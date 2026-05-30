@@ -1,6 +1,6 @@
 # 以撒控制台代码压缩器 LuaMin
 
-> **文档基准**：主仓库提交 `8cf9fee`（`main`，"压缩器文档：补 3.1a 因子前向合一精算，澄清两个 local 的最优性"）。该提交及其之前已包含完整的 compressor 工具、远程模组测试与本文档所述全部技巧。
+> **文档基准**：主仓库提交 `e6de520`（`main`，"扩展批量测试至24个开源Lua项目 + 更新文档"）。该提交及其之前已包含完整的 compressor 工具、测试套件（test/edge/realtest/remotetest/bulktest）与本文档所述全部技巧。
 
 把"正常编写格式"的 Lua（带缩进/换行/注释/长变量名，可含 `l`/`lua` 控制台前缀）压成**单行、以 `l` 开头**的控制台命令。每一步都用真·Lua 解释器做语法校验、用归一化 AST 做语义等价校验，任一不通过就**拒绝输出并报错**。
 
@@ -87,12 +87,12 @@
 ## 测试
 
 ```
-node test.js       # 作用域/遮蔽/全局保护/前缀/拒绝/真实片段
-node edge.js       # 数字-关键字-运算符边界、goto、varargs、长字符串、:method
-node realtest.js   # 仓库 33 个 .lua 里全部 l 段逐段 + 按文件合并压缩 + 等价复核
-node remotetest.js # 拉取 remote-sources.json 列出的真实模组 main.lua（整文件）压缩 + 等价复核；首次联网后缓存到 .remote-cache/（已 gitignore），之后离线可跑，--refresh 强制重拉
-node bulktest.js   # 自动克隆 24 个知名开源 Lua 项目（>500 个 .lua 文件），全量压缩 + 语法验证
-node bench.js      # 正常格式代码的压缩率演示
+node tests/test.js       # 作用域/遮蔽/全局保护/前缀/拒绝/真实片段
+node tests/edge.js       # 数字-关键字-运算符边界、goto、varargs、长字符串、:method
+node tests/realtest.js   # 仓库 33 个 .lua 里全部 l 段逐段 + 按文件合并压缩 + 等价复核
+node tests/remotetest.js # 拉取 remote-sources.json 列出的真实模组 main.lua（整文件）压缩 + 等价复核；首次联网后缓存到 .remote-cache/（已 gitignore），之后离线可跑，--refresh 强制重拉
+node tests/bulktest.js   # 自动克隆 24 个知名开源 Lua 项目（>500 个 .lua 文件），全量压缩 + 语法验证
+node tests/bench.js      # 正常格式代码的压缩率演示
 ```
 
 当前：`test 69/69`、`edge 40/40`、`realtest 255/255（逐段）+ 33/33（合并）`、`remotetest 4/4` 全部通过且语义等价；`bulktest` 通过率 98.7%（剩余失败均为输入文件自身非标准 Lua 语法如 shebang）。

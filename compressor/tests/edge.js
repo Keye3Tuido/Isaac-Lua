@@ -1,6 +1,6 @@
-const luaparse=require('./node_modules/luaparse');
+const luaparse=require('../node_modules/luaparse');
 const fengari=require('fengari');
-require('./core.js');
+require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 let pass=0,fail=0;
 function check(name, src){

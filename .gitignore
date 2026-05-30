@@ -8,4 +8,7 @@ compressor/node_modules/
 /pages/
 
 # 远程测试缓存（remotetest.js 首次联网拉取的外部 main.lua，仅本地复用）
-compressor/.remote-cache/
+compressor/tests/.remote-cache/
+
+# 批量测试克隆的第三方仓库（bulktest.js 自动下载，仅本地使用）
+compressor/tests/_bulk_test_repos/

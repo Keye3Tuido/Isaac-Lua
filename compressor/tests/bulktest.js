@@ -1,9 +1,9 @@
 // 批量下载开源 Lua 项目并全量压缩测试，验证语法通过
 const { execSync } = require('child_process');
 const fs = require('fs'), path = require('path');
-const luaparse = require('./node_modules/luaparse');
+const luaparse = require('../node_modules/luaparse');
 const fengari = require('fengari');
-require('./core.js');
+require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
 const TEST_DIR = path.join(__dirname, '_bulk_test_repos');
