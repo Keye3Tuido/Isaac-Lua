@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>以撒控制台代码压缩器 - LuaMin</title>
+<style>
+  :root{--bg:#f5f7fa;--card:#fff;--ink:#2c3e50;--muted:#7f8c8d;--accent:#3498db;--ok:#2ecc71;--err:#e74c3c;--line:#e0e6ed;}
+  *{box-sizing:border-box;}
+  body{font-family:Consolas,'Microsoft YaHei',monospace,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:20px;}
+  .wrap{max-width:1100px;margin:auto;}
+  h1{text-align:center;margin:0 0 4px;}
+  .home-btn{display:inline-block;color:var(--accent);text-decoration:none;font-size:13px;margin-bottom:4px;}
+  .home-btn:hover{text-decoration:underline;}
+  .sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:820px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;box-shadow:0 1px 4px #0001;}
+  .card h2{font-size:14px;margin:0 0 8px;color:var(--ink);}
+  .card h2 .badge{margin-left:6px;}
+  textarea{width:100%;height:340px;border:1px solid var(--line);border-radius:6px;padding:10px;font-family:inherit;font-size:13px;line-height:1.5;resize:vertical;white-space:pre;overflow:auto;}
+  #out{background:#f8f9fa;white-space:pre-wrap;word-break:break-all;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;}
+  button{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;transition:.15s;}
+  .primary{background:var(--accent);color:#fff;}
+  .primary:hover{background:#2b82c6;}
+  .ghost{background:#ecf0f1;color:var(--ink);}
+  .ghost:hover{background:#dfe6e9;}
+  .stat{font-size:12px;color:var(--muted);}
+  .badge{font-size:11px;padding:2px 8px;border-radius:10px;color:#fff;}
+  .badge.ok{background:var(--ok);}
+  .badge.err{background:var(--err);}
+  #msg{margin-top:12px;padding:10px 12px;border-radius:6px;font-size:13px;display:none;white-space:pre-wrap;}
+  #msg.ok{display:block;background:#eafaf1;border:1px solid #abebc6;color:#1e8449;}
+  #msg.err{display:block;background:#fdedec;border:1px solid #f5b7b1;color:#c0392b;}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:18px;}
+  code{background:#eef;padding:1px 4px;border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="../index.html" class="home-btn">← 返回主页</a>
+  <h1>以撒控制台代码压缩器</h1>
+
+  <div class="grid">
+    <div class="card">
+      <h2>输入（可含 <code>l</code>/<code>lua</code> 前缀、多行、注释）</h2>
+      <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
+      <div class="row">
+        <button class="primary" id="run">压缩</button>
+        <button class="ghost" id="clear">清空</button>
+        <span class="stat" id="inStat"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>输出 <span id="badge"></span></h2>
+      <textarea id="out" readonly spellcheck="false"></textarea>
+      <div class="row">
+        <button class="primary" id="copy">复制结果</button>
+        <span class="stat" id="outStat"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="msg"></div>
+
+  <footer></footer>
+</div>
+
+<script src="luaparse.js"></script>
+<script src="fengari-web.js"></script>
+<script src="core.js"></script>
+<script>
+(function(){
+  var lp = window.luaparse;
+  var fg = window.fengari || null;   // fengari-web 暴露的真·Lua 5.3 VM（权威语法校验）
+  var engine = window.LuaMin.create(lp, fg);
+
+  var $in=document.getElementById('in'), $out=document.getElementById('out');
+  var $msg=document.getElementById('msg'), $badge=document.getElementById('badge');
+  var $inStat=document.getElementById('inStat'), $outStat=document.getElementById('outStat');
+
+  function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
+  function clearMsg(){ $msg.className=''; $msg.textContent=''; }
+
+  function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; }
+  $in.addEventListener('input', updateInStat);
+
+  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $badge.innerHTML=''; clearMsg(); updateInStat(); };
+
+  document.getElementById('copy').onclick=function(){
+    if(!$out.value) return;
+    navigator.clipboard.writeText($out.value).then(function(){
+      var b=document.getElementById('copy'); var old=b.textContent; b.textContent='已复制'; setTimeout(function(){b.textContent=old;},1200);
+    });
+  };
+
+  document.getElementById('run').onclick=function(){
+    clearMsg(); $badge.innerHTML='';
+    var input=$in.value;
+    if(!/\S/.test(input)){ setMsg('err','输入为空。'); return; }
+    try{
+      var rep=engine.compress(input);   // 全部技巧默认启用
+      $out.value=rep.output;
+      $badge.className='badge ok'; $badge.textContent='校验通过';
+      var pct=rep.originalLength? Math.round((rep.originalLength-rep.output.length)/rep.originalLength*100):0;
+      $inStat.textContent='输入 '+rep.originalLength+' 字符';
+      $outStat.textContent='输出 '+rep.output.length+' 字符　压缩比 '+pct+'%';
+    }catch(e){
+      $out.value='';
+      $badge.className='badge err'; $badge.textContent='已拒绝';
+      $outStat.textContent='';
+      setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
+    }
+  };
+
+  updateInStat();
+})();
+</script>
+</body>
+</html>

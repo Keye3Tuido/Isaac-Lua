@@ -1,0 +1,8 @@
+# Node 依赖（仅本地开发/测试需要；网页运行只依赖 compressor/ 下已 vendored 的
+# luaparse.js / fengari-web.js / core.js，不需要 node_modules）
+compressor/node_modules/
+
+# 构建产物（由 GitHub Actions 用 GenerateHtml.py 现场生成，不入库）
+# 注意用 / 锚定到仓库根，避免误伤 compressor/index.html（压缩器页面需入库）
+/index.html
+/pages/

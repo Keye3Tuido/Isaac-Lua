@@ -47,6 +47,9 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 .file-num { text-align: center; color: #7f8c8d; font-weight: bold; }
 .file-title { padding: 8px; background: #ecf0f1; border-radius: 6px; text-decoration: none; color: #2c3e50; display: block; }
 .file-title:hover { background: #3498db; color: #fff; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 14px; }
+.tool-link { padding: 10px 18px; background: #9b59b6; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold; transition: .15s; }
+.tool-link:hover { background: #8e44ad; }
 .code-box { display: grid; grid-template-columns: max-content 1fr; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; padding: 8px 0; }
 .cell-ln { text-align: right; padding: 0 10px; color: #7f8c8d; user-select: none; border-right: 1px solid #e0e0e0; min-height: 1.6em; }
 .cell-code { padding: 0 15px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.6em; }
@@ -98,6 +101,9 @@ html_index = f"""<!DOCTYPE html>
 <body>
     <div class="container">
         <h1>以撒代码挑战</h1>
+        <div class="tools">
+            <a href="compressor/index.html" class="tool-link">🛠 Lua 代码压缩器</a>
+        </div>
         <input id="searchInput" placeholder="搜索Lua文件..." oninput="handleSearch()">
         <div id="fileList" class="file-list">{links}</div>
     </div>
