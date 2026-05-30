@@ -1153,7 +1153,10 @@
 
       // 把新别名并进开头的声明里。src 开头可能已是 "local ... " 或 "@-style"；
       // 简单稳妥：再加一条独立 local 在最前面。
-      var candidate = 'local '+declAdd.join(',')+' '+newBody;
+      // 正确 Lua 格式：local a,b='x','y'（所有名字在前，一个 =，所有值在后）
+      var declNames = chosen.map(function(c){return c.alias;}).join(',');
+      var declVals  = chosen.map(function(c){return "'"+c.method+"'";}).join(',');
+      var candidate = 'local '+declNames+'='+declVals+' '+newBody;
 
       // 严格闸门：必须真的更短，否则放弃（不折叠）
       if(candidate.length >= src.length){
@@ -1364,9 +1367,11 @@
         candidate=applyEdits(src, allEdits);
         dropDelta=0;     // 没新增 local 语句，dropLeading 不增
       }else{
-        // 退路：独立 local
+        // 退路：独立 local（正确格式 local a,b='prefix1','prefix2'）
         var newBody = applyEdits(src, edits);
-        candidate = 'local '+declAdd.join(',')+' '+newBody;
+        var declNames = chosen.map(function(c){return c.alias;}).join(',');
+        var declVals  = chosen.map(function(c){return "'"+c.prefix+"'";}).join(',');
+        candidate = 'local '+declNames+'='+declVals+' '+newBody;
         dropDelta=1;
       }
 
@@ -1514,12 +1519,15 @@
       if(!chosen.length) return null;
 
       // 构造 edits：每处 [start, end) 的 'X' 替换为 alias 名
+      // 注意：替换后可能发生 token 合并（如 'table'and → blandalias→bland）。
+      // 若原字符串后紧跟可作标识符后继的字符（字母/数字/下划线），则追加空格。
       var edits=[];
       var newStringMap={};
       chosen.forEach(function(c){
         newStringMap[c.alias]=c.content;
         c.sites.forEach(function(s){
-          edits.push({start:s.start, end:s.end, name:c.alias});
+          var spacer = (s.end < src.length && isNamePart(src[s.end])) ? ' ' : '';
+          edits.push({start:s.start, end:s.end, name:c.alias + spacer});
         });
       });
 
@@ -1538,8 +1546,9 @@
         dropDelta=0;
       }else{
         var newBody=applyEdits(src, edits);
-        var declAdd=chosen.map(function(c){return c.alias+"='"+c.content+"'";});
-        candidate='local '+declAdd.join(',')+' '+newBody;
+        var declNames = chosen.map(function(c){return c.alias;}).join(',');
+        var declVals  = chosen.map(function(c){return "'"+c.content+"'";}).join(',');
+        candidate='local '+declNames+'='+declVals+' '+newBody;
         dropDelta=1;
       }
 
