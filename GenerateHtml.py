@@ -24,6 +24,14 @@ files = {
 }
 
 # ========== 主页条目 ==========
+def file_num(f):
+    """取文件编号（'.' 前的部分）。"""
+    return f[:-4].split('.', 1)[0]
+
+def is_challenge(f):
+    """编号为非负整数的条目视为挑战。"""
+    return file_num(f).isdigit()
+
 def item(f):
     base = f[:-4]
     num, title = (base.split('.', 1) + [""])[:2]
@@ -35,59 +43,210 @@ def item(f):
         f"</div>"
     )
 
-links = "\n".join(item(f) for f in files)
+# 分栏：挑战（编号为非负整数） / 其他
+challenge_files = [f for f in files if is_challenge(f)]
+other_files = [f for f in files if not is_challenge(f)]
+
+challenge_links = "\n".join(item(f) for f in challenge_files)
+other_links = "\n".join(item(f) for f in other_files)
+challenge_count = len(challenge_files)
+other_count = len(other_files)
+
+# 其他栏：仅在存在条目时渲染（数目不硬编码）
+other_section = (
+    f"""
+        <div class="list-section">
+            <div class="list-label"><span>其他</span><span class="line"></span><span class="list-count">{other_count}</span></div>
+            <div id="otherList" class="file-list">{other_links}</div>
+        </div>"""
+    if other_files else ""
+)
 
 # ========== 公共样式 ==========
 COMMON_CSS = """
-body { font-family: Consolas, sans-serif; background: #f5f7fa; margin: 20px; }
-.container { max-width: 1100px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #0001; }
-h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
-.file-list { display: flex; flex-direction: column; gap: 6px; }
-.file-row { display: grid; grid-template-columns: 60px 1fr; align-items: center; }
-.file-num { text-align: center; color: #7f8c8d; font-weight: bold; }
-.file-title { padding: 8px; background: #ecf0f1; border-radius: 6px; text-decoration: none; color: #2c3e50; display: block; }
-.file-title:hover { background: #3498db; color: #fff; }
-.tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 14px; }
-.tool-link { padding: 10px 18px; background: #9b59b6; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold; transition: .15s; }
-.tool-link:hover { background: #8e44ad; }
-.code-box { display: grid; grid-template-columns: max-content 1fr; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; padding: 8px 0; }
-.cell-ln { text-align: right; padding: 0 10px; color: #7f8c8d; user-select: none; border-right: 1px solid #e0e0e0; min-height: 1.6em; }
-.cell-code { padding: 0 15px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.6em; }
-.code-box:hover .cell-ln, .code-box:hover .cell-code { background: #eef; color: #3498db; cursor: pointer; }
-.code-area { display: flex; flex-direction: column; gap: 8px; }
-.section { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; background: #fff; }
-.section-header { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; background: #f1f3f5; cursor: pointer; user-select: none; white-space: pre-wrap; font-weight: 600; line-height: 1.5; }
-.section-header.no-code { cursor: default; }
-.section-header:hover { background: #e9ecef; }
-.section .arrow { flex: 0 0 auto; color: #7f8c8d; transition: transform .15s; }
+* { box-sizing: border-box; }
+:root{
+  --bg:#f4f6fb; --panel:#ffffff; --panel-2:#f6f8fd; --panel-3:#eef1fa;
+  --border:#e4e8f2; --text:#3b4252; --muted:#9aa3b8;
+  --accent:#7c83f0; --accent-d:#5a62e0; --mint:#3ec9b0; --gold:#f6b352;
+  --blue:#5cb8e6; --green:#5ccf9b; --purple:#a98cf0; --pink:#f48fb1; --coral:#f47e7e;
+  --radius:18px; --radius-sm:12px;
+  --shadow:0 14px 40px rgba(90,98,180,.14);
+  --mono:'Cascadia Code','JetBrains Mono',Consolas,'Courier New',monospace;
+  --sans:'Segoe UI',system-ui,-apple-system,'Microsoft YaHei',sans-serif;
+}
+html, body { height: 100%; }
+body {
+  font-family: var(--sans);
+  color: var(--text);
+  margin: 0;
+  padding: 34px 18px 64px;
+  min-height: 100%;
+  background:
+    radial-gradient(900px 480px at 8% -10%, #ffe3ec 0%, transparent 56%),
+    radial-gradient(820px 460px at 100% 0%, #e2ecff 0%, transparent 58%),
+    radial-gradient(760px 500px at 50% 110%, #e4fbf3 0%, transparent 60%),
+    radial-gradient(700px 420px at 90% 100%, #fff1da 0%, transparent 58%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.container {
+  max-width: 1080px;
+  margin: auto;
+  background: rgba(255,255,255,.82);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,.7);
+  padding: 30px 30px 26px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  animation: rise .4s ease;
+}
+h1 {
+  text-align: center;
+  margin: 4px 0 4px;
+  font-size: 2.05rem;
+  letter-spacing: .04em;
+  font-weight: 800;
+  background: linear-gradient(90deg, #f47e7e, #a98cf0 45%, #5cb8e6 75%, #3ec9b0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.subtitle { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 18px; letter-spacing: .02em; }
+
+/* 工具按钮 */
+.tools { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 4px 0 18px; }
+.tool-link {
+  padding: 10px 20px; border-radius: 12px; text-decoration: none; font-weight: 700;
+  color: #fff; background: linear-gradient(135deg, var(--purple), var(--accent-d));
+  border: 1px solid rgba(255,255,255,.4);
+  box-shadow: 0 6px 16px rgba(124,131,240,.34); transition: .18s;
+}
+.tool-link:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(124,131,240,.45); filter: brightness(1.05); }
+
+/* 搜索框 */
+.search-wrap { position: relative; max-width: 480px; margin: 0 auto 22px; }
+.search-wrap::before {
+  content: '🔍'; position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+  opacity: .5; font-size: .9rem; pointer-events: none;
+}
+#searchInput {
+  width: 100%; padding: 12px 16px 12px 42px; border-radius: 14px;
+  border: 1px solid var(--border); background: #fff; color: var(--text);
+  font-size: .95rem; outline: none; transition: .18s; font-family: var(--sans);
+}
+#searchInput::placeholder { color: var(--muted); }
+#searchInput:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(124,131,240,.16); }
+
+/* 分栏标题 */
+.list-section { margin-bottom: 22px; }
+.list-section:last-of-type { margin-bottom: 0; }
+.list-label { display: flex; align-items: center; gap: 12px; margin: 0 2px 12px; color: var(--accent-d); font-weight: 700; font-size: 1.02rem; letter-spacing: .05em; }
+.list-label .line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+.list-label .list-count { flex: 0 0 auto; color: var(--accent-d); font-size: .82rem; font-weight: 600; font-family: var(--mono); background: var(--panel-3); border: 1px solid var(--border); padding: 2px 9px; border-radius: 999px; letter-spacing: 0; }
+
+/* 文件卡片网格 */
+.file-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 11px; }
+.file-row {
+  --c:#7c83f0; --c2:#5cb8e6;
+  position: relative; display: flex; align-items: center; gap: 12px;
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 11px 13px; overflow: hidden; transition: .18s;
+}
+/* 卡片按位置循环取色，避免单调 */
+.file-row:nth-child(7n+1){ --c:#f47e7e; --c2:#f9a66c; }
+.file-row:nth-child(7n+2){ --c:#f6a94c; --c2:#f6c94c; }
+.file-row:nth-child(7n+3){ --c:#5ccf9b; --c2:#3ec9b0; }
+.file-row:nth-child(7n+4){ --c:#5cb8e6; --c2:#6aa8f0; }
+.file-row:nth-child(7n+5){ --c:#7c83f0; --c2:#9a8cf0; }
+.file-row:nth-child(7n+6){ --c:#a98cf0; --c2:#c98cf0; }
+.file-row:nth-child(7n+7){ --c:#f48fb1; --c2:#f47ea0; }
+.file-row::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(var(--c), var(--c2)); opacity: 0; transition: .18s;
+}
+.file-row:hover {
+  transform: translateY(-2px); border-color: var(--c);
+  background: color-mix(in srgb, var(--c) 7%, #fff);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--c) 28%, transparent);
+}
+.file-row:hover::before { opacity: 1; }
+.file-num {
+  flex: 0 0 auto; min-width: 36px; height: 34px; padding: 0 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--c), var(--c2));
+  color: #fff; font-weight: 700; font-size: .8rem; border-radius: 9px;
+  font-family: var(--mono); box-shadow: 0 3px 9px color-mix(in srgb, var(--c) 40%, transparent);
+}
+.file-title { flex: 1; text-decoration: none; color: var(--text); font-weight: 600; font-size: .98rem; transition: .15s; }
+.file-title::after { content: ''; position: absolute; inset: 0; }
+.file-row:hover .file-title { color: var(--c); }
+.no-result { text-align: center; color: var(--muted); padding: 26px; font-size: .95rem; }
+
+/* 代码页 */
+.code-area { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.section { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: #fff; transition: .18s; box-shadow: 0 2px 8px rgba(90,98,180,.05); }
+.section:hover { border-color: var(--accent); }
+.section-header {
+  display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px;
+  background: var(--panel-2); cursor: pointer; user-select: none; white-space: pre-wrap;
+  font-weight: 600; line-height: 1.55; font-family: var(--mono); font-size: .9rem; transition: .15s;
+}
+.section-header.no-code { cursor: default; opacity: .75; }
+.section-header:hover { background: var(--panel-3); }
+.section .arrow { flex: 0 0 auto; color: var(--accent); transition: transform .18s; font-size: .78rem; margin-top: 3px; }
 .section.collapsed .arrow { transform: rotate(-90deg); }
 .section.collapsed .code-box { display: none; }
-.section .code-box { border: 0; border-top: 1px solid #e0e0e0; border-radius: 0; }
-.legend { font-size: 12px; color: #7f8c8d; margin-top: 8px; text-align: right; }
-.button-group { display: flex; gap: 8px; margin-top: 10px; }
-.button-group button { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; transition: .15s; }
-.copy-btn { background: #3498db; color: #fff; }
-.copy-btn:hover { background: #2b82c6; }
-.download-btn { background: #2ecc71; color: #fff; }
-.download-btn:hover { background: #27b866; }
-.back-btn { background: #95a5a6; color: #fff; text-decoration: none; display: inline-block; padding: 8px 12px; border-radius: 5px; }
-.back-btn:hover { background: #7f8c8d; }
-#toast { position: fixed; background: #333; color: #fff; padding: 6px 10px; border-radius: 5px; opacity: 0; transition: .2s; pointer-events: none; display: none; }
-#searchInput { padding: 6px; width: 70%; border: 1px solid #ccc; border-radius: 5px; margin: 10px auto; display: block; }
-.contact { text-align: center; margin-top: 18px; font-size: 14px; color: #7f8c8d; }
-.contact a { color: #3498db; text-decoration: none; }
-.contact a:hover { text-decoration: underline; }
-.tooltip {
-    position: absolute;
-    background: #333;
-    color: #fff;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity .15s;
+.code-box {
+  display: grid; grid-template-columns: max-content 1fr;
+  background: #f7f8fd; border: 0; border-top: 1px solid var(--border);
+  overflow: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.65; padding: 10px 0;
 }
+.cell-ln { text-align: right; padding: 0 12px; color: #b4bcd0; user-select: none; border-right: 1px solid var(--border); min-height: 1.65em; transition: .12s; }
+.cell-code { padding: 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.65em; color: #424a5e; transition: .12s; }
+.code-box:hover .cell-ln { color: var(--accent-d); }
+.code-box:hover .cell-code { color: #1f2533; background: rgba(124,131,240,.07); cursor: pointer; }
+
+/* 按钮组 */
+.button-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.button-group button, .back-btn {
+  padding: 10px 17px; border: none; border-radius: 12px; cursor: pointer;
+  font-weight: 700; font-size: .9rem; font-family: var(--sans); transition: .18s; color: #fff;
+}
+.copy-btn { background: linear-gradient(135deg, var(--blue), #3a9fd6); box-shadow: 0 5px 13px rgba(92,184,230,.34); }
+.download-btn { background: linear-gradient(135deg, var(--green), #36b886); box-shadow: 0 5px 13px rgba(92,207,155,.34); }
+.back-btn {
+  background: #fff; border: 1px solid var(--border); text-decoration: none;
+  display: inline-block; color: var(--text);
+}
+.button-group button:hover, .back-btn:hover { transform: translateY(-2px); filter: brightness(1.04); }
+
+.legend { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: right; font-family: var(--mono); }
+
+/* 联系方式 */
+.contact { text-align: center; margin-top: 22px; color: var(--muted); font-size: .88rem; }
+.contact a { color: var(--accent-d); text-decoration: none; margin-left: 6px; font-weight: 600; }
+.contact a:hover { text-decoration: underline; }
+
+/* 浮层 */
+#toast {
+  position: fixed; background: #3b4252; color: #fff; padding: 8px 14px; border-radius: 10px;
+  box-shadow: var(--shadow); opacity: 0; transition: .2s;
+  pointer-events: none; display: none; font-size: .85rem; z-index: 60;
+}
+.tooltip {
+  position: absolute; background: #3b4252; color: #fff; padding: 5px 10px;
+  border-radius: 8px; font-size: 12px;
+  pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 60;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4d9e8; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #c0c7dc; }
 """
 
 # ========== 主页 HTML ==========
@@ -95,24 +254,44 @@ html_index = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{TITLE}</title>
     <style>{COMMON_CSS}</style>
 </head>
 <body>
     <div class="container">
         <h1>以撒代码挑战</h1>
+        <div class="subtitle">The Binding of Isaac · 自定义挑战代码合辑 · 共 {challenge_count} 项挑战</div>
         <div class="tools">
             <a href="compressor/index.html" class="tool-link">🛠 Lua 代码压缩器</a>
         </div>
-        <input id="searchInput" placeholder="搜索Lua文件..." oninput="handleSearch()">
-        <div id="fileList" class="file-list">{links}</div>
+        <div class="search-wrap">
+            <input id="searchInput" placeholder="搜索 Lua 文件..." oninput="handleSearch()">
+        </div>
+        <div class="list-section">
+            <div class="list-label"><span>挑战</span><span class="line"></span><span class="list-count">{challenge_count}</span></div>
+            <div id="challengeList" class="file-list">{challenge_links}</div>
+        </div>{other_section}
+        <div id="noResult" class="no-result" style="display:none">没有匹配的文件</div>
     </div>
     <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
     <script>
         function handleSearch() {{
             const t = searchInput.value.toLowerCase();
-            for (const item of fileList.children)
-                item.style.display = item.getAttribute('data-search').toLowerCase().includes(t) ? 'grid' : 'none';
+            let shown = 0;
+            document.querySelectorAll('.file-list').forEach(list => {{
+                let listShown = 0;
+                for (const item of list.children) {{
+                    const match = item.getAttribute('data-search').toLowerCase().includes(t);
+                    item.style.display = match ? '' : 'none';
+                    if (match) listShown++;
+                }}
+                // 整栏（含标题）在无匹配时隐藏
+                const section = list.closest('.list-section');
+                if (section) section.style.display = listShown ? '' : 'none';
+                shown += listShown;
+            }});
+            document.getElementById('noResult').style.display = shown ? 'none' : 'block';
         }}
     </script>
 </body>
@@ -129,6 +308,7 @@ def generate_file_page(fname, raw, cleaned):
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{safe_title} - 以撒代码挑战</title>
     <style>{COMMON_CSS}</style>
     <!-- 引入 JSZip，用于生成 zip -->
@@ -157,7 +337,7 @@ def generate_file_page(fname, raw, cleaned):
         const FILE = {json.dumps({"raw": raw, "cleaned": cleaned}, ensure_ascii=False)};
         const NUM = "{num}";  // 文件编号用于命名 zip
         const TITLE_NAME = "{safe_title}";  // 用于 metadata.xml
-        const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
+        const COLORS = ["#e8590c","#d9480f","#c2255c","#a61e4d","#5f3dc4","#3b5bdb","#1971c2","#0c8599","#087f5b","#2b8a3e","#5c940d","#e67700","#9c36b5"];
 
         const codeArea = document.getElementById('codeArea');
         const toast = document.getElementById('toast');
