@@ -47,12 +47,19 @@ h1 { text-align: center; color: #2c3e50; margin-bottom: 12px; }
 .file-num { text-align: center; color: #7f8c8d; font-weight: bold; }
 .file-title { padding: 8px; background: #ecf0f1; border-radius: 6px; text-decoration: none; color: #2c3e50; display: block; }
 .file-title:hover { background: #3498db; color: #fff; }
-.code-box { display: grid; grid-template-columns: max-content 1fr; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; }
-.col-ln, .col-code { display: grid; grid-auto-rows: minmax(1.6em, auto); }
-.col-ln { text-align: right; padding: 12px 10px; color: #7f8c8d; user-select: none; border-right: 1px solid #e0e0e0; }
-.col-code { padding: 12px 15px; white-space: pre; }
-.row.comment { font-weight: 500; }
-.col-ln .row:hover, .col-code .row:hover { background: #eef; color: #3498db; cursor: pointer; }
+.code-box { display: grid; grid-template-columns: max-content 1fr; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; overflow: auto; font-size: 14px; line-height: 1.6; padding: 8px 0; }
+.cell-ln { text-align: right; padding: 0 10px; color: #7f8c8d; user-select: none; border-right: 1px solid #e0e0e0; min-height: 1.6em; }
+.cell-code { padding: 0 15px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.6em; }
+.code-box:hover .cell-ln, .code-box:hover .cell-code { background: #eef; color: #3498db; cursor: pointer; }
+.code-area { display: flex; flex-direction: column; gap: 8px; }
+.section { border: 1px solid #ddd; border-radius: 6px; overflow: hidden; background: #fff; }
+.section-header { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; background: #f1f3f5; cursor: pointer; user-select: none; white-space: pre-wrap; font-weight: 600; line-height: 1.5; }
+.section-header.no-code { cursor: default; }
+.section-header:hover { background: #e9ecef; }
+.section .arrow { flex: 0 0 auto; color: #7f8c8d; transition: transform .15s; }
+.section.collapsed .arrow { transform: rotate(-90deg); }
+.section.collapsed .code-box { display: none; }
+.section .code-box { border: 0; border-top: 1px solid #e0e0e0; border-radius: 0; }
 .legend { font-size: 12px; color: #7f8c8d; margin-top: 8px; text-align: right; }
 .button-group { display: flex; gap: 8px; margin-top: 10px; }
 .button-group button { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; transition: .15s; }
@@ -96,6 +103,7 @@ html_index = f"""<!DOCTYPE html>
     </div>
     <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
     <script>
+        function handleSearch() {{
             const t = searchInput.value.toLowerCase();
             for (const item of fileList.children)
                 item.style.display = item.getAttribute('data-search').toLowerCase().includes(t) ? 'grid' : 'none';
@@ -129,10 +137,7 @@ def generate_file_page(fname, raw, cleaned):
             <a href="../index.html" class="back-btn">返回主页</a>
         </div>
         <br>
-        <div class="code-box">
-            <div class="col-ln" id="lineNumbers"></div>
-            <div class="col-code" id="codeLines"></div>
-        </div>
+        <div class="code-area" id="codeArea"></div>
         <div class="legend"><span id="subLegend">{safe_fname} - @Keye3Tuido</span></div>
         <div class="button-group">
             <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
@@ -148,8 +153,7 @@ def generate_file_page(fname, raw, cleaned):
         const TITLE_NAME = "{safe_title}";  // 用于 metadata.xml
         const COLORS = ["#e74c3c","#c0392b","#d35400","#e67e22","#f39c12","#2ecc71","#27ae60","#1abc9c","#16a085","#3498db","#2980b9","#9b59b6","#8e44ad"];
 
-        const lnRoot = document.getElementById('lineNumbers');
-        const codeRoot = document.getElementById('codeLines');
+        const codeArea = document.getElementById('codeArea');
         const toast = document.getElementById('toast');
         const hoverTip = document.getElementById('hoverTip');
 
@@ -157,48 +161,105 @@ def generate_file_page(fname, raw, cleaned):
             if (l.startsWith("l ")) l = l.slice(2);
             return l.trim().startsWith("--");
         }}
+        function isBlank(l) {{ return l.trim() === ""; }}
+
+        let prevColor = null;
+        function pickColor() {{
+            let c;
+            do c = COLORS[Math.floor(Math.random() * COLORS.length)];
+            while (c === prevColor);
+            prevColor = c;
+            return c;
+        }}
+
+        function bindHover(el, charCount) {{
+            el.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY, charCount);
+            el.onmousemove = (e) => showHoverTip(e.pageX, e.pageY, charCount);
+            el.onmouseleave = hideHoverTip;
+        }}
+
+        // 构建代码框（行号 + 代码，单一网格保证换行后对齐），点击复制整块代码
+        function buildCodeBox(codeLines) {{
+            const box = document.createElement('div');
+            box.className = 'code-box';
+
+            const blockText = codeLines.map(it => it.text).join('\\n');
+            box.onclick = (e) => copyBlock(blockText, codeLines.length, e);
+            bindHover(box, blockText.length);
+
+            codeLines.forEach(item => {{
+                const ln = document.createElement('div');
+                ln.className = 'cell-ln';
+                ln.textContent = item.no;
+                box.appendChild(ln);
+
+                const code = document.createElement('div');
+                code.className = 'cell-code';
+                code.textContent = item.text;
+                box.appendChild(code);
+            }});
+
+            return box;
+        }}
 
         function render() {{
-            lnRoot.innerHTML = "";
-            codeRoot.innerHTML = "";
-            let prevColor = null;
+            codeArea.innerHTML = "";
+            const lines = FILE.raw.split('\\n');
+            const n = lines.length;
+            let i = 0;
 
-            FILE.raw.split('\\n').forEach((l, i) => {{
-                const ln = document.createElement('div');
-                ln.className = 'row';
-                ln.textContent = i + 1;
-                ln.onclick = (e) => copyLine(i, e);
-                lnRoot.appendChild(ln);
+            while (i < n) {{
+                while (i < n && isBlank(lines[i])) i++;   // 跳过段间空行
+                if (i >= n) break;
 
-                const row = document.createElement('div');
-                row.className = 'row';
-                row.onclick = (e) => copyLine(i, e);
-                
-                ln.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
-                ln.onmousemove = (e) => showHoverTip(e.pageX, e.pageY);
-                ln.onmouseleave = hideHoverTip;
+                const header = [];
+                while (i < n && isComment(lines[i])) {{ header.push(lines[i]); i++; }}
 
-                row.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY);
-                row.onmousemove = (e) => showHoverTip(e.pageX, e.pageY);
-                row.onmouseleave = hideHoverTip;
-
-                if (!l) {{
-                    row.textContent = "";
-                    prevColor = null;
-                }} else if (isComment(l)) {{
-                    let c;
-                    do c = COLORS[Math.floor(Math.random() * COLORS.length)];
-                    while (c === prevColor);
-                    prevColor = c;
-                    row.className = 'row comment';
-                    row.style.color = c;
-                    row.textContent = l;
-                }} else {{
-                    row.textContent = l;
-                    prevColor = null;
+                const codeLines = [];
+                while (i < n && !isComment(lines[i])) {{
+                    if (!isBlank(lines[i])) codeLines.push({{ no: i + 1, text: lines[i] }});
+                    i++;
                 }}
-                codeRoot.appendChild(row);
-            }});
+
+                const section = document.createElement('div');
+                section.className = 'section';
+
+                const head = document.createElement('div');
+                head.className = 'section-header';
+
+                if (codeLines.length) {{
+                    const arrow = document.createElement('span');
+                    arrow.className = 'arrow';
+                    arrow.textContent = '▼';
+                    head.appendChild(arrow);
+                }}
+
+                const text = document.createElement('span');
+                text.className = 'header-text';
+                if (header.length) {{
+                    header.forEach((c, k) => {{
+                        const span = document.createElement('span');
+                        span.style.color = pickColor();
+                        span.textContent = c;
+                        text.appendChild(span);
+                        if (k < header.length - 1) text.appendChild(document.createTextNode('\\n'));
+                    }});
+                }} else {{
+                    text.textContent = '代码';
+                }}
+                head.appendChild(text);
+                section.appendChild(head);
+
+                if (codeLines.length) {{
+                    section.classList.add('collapsed');          // 默认折叠
+                    head.onclick = () => section.classList.toggle('collapsed');
+                    section.appendChild(buildCodeBox(codeLines));
+                }} else {{
+                    head.classList.add('no-code');
+                }}
+
+                codeArea.appendChild(section);
+            }}
         }}
 
         function showToastAt(m, x, y) {{
@@ -215,11 +276,10 @@ def generate_file_page(fname, raw, cleaned):
             setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 5000);
         }}
 
-        function copyLine(i, e) {{
-            const l = codeRoot.children[i]?.textContent;
-            if (!l) return;
-            navigator.clipboard.writeText(l)
-                .then(() => showToastAt("已复制第 " + (i + 1) + " 行", e.clientX, e.clientY))
+        function copyBlock(text, count, e) {{
+            if (!text) return;
+            navigator.clipboard.writeText(text)
+                .then(() => showToastAt("已复制该代码块（" + count + " 行，" + text.length + " 字符）", e.clientX, e.clientY))
                 .catch(err => showToastAt("复制失败: " + err, e.clientX, e.clientY));
         }}
 
@@ -263,8 +323,8 @@ def generate_file_page(fname, raw, cleaned):
             }}
         }}
         
-        function showHoverTip(x, y) {{
-            hoverTip.textContent = "点击以复制该行文字";
+        function showHoverTip(x, y, charCount) {{
+            hoverTip.textContent = "点击以复制该代码块（" + charCount + " 字符）";
             hoverTip.style.left = (x + 12) + "px";
             hoverTip.style.top = (y + 12) + "px";
             hoverTip.style.display = "block";
