@@ -27,6 +27,17 @@ jobs:
         with:
           python-version: '3.x'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and copy vendored files
+        working-directory: compressor
+        run: |
+          npm ci
+          cp node_modules/fengari-web/dist/fengari-web.js .
+          cp node_modules/luaparse/luaparse.js .
+
       - name: Generate HTML
         run: python GenerateHtml.py
 
