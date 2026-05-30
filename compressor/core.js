@@ -1135,10 +1135,8 @@
       // 构造 edits：把每处 obj:M(  →  obj[alias](obj,   或  obj[alias](obj)
       var edits=[];
       var memberByLocal = priorAlias && priorAlias.memberByLocal ? Object.assign({}, priorAlias.memberByLocal) : {};
-      var declAdd=[]; // alias='M'
       chosen.forEach(function(c){
         memberByLocal[c.alias]=c.method;
-        declAdd.push(c.alias+"='"+c.method+"'");
         c.sites.forEach(function(s){
           // [colonPos, idEnd) 即 ":M" → "[alias]"
           edits.push({start:s.colonPos, end:s.idEnd, name:'['+c.alias+']'});
@@ -1315,10 +1313,8 @@
 
       // 构造 edits：把每处 .PREFIX_X (区间 [baseEnd, idEnd)) 替换为 [alias..'rest']
       var edits=[];
-      var declAdd=[]; // alias='PREFIX_'
       var newPrefixMap={};
       chosen.forEach(function(c){
-        declAdd.push(c.alias+"='"+c.prefix+"'");
         newPrefixMap[c.alias]=c.prefix;
         c.fields.forEach(function(x){
           var rest=x.field.slice(c.prefix.length);
