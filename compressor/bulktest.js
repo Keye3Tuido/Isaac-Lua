@@ -8,16 +8,39 @@ const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
 const TEST_DIR = path.join(__dirname, '_bulk_test_repos');
 
-// 知名纯 Lua 项目列表
+// 知名纯 Lua 项目列表（库、框架、工具、编辑器等，覆盖多种代码风格）
 const REPOS = [
+  // 库/框架
   { url: 'https://github.com/lunarmodules/penlight.git',       name: 'penlight',       branch: 'master' },
   { url: 'https://github.com/lunarmodules/busted.git',         name: 'busted',         branch: 'master' },
+  { url: 'https://github.com/lunarmodules/ldoc.git',           name: 'ldoc',           branch: 'master' },
+  { url: 'https://github.com/lunarmodules/luacheck.git',       name: 'luacheck',       branch: 'master' },
+  { url: 'https://github.com/lunarmodules/lua-argon2.git',     name: 'lua-argon2',     branch: 'master' },
   { url: 'https://github.com/stevedonovan/Microlight.git',     name: 'microlight',     branch: 'master' },
   { url: 'https://github.com/Yonaba/Moses.git',                name: 'moses',          branch: 'master' },
   { url: 'https://github.com/Yonaba/30log.git',                name: '30log',          branch: 'master' },
+  { url: 'https://github.com/Yonaba/Jumper.git',               name: 'jumper',         branch: 'master' },
   { url: 'https://github.com/rxi/json.lua.git',                name: 'json-lua',       branch: 'master' },
   { url: 'https://github.com/kikito/middleclass.git',          name: 'middleclass',    branch: 'master' },
+  { url: 'https://github.com/kikito/stateful.lua.git',         name: 'stateful',       branch: 'master' },
+  { url: 'https://github.com/kikito/tween.lua.git',            name: 'tween',          branch: 'master' },
+  { url: 'https://github.com/tannerrogalsky/lua-lru.git',      name: 'lua-lru',        branch: 'master' },
+  { url: 'https://github.com/kkharji/sqlite.lua.git',          name: 'sqlite-lua',     branch: 'master' },
+  { url: 'https://github.com/Cluain/Lua-Simple-XML-Parser.git', name: 'lua-xml',       branch: 'master' },
+  // 编辑器/IDE
   { url: 'https://github.com/pkulchenko/ZeroBraneStudio.git',  name: 'zerobrane',      branch: 'master', depth: 1, luaDir: 'lualibs' },
+  // Web
+  { url: 'https://github.com/leafo/lapis.git',                 name: 'lapis',          branch: 'master' },
+  { url: 'https://github.com/leafo/lua-cjson.git',             name: 'lua-cjson',      branch: 'master' },
+  // 路径/文件
+  { url: 'https://github.com/lunarmodules/lua-path.git',       name: 'lua-path',       branch: 'master' },
+  { url: 'https://github.com/mpeterv/luafilesystem.git',       name: 'lfs',            branch: 'master' },
+  // 模版
+  { url: 'https://github.com/leafo/etlua.git',                 name: 'etlua',          branch: 'master' },
+  // HTTP
+  { url: 'https://github.com/nrk/redis-lua.git',               name: 'redis-lua',      branch: 'master' },
+  // 加密
+  { url: 'https://github.com/mkottman/lua-gd.git',             name: 'lua-gd',         branch: 'master' },
 ];
 
 function clone(repo) {
@@ -88,7 +111,9 @@ function main() {
       } catch (e) { continue; }
 
       // 跳过空文件、二进制文件、过小文件（<10B 通常是 shebang 或空模块）
+      // 跳过 shebang 行（#!/usr/bin/env lua），非标准 Lua 语法
       if (src.length === 0 || src.includes('\0') || src.length < 10) continue;
+      if (src.startsWith('#!')) continue;
       totalBytes += src.length;
 
       try {

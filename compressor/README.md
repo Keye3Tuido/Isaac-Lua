@@ -89,12 +89,13 @@
 ```
 node test.js       # 作用域/遮蔽/全局保护/前缀/拒绝/真实片段
 node edge.js       # 数字-关键字-运算符边界、goto、varargs、长字符串、:method
-node realtest.js   # 仓库 33 个 .lua 里全部 l 段逐段压缩 + 等价复核
+node realtest.js   # 仓库 33 个 .lua 里全部 l 段逐段 + 按文件合并压缩 + 等价复核
 node remotetest.js # 拉取 remote-sources.json 列出的真实模组 main.lua（整文件）压缩 + 等价复核；首次联网后缓存到 .remote-cache/（已 gitignore），之后离线可跑，--refresh 强制重拉
+node bulktest.js   # 自动克隆 24 个知名开源 Lua 项目（>500 个 .lua 文件），全量压缩 + 语法验证
 node bench.js      # 正常格式代码的压缩率演示
 ```
 
-当前：`test 69/69`、`edge 40/40`、`realtest 255/255`、`remotetest 4/4` 全部通过且语义等价（`realtest` 段数随仓库 .lua 文件内容浮动）。
+当前：`test 69/69`、`edge 40/40`、`realtest 255/255（逐段）+ 33/33（合并）`、`remotetest 4/4` 全部通过且语义等价；`bulktest` 通过率 98.7%（剩余失败均为输入文件自身非标准 Lua 语法如 shebang）。
 
 ## 已知边界
 
