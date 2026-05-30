@@ -834,7 +834,12 @@
       function normStmt(st){
         switch(st.type){
           case 'LocalStatement': {
-            var inits=(st.init||[]).map(normExpr);          // 先求值 RHS（旧版本）
+            // 填充缺省 init 为 NilLiteral：`local x` ≡ `local x=nil`
+            var rawInits=st.init||[];
+            var inits=[];
+            for(var ii=0;ii<st.variables.length;ii++){
+              inits.push(ii<rawInits.length ? normExpr(rawInits[ii]) : {type:'NilLiteral'});
+            }
             var vars=st.variables.map(function(v){            // 再定义新版本
               if(v.type==='Identifier' && varOf.has(v)){ var b=varOf.get(v); var nv=bumpDef(b); return {type:'Identifier',kind:'local',n:idFor(b,nv)}; }
               return normExpr(v);
