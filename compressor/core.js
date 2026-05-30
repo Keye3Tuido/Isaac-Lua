@@ -846,7 +846,26 @@
 
       var body=ast.body;
       if(aliasMap && aliasMap.dropLeading) body=body.slice(aliasMap.dropLeading);
-      return JSON.stringify(normBlock(body));
+      var tree=normBlock(body);
+      // 逻辑 id 规范化（alpha-归一）：按最终树中首次出现顺序重新编号。
+      // 原因：SSA id 原本按"遍历分配顺序"产生，而 local 合并把
+      //   `local A=..  local B=f(p)..` 变成 `local A,B=..,f(p)..`，
+      //   多值赋值会先求值全部 RHS（分配 p 的 id）再定义全部 var（分配 A 的 id），
+      //   令 p 与 A 的 id 先后互换。两者最终树结构完全一致，仅绝对编号不同，
+      //   属同一 alpha-等价类。首次出现重编号是 alpha-等价的标准规范形：
+      //   等价者归一后必相等，非等价者（结构或 id 复用模式不同）必不等，故不损伤健全性。
+      var idRemap=new Map(), idNext=0;
+      (function relabel(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) relabel(n[i]); return; }
+        if(n.kind==='local' && typeof n.n==='number'){
+          if(!idRemap.has(n.n)) idRemap.set(n.n, idNext++);
+          n.n=idRemap.get(n.n);
+          return;
+        }
+        for(var k in n){ if(Object.prototype.hasOwnProperty.call(n,k)) relabel(n[k]); }
+      })(tree);
+      return JSON.stringify(tree);
     }
 
     function assertEquivalent(srcA, srcB, stageName, steps){

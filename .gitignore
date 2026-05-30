@@ -6,3 +6,6 @@ compressor/node_modules/
 # 注意用 / 锚定到仓库根，避免误伤 compressor/index.html（压缩器页面需入库）
 /index.html
 /pages/
+
+# 远程测试缓存（remotetest.js 首次联网拉取的外部 main.lua，仅本地复用）
+compressor/.remote-cache/
