@@ -411,7 +411,8 @@
     function planAll(info, allGlobalNames, ast){
       var bindings=info.bindings;
 
-      // (a) 全局候选：纯读取、从不被赋值；用乐观盈亏(L=1)预筛 (m-1)*k > m+2
+      // (a) 全局候选：纯读取、从不被赋值；用保守盈亏(L=1)预筛 (m-1)*k > m+8
+      // 成本：local x=Name (m+8字符)；每次节省 m-1；需要 (m-1)*k > m+8
       var groups=new Map();
       info.varOf.forEach(function(b,node){
         if(b!==null) return;
@@ -423,7 +424,7 @@
       var globalCands=[]; // {name, nodes, k, m}
       groups.forEach(function(nodes, nm){
         var k=nodes.length, m=nm.length;
-        if((m-1)*k > (m+2)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
+        if((m-1)*k > (m+8)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
       });
 
       // (a2) 成员字段候选：obj.Field（仅 indexer '.'，改写为 obj[alias]，alias='Field'）
@@ -659,7 +660,41 @@
       return out;
     }
 
-    // ---------- 6. 阶段二：编码层（去注释 + 间隔符最小化 + 单行） ----------
+    // ---------- 6. 编码层拆分 ----------
+    // 6.1 去除注释（保留原有空格和换行）
+    function removeComments(src){
+      var allToks=lex(src);
+      var commentRanges=[];
+      for(var i=0;i<allToks.length;i++){
+        if(allToks[i].type==='Comment'){
+          commentRanges.push({start:allToks[i].start, end:allToks[i].end});
+        }
+      }
+      if(commentRanges.length===0) return src;
+      // 从后往前删除注释，避免位置偏移
+      var out=src;
+      for(var i=commentRanges.length-1;i>=0;i--){
+        var r=commentRanges[i];
+        out=out.slice(0,r.start)+out.slice(r.end);
+      }
+      return out;
+    }
+
+    // 6.2 间隔符最小化 + 单行
+    function minimizeSpacing(src){
+      var toks=lex(src).filter(function(t){return t.type!=='EOF';});
+      var out='';
+      var prev=null;
+      for(var i=0;i<toks.length;i++){
+        var t=toks[i];
+        if(prev!==null && needSpace(prev.value, t.value)) out+=' ';
+        out+=t.value;
+        prev=t;
+      }
+      return out;
+    }
+
+    // 旧的 applyEncoding（去注释 + 间隔符最小化 + 单行）- 保留用于向后兼容
     function applyEncoding(src){
       var toks=lex(src).filter(function(t){return t.type!=='Comment'&&t.type!=='EOF';});
       var out='';
@@ -1168,7 +1203,7 @@
       }
 
       // 语法 + 等价校验（把新 method 别名也并入 memberByLocal 还原）
-      assertParses(candidate, '阶段1.2/语法', steps);
+      assertParses(candidate, '阶段1.7/语法', steps);
       var newAlias = {
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: memberByLocal,
@@ -1177,7 +1212,7 @@
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + 1   // 多了一条 local 声明
       };
-      assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.2/等价', steps);
+      assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
       if(rec) rec(':method 折叠(提交)', src.length, candidate.length,
                   '折叠 '+chosen.map(function(c){return c.method+'×'+c.sites.length;}).join(', '));
       return {code:candidate, aliasMap:newAlias};
@@ -1381,7 +1416,7 @@
         return null;
       }
 
-      assertParses(candidate, '阶段1.3/语法', steps);
+      assertParses(candidate, '阶段1.7/语法', steps);
       var newAlias = {
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
@@ -1392,7 +1427,7 @@
         // 退路独立 local 时 +1
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
       };
-      assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.3/等价', steps);
+      assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
       if(rec) rec('字段前缀折叠(提交)', src.length, candidate.length,
                   '提取 '+chosen.map(function(c){return c.alias+"='"+c.prefix+"'×"+c.totalSites+'处';}).join('；'));
       return {code:candidate, aliasMap:newAlias};
@@ -1558,7 +1593,7 @@
         return null;
       }
 
-      assertParses(candidate, '阶段1.4/语法', steps);
+      assertParses(candidate, '阶段1.7/语法', steps);
       var newAlias = {
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
@@ -1633,7 +1668,7 @@
       }
 
       var candidate=applyEdits(src, edits);
-      assertParses(candidate, '阶段1.6/语法', steps);
+      assertParses(candidate, '阶段1.7/语法', steps);
 
       // 用编码层模拟一遍：只有"编码后真的更短"才提交（结构层加空格后通常打平）
       var bodyCur = applyEncoding(src);
@@ -1644,7 +1679,7 @@
         return null;
       }
 
-      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.6/等价', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7/等价', steps);
       if(rec) rec('多赋值拆分(提交)', src.length, candidate.length,
                   '拆分 '+candidates.length+' 条多重赋值');
       return {code:candidate, aliasMap:priorAlias};
@@ -1779,8 +1814,8 @@
         if(rec) rec('local 合并(放弃: 不缩短)', src.length, src.length, '候选 '+candidate.length+' ≥ '+src.length);
         return null;
       }
-      assertParses(candidate, '阶段1.5/语法', steps);
-      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.5/等价', steps);
+      assertParses(candidate, '阶段1.7/语法', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7/等价', steps);
       if(rec) rec('local 合并(提交)', src.length, candidate.length, '合并 '+edits.length+' 组相邻 local');
       return {code:candidate, aliasMap:priorAlias};
     }
@@ -1897,7 +1932,7 @@
       var aliasedCount=0;
       var activeAliasMap=null;   // 结构阶段产生的别名映射，供后续阶段等价校验沿用
 
-      // 阶段 1：结构性（统一规划：局部重命名 + 全局折叠 + 成员折叠 + 仿射因子）
+      // 阶段 1.2：结构性（统一规划：局部重命名 + 全局折叠 + 成员折叠 + 仿射因子）
       if(doRename){
         var info=analyze(ast0);
         var allGlobals=collectGlobalNames(ast0, info);
@@ -1914,11 +1949,11 @@
         }
         var afterRename = declStr ? (declStr+' '+body) : body;
 
-        assertParses(afterRename, '阶段1-结构/语法', steps);
+        assertParses(afterRename, '阶段1.1/语法', steps);
         var aliasMap = declStr
           ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
           : null;
-        assertEquivalentAlias(code, afterRename, aliasMap, '阶段1-结构/等价', steps);
+        assertEquivalentAlias(code, afterRename, aliasMap, '阶段1.1/等价', steps);
         activeAliasMap = aliasMap;
         rec('结构性折叠(局部重命名+全局/成员/仿射)', code.length, afterRename.length,
             '重命名/折叠 '+plan.edits.length+' 处引用；全局别名 '+Object.keys(plan.aliasByName).length+' 个，成员别名 '+Object.keys(plan.memberByLocal).length+' 个');
@@ -1987,22 +2022,34 @@
         if(reuseRes){
           current = reuseRes.code;
           var localRes2 = foldLocals(current, activeAliasMap, steps, rec, code);
-          if(localRes2){ current = localRes2.code; report.stages.push({name:'1.5-local合并(二次)', code:current, len:current.length}); }
+          if(localRes2){ current = localRes2.code; report.stages.push({name:'1.4-local合并(二次)', code:current, len:current.length}); }
         }
         report.stages.push({name:'1.7-变量复用', code:current, len:current.length});
       }
 
-      // 阶段 2：编码层（去注释 + 间隔符最小化 + 单行）
+      // 阶段 1.1：去除注释（在所有重命名完成后执行，避免位置偏移）
       if(doEncode){
-        var beforeEnc=current.length;
-        var afterEncode=applyEncoding(current);
-        assertParses(afterEncode, '阶段2-编码/语法', steps);
-        // 编码不改变标识符，只去注释/空格：沿用 activeAliasMap 与原始比较
-        if(activeAliasMap) assertEquivalentAlias(code, afterEncode, activeAliasMap, '阶段2-编码/等价', steps);
-        else assertEquivalent(code, afterEncode, '阶段2-编码/等价', steps);
-        rec('编码层(去注释+间隔符最小化+单行)', beforeEnc, afterEncode.length, '词法重排，仅在真·Lua 需要处保留空格');
-        current=afterEncode;
-        report.stages.push({name:'2-编码层压缩', code:afterEncode, len:afterEncode.length});
+        var beforeRemove=current.length;
+        current=removeComments(current);
+        assertParses(current, '阶段1.8/语法', steps);
+        // 去除注释不改变标识符：沿用 activeAliasMap 与原始比较
+        if(activeAliasMap) assertEquivalentAlias(code, current, activeAliasMap, '阶段1.8/等价', steps);
+        else assertEquivalent(code, current, '阶段1.8/等价', steps);
+        rec('去除注释', beforeRemove, current.length, '移除所有注释，保留代码结构');
+        report.stages.push({name:'1.8-去除注释', code:current, len:current.length});
+      }
+
+      // 阶段 1.9：间隔符最小化 + 单行
+      if(doEncode){
+        var beforeMin=current.length;
+        var afterMinimize=minimizeSpacing(current);
+        assertParses(afterMinimize, '阶段1.9/语法', steps);
+        // 间隔符最小化不改变标识符：沿用 activeAliasMap 与原始比较
+        if(activeAliasMap) assertEquivalentAlias(code, afterMinimize, activeAliasMap, '阶段1.9/等价', steps);
+        else assertEquivalent(code, afterMinimize, '阶段1.9/等价', steps);
+        rec('间隔符最小化+单行', beforeMin, afterMinimize.length, '词法重排，仅在真·Lua 需要处保留空格');
+        current=afterMinimize;
+        report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
       }
 
       // 输出：编码层负责单行；若仅重命名则保留换行但仍统一加单一 l 前缀

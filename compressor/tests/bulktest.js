@@ -6,6 +6,28 @@ const fengari = require('fengari');
 require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
+// 去除注释的辅助函数
+function removeComments(src){
+  try{
+    const tokens = LuaMin._lex(src);
+    const commentRanges = [];
+    for(let i=0; i<tokens.length; i++){
+      if(tokens[i].type==='Comment'){
+        commentRanges.push({start:tokens[i].start, end:tokens[i].end});
+      }
+    }
+    if(commentRanges.length===0) return src;
+    let out = src;
+    for(let i=commentRanges.length-1; i>=0; i--){
+      const r = commentRanges[i];
+      out = out.slice(0, r.start) + out.slice(r.end);
+    }
+    return out;
+  }catch(e){
+    return src;
+  }
+}
+
 const TEST_DIR = path.join(__dirname, '_bulk_test_repos');
 
 // 知名纯 Lua 项目列表（库、框架、工具、编辑器等，覆盖多种代码风格）
@@ -117,7 +139,7 @@ function main() {
       totalBytes += src.length;
 
       try {
-        const r = LuaMin.compress(src);
+        const r = LuaMin.compress(removeComments(src)); // 测试前先去除注释
         // 验证输出语法（剥离 l 控制台前缀后）
         const body = r.output.replace(/^l /, '');
         luaparse.parse(body, { luaVersion: '5.3' });

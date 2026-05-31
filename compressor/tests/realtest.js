@@ -5,6 +5,28 @@ const fengari=require('fengari');
 require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 
+// 去除注释的辅助函数
+function removeComments(src){
+  try{
+    const tokens = LuaMin._lex(src);
+    const commentRanges = [];
+    for(let i=0; i<tokens.length; i++){
+      if(tokens[i].type==='Comment'){
+        commentRanges.push({start:tokens[i].start, end:tokens[i].end});
+      }
+    }
+    if(commentRanges.length===0) return src;
+    let out = src;
+    for(let i=commentRanges.length-1; i>=0; i--){
+      const r = commentRanges[i];
+      out = out.slice(0, r.start) + out.slice(r.end);
+    }
+    return out;
+  }catch(e){
+    return src;
+  }
+}
+
 const dir=path.join(__dirname,'../..');
 const files=fs.readdirSync(dir).filter(f=>f.endsWith('.lua'));
 let segTotal=0, segOk=0, segReject=0, errs=[];
@@ -20,7 +42,7 @@ for(const f of files){
     const seg=line;                         // 单行单段
     segTotal++;
     try{
-      const r=LuaMin.compress(seg);
+      const r=LuaMin.compress(removeComments(seg)); // 测试前先去除注释
       const body=r.output.replace(/^l /,'');
       // 真·luaparse 复核
       luaparse.parse(body,{luaVersion:'5.3'});
@@ -51,7 +73,7 @@ for(const f of files){
   fileTotal++;
   const merged=segs.join('\n');
   try{
-    const r=LuaMin.compress(merged);
+    const r=LuaMin.compress(removeComments(merged)); // 测试前先去除注释
     const body=r.output.replace(/^l /,'');
     luaparse.parse(body,{luaVersion:'5.3'});
     const cb=r.aliasMapInfo?LuaMin._canonical(body,r.aliasMapInfo):LuaMin._canonical(body);

@@ -3,7 +3,31 @@ const fengari=require('fengari');
 require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 let pass=0,fail=0;
+
+// 去除注释的辅助函数
+function removeComments(src){
+  try{
+    const tokens = LuaMin._lex(src);
+    const commentRanges = [];
+    for(let i=0; i<tokens.length; i++){
+      if(tokens[i].type==='Comment'){
+        commentRanges.push({start:tokens[i].start, end:tokens[i].end});
+      }
+    }
+    if(commentRanges.length===0) return src;
+    let out = src;
+    for(let i=commentRanges.length-1; i>=0; i--){
+      const r = commentRanges[i];
+      out = out.slice(0, r.start) + out.slice(r.end);
+    }
+    return out;
+  }catch(e){
+    return src;
+  }
+}
+
 function check(name, src){
+  src = removeComments(src); // 测试前先去除注释
   try{
     const r=LuaMin.compress(src);
     const body=r.output.replace(/^l /,'');

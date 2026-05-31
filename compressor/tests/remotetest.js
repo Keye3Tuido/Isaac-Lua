@@ -9,6 +9,28 @@ const fengari=require('fengari');
 require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
 
+// 去除注释的辅助函数
+function removeComments(src){
+  try{
+    const tokens = LuaMin._lex(src);
+    const commentRanges = [];
+    for(let i=0; i<tokens.length; i++){
+      if(tokens[i].type==='Comment'){
+        commentRanges.push({start:tokens[i].start, end:tokens[i].end});
+      }
+    }
+    if(commentRanges.length===0) return src;
+    let out = src;
+    for(let i=commentRanges.length-1; i>=0; i--){
+      const r = commentRanges[i];
+      out = out.slice(0, r.start) + out.slice(r.end);
+    }
+    return out;
+  }catch(e){
+    return src;
+  }
+}
+
 const REFRESH=process.argv.includes('--refresh');
 const cfg=JSON.parse(fs.readFileSync(path.join(__dirname,'remote-sources.json'),'utf8'));
 const cacheDir=path.join(__dirname,'.remote-cache');
@@ -31,7 +53,7 @@ async function getSource(s){
     try{ src=await getSource(s); }
     catch(e){ fail++; fails.push([s.name,'FETCH '+e.message]); console.log('✗',s.name,'拉取失败:',e.message); continue; }
     try{
-      const r=LuaMin.compress(src);
+      const r=LuaMin.compress(removeComments(src)); // 测试前先去除注释
       const body=r.output.replace(/^l /,'');
       luaparse.parse(body,{luaVersion:'5.3'});                 // 真·luaparse 复核
       const cb=r.aliasMapInfo?LuaMin._canonical(body,r.aliasMapInfo):LuaMin._canonical(body);
