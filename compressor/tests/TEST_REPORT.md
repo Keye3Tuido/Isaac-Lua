@@ -1,6 +1,7 @@
 # LuaMin 测试报告
 
-> 生成时间: 2026-05-31
+> 生成时间: 2026-06-01  
+> 提交: `279b9cb422177c486cc5b82253b3bdaba3bfa61b` - 实现透明别名合并优化
 
 ## 测试套件概览
 
@@ -8,10 +9,12 @@
 |------|------|--------|------|------|
 | unit    | `node tests/test.js`       | 69  | 69 | 作用域/遮蔽/全局保护/前缀/拒绝/真实片段 |
 | edge    | `node tests/edge.js`       | 40  | 40 | 数字-关键字-运算符边界、goto、varargs、:method |
+| merge   | `node tests/test_merge_locals.js` | 1 | 1 | 透明别名合并优化 |
+| incr    | `node tests/test_incremental.js` | 3 | 3 | 增量压缩测试 |
 | real    | `node tests/realtest.js`   | 255 | 255 | 逐段压缩 (Isaac 项目) |
 | real    | `node tests/realtest.js`   | 33  | 33 | 合并全段压缩 (Isaac 项目) |
 | remote  | `node tests/remotetest.js` | 4   | 4  | 远程模组整文件压缩 |
-| **合计** |                            | **401** | **401** | **100%** |
+| **合计** |                            | **405** | **405** | **100%** |
 
 ## 批量开源项目测试
 
@@ -67,3 +70,43 @@ Isaac 项目 255 段 `l` 代码：
 - 输入总字符: 124,942
 - 输出总字符: 123,682
 - 节省: 1,260 字符 (1%)
+
+## 透明别名优化压缩统计
+
+### 测试 1: test_merge_locals
+
+**单条压缩**:
+- [1] `local a=ModCallbacks`: 20 → 20 (0.00%)
+- [2] `local b=ModCallbacks`: 20 → 20 (0.00%)
+- [3] `function test1() return a.MC_POST_GAME_END end`: 46 → 45 (2.17%)
+- [4] `function test2() return b.MC_POST_RENDER end`: 44 → 43 (2.27%)
+
+**合并压缩**: 133 → 110 (17.29%)
+
+### 测试 2: test_incremental - case1
+
+**单条压缩**:
+- [1] `function add(x,y) return x+y end`: 32 → 31 (3.13%)
+- [2] `function sub(x,y) return x-y end`: 32 → 31 (3.13%)
+- [3] `function mul(x,y) return x*y end`: 32 → 31 (3.13%)
+
+**合并压缩**: 98 → 95 (3.06%)
+
+### 测试 3: test_incremental - case2
+
+**单条压缩**:
+- [1] `local g=Game():GetRoom()`: 24 → 24 (0.00%)
+- [2] `local d=g:GetDoor(DoorSlot.LEFT0)`: 33 → 33 (0.00%)
+- [3] `if d then d:Open() end`: 22 → 21 (4.55%)
+
+**合并压缩**: 81 → 78 (3.70%)
+
+### 统计摘要
+
+| 指标 | 单条压缩 | 合并压缩 |
+|------|----------|----------|
+| 最低压缩率 | 0.00% | 3.06% |
+| 最高压缩率 | 4.55% | 17.29% |
+| 平均压缩率 | 1.84% | 8.02% |
+
+**结论**: 合并压缩的平均压缩率(8.02%)显著高于单条压缩(1.84%)，提升约4.4倍。

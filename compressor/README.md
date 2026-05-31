@@ -1,6 +1,6 @@
 # 以撒控制台代码压缩器 LuaMin
 
-> **文档基准**：主仓库提交 `89a5d78`（`main`，"修改测试脚本：测试前先去除注释 + 更新测试结果"）。该提交及其之前已包含完整的 compressor 工具、测试套件（test/edge/realtest/remotetest/bulktest）与本文档所述全部技巧。
+> **文档基准**：主仓库提交 `279b9cb`（`main`，"实现透明别名合并优化"）。该提交包含完整的 compressor 工具、测试套件（test/edge/test_merge_locals/test_incremental/realtest/remotetest/bulktest）与本文档所述全部技巧。
 
 把"正常编写格式"的 Lua（带缩进/换行/注释/长变量名，可含 `l`/`lua` 控制台前缀）压成**单行、以 `l` 开头**的控制台命令。每一步都用真·Lua 解释器做语法校验、用归一化 AST 做语义等价校验，任一不通过就**拒绝输出并报错**。
 
