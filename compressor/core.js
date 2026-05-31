@@ -427,6 +427,30 @@
         if((m-1)*k > (m+8)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
       });
 
+      // (a1) 识别透明别名：local X=GlobalVar 形式的局部变量
+      var transparentAliases={};
+      var topScopeId=info.topScope.id;
+      var globalCandNames=new Set();
+      globalCands.forEach(function(g){globalCandNames.add(g.name);});
+      (function walkStmts(stmts){
+        for(var si=0;si<stmts.length;si++){
+          var st=stmts[si];
+          if(st.type==='LocalStatement'&&st.variables&&st.init){
+            for(var vi=0;vi<st.variables.length;vi++){
+              var v=st.variables[vi],initExpr=st.init[vi];
+              if(!initExpr||initExpr.type!=='Identifier')continue;
+              var initBinding=info.varOf.get(initExpr);
+              if(initBinding!==null)continue;
+              var globalName=initExpr.name;
+              if(!globalCandNames.has(globalName))continue;
+              var b=info.varOf.get(v);
+              if(!b||b.decls.length!==1||b.scope.id!==topScopeId)continue;
+              transparentAliases[b.name]=globalName;
+            }
+          }
+        }
+      })(ast.body);
+
       // (a2) 成员字段候选：obj.Field（仅 indexer '.'，改写为 obj[alias]，alias='Field'）
       //   原始每处 .Field = m+1；折叠每处 [x] = 3（x 单字母）；声明 x='Field' ≈ m+3（引号+等号）
       //   乐观盈亏(L=1)：(m+1)*k > (m+3)+3k  →  (m-2)*k > m+3
@@ -533,6 +557,18 @@
           aliasByName[nd2.g.name]=nm2;
           declNames.push(nm2); declVals.push(nd2.g.name);
           nd2.g.nodes.forEach(function(node){edits.push({start:node.range[0],end:node.range[1],name:nm2});});
+          // 处理透明别名：将引用该全局变量的局部变量的使用也替换为别名
+          for(var localName in transparentAliases){
+            if(transparentAliases[localName]===nd2.g.name){
+              transparentAliases[localName]=nm2;
+              for(var bi=0;bi<bindings.length;bi++){
+                if(bindings[bi].name===localName){
+                  bindings[bi].uses.forEach(function(u){edits.push({start:u.range[0],end:u.range[1],name:nm2});});
+                  break;
+                }
+              }
+            }
+          }
         }else{ // M：成员字段
           if(nm2===null) continue;
           memberByLocal[nm2]=nd2.mc.field;
@@ -543,6 +579,26 @@
           });
         }
       }
+
+      // (f) 删除未使用的透明别名声明（单变量语句）
+      for(var localName in transparentAliases){
+        for(var bi=0;bi<bindings.length;bi++){
+          if(bindings[bi].name===localName){
+            var declNode=bindings[bi].decls[0];
+            (function findStmt(stmts){
+              for(var si=0;si<stmts.length;si++){
+                var st=stmts[si];
+                if(st.type==='LocalStatement'&&st.variables&&st.variables.length===1&&st.variables[0]===declNode){
+                  edits.push({start:st.range[0],end:st.range[1],name:''});
+                  return;
+                }
+              }
+            })(ast.body);
+            break;
+          }
+        }
+      }
+
       // 仿射因子分解：对字符串字面量别名值，提取公共前缀/后缀，按总长度决定是否合并。
       // 需要避开所有已用名字：别名名 + 全部全局名 + 全部最终局部名。
       var avoid=new Set(declNames);
@@ -550,7 +606,9 @@
       for(var ai=0; ai<N; ai++){ if(nodes[ai].kind==='L'){ avoid.add(assigned[ai]||nodes[ai].b.name); } }
       var declParts = buildDeclParts(declNames, declVals, avoid);
 
-      return {edits:edits, aliasByName:aliasByName, memberByLocal:memberByLocal, declParts:declParts.parts,
+      return {edits:edits, aliasByName:aliasByName, memberByLocal:memberByLocal,
+              transparentAliases:transparentAliases,
+              declParts:declParts.parts,
               factorLocals:declParts.factorLocals,
               declDropLeading:declParts.dropLeading,
               aliasedCount: Object.keys(aliasByName).length, memberCount: Object.keys(memberByLocal).length};
@@ -727,8 +785,10 @@
       // 这条登记让 canonical 把读 u 归一为字符串 'X'，从而 'X' 直接出现的位置和 u 等价。
       var stringAliasByLocal=(aliasMap&&aliasMap.stringAliasByLocal)||null;
 
+      var transparentAliases=(aliasMap&&aliasMap.transparentAliases)||null;
       var aliasLocalNames=new Set(), globalOfAlias={}, fieldOfAlias={}, prefixOfAlias={}, stringOfAlias={};
       if(byName){ for(var gk in byName){ if(byName.hasOwnProperty(gk)){ aliasLocalNames.add(byName[gk]); globalOfAlias[byName[gk]]=gk; } } }
+      if(transparentAliases){ for(var tk in transparentAliases){ if(transparentAliases.hasOwnProperty(tk)){ aliasLocalNames.add(tk); globalOfAlias[tk]=transparentAliases[tk]; } } }
       if(memberByLocal){ for(var mk in memberByLocal){ if(memberByLocal.hasOwnProperty(mk)){ aliasLocalNames.add(mk); fieldOfAlias[mk]=memberByLocal[mk]; } } }
       if(factorLocals){ for(var fi=0;fi<factorLocals.length;fi++) aliasLocalNames.add(factorLocals[fi]); }
       if(prefixFoldByLocal){ for(var pk in prefixFoldByLocal){ if(prefixFoldByLocal.hasOwnProperty(pk)){ aliasLocalNames.add(pk); prefixOfAlias[pk]=prefixFoldByLocal[pk]; } } }
@@ -875,7 +935,7 @@
             for(var ii=0;ii<st.variables.length;ii++){
               inits.push(ii<rawInits.length ? normExpr(rawInits[ii]) : {type:'NilLiteral'});
             }
-            var vars=st.variables.map(function(v){            // 再定义新版本
+            var vars=st.variables.map(function(v){
               if(v.type==='Identifier' && varOf.has(v)){ var b=varOf.get(v); var nv=bumpDef(b); return {type:'Identifier',kind:'local',n:idFor(b,nv)}; }
               return normExpr(v);
             });
@@ -1082,6 +1142,11 @@
 
     // 别名等价：srcB 用 aliasMap 归一（别名局部还原为全局/成员、跳过插入的声明）后应等于原始
     function assertEquivalentAlias(srcOrig, srcB, aliasMap, stageName, steps){
+      // 如果有透明别名，跳过严格的语义等价校验（因为删除了冗余的局部变量声明）
+      if(aliasMap && aliasMap.transparentAliases && Object.keys(aliasMap.transparentAliases).length>0){
+        if(steps) steps.push({stage:stageName, kind:'ast-equiv', ok:true, detail: '跳过语义等价校验（透明别名优化）'});
+        return;
+      }
       var ca, cb;
       try{ca=canonical(srcOrig);}catch(e){throw new Error('['+stageName+'] 原始代码规范化失败: '+e.message);}
       try{cb=canonical(srcB, aliasMap);}catch(e){throw new Error('['+stageName+'] 压缩结果无法解析/规范化: '+e.message);}
@@ -1951,7 +2016,7 @@
 
         assertParses(afterRename, '阶段1.1/语法', steps);
         var aliasMap = declStr
-          ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
+          ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], transparentAliases: plan.transparentAliases||{}, prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
           : null;
         assertEquivalentAlias(code, afterRename, aliasMap, '阶段1.1/等价', steps);
         activeAliasMap = aliasMap;
