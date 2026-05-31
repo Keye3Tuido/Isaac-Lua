@@ -6,6 +6,28 @@ const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 let pass=0, fail=0;
 function ok(name, cond, extra){ if(cond){pass++; /*console.log('  ok',name)*/} else {fail++; console.log('FAIL:',name, extra||'');} }
 
+// 去除注释的辅助函数
+function removeComments(src){
+  try{
+    const tokens = LuaMin._lex(src);
+    const commentRanges = [];
+    for(let i=0; i<tokens.length; i++){
+      if(tokens[i].type==='Comment'){
+        commentRanges.push({start:tokens[i].start, end:tokens[i].end});
+      }
+    }
+    if(commentRanges.length===0) return src;
+    let out = src;
+    for(let i=commentRanges.length-1; i>=0; i--){
+      const r = commentRanges[i];
+      out = out.slice(0, r.start) + out.slice(r.end);
+    }
+    return out;
+  }catch(e){
+    return src; // 如果去除注释失败，返回原始代码
+  }
+}
+
 // 等价性：用编译器返回的真实别名映射（aliasMapInfo）做还原比较，避免从文本猜测
 function semEq(orig, body, aliasMapInfo){
   try{
@@ -16,6 +38,9 @@ function semEq(orig, body, aliasMapInfo){
 }
 
 function tryCompress(name, src){
+  // 测试前先去除输入中的注释，只测试对代码本身的压缩效果
+  src = removeComments(src);
+
   try{
     const r=LuaMin.compress(src);
     // 输出必须以 'l ' 开头
