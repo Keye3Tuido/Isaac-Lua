@@ -64,7 +64,7 @@
   .card h2 .badge{margin-left:6px;}
   .stat{display:block;font-size:.9rem;color:var(--muted);font-family:var(--hud);letter-spacing:.03em;margin-bottom:8px;}
   textarea{
-    width:100%; min-height:120px; max-height:600px; border:2px solid var(--line); border-radius:8px; padding:12px; margin-top:10px;
+    width:100%; height:280px; border:2px solid var(--line); border-radius:8px; padding:12px; margin-top:10px;
     font-family:var(--mono); font-size:13px; line-height:1.6; resize:none; white-space:pre-wrap; overflow-y:auto; overflow-x:hidden;
     background:#0e0a07; color:#d8cbb2; outline:none; transition:.15s; box-shadow:inset 0 3px 10px rgba(0,0,0,.7),inset 0 0 0 1px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.4);
   }
@@ -92,6 +92,22 @@
   ::-webkit-scrollbar-track{background:#0e0a07;box-shadow:inset 0 0 6px rgba(0,0,0,.6);}
   ::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--line-2),#3a2a1f);border-radius:6px;border:2px solid #0e0a07;box-shadow:inset 0 0 6px rgba(0,0,0,.5);}
   ::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,var(--blood-d),#7a1313);box-shadow:inset 0 0 6px rgba(0,0,0,.5),0 0 8px rgba(163,30,30,.4);}
+  #stages{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+  .stage-item{background:#0e0a07;border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-family:var(--mono);font-size:12px;transition:.12s;}
+  .stage-item:hover{border-color:var(--line-2);background:#120e0a;}
+  .stage-item.expandable{cursor:pointer;}
+  .stage-header{display:flex;justify-content:space-between;align-items:center;}
+  .stage-name{color:var(--gold-l);font-weight:600;}
+  .stage-len{color:var(--muted);font-family:var(--hud);}
+  .stage-delta{font-family:var(--hud);margin-left:8px;}
+  .stage-delta.positive{color:var(--ok);}
+  .stage-delta.negative{color:var(--err);}
+  .stage-expand{color:var(--muted);margin-left:8px;font-size:10px;}
+  .stage-code{display:none;margin-top:8px;padding:8px;background:#0a0806;border:1px solid var(--line);border-radius:4px;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.4;color:#b8a890;}
+  .stage-item.expanded .stage-code{display:block;}
+  .stage-item.expanded .stage-expand::before{content:'▼ ';}
+  .stage-item:not(.expanded) .stage-expand::before{content:'▶ ';}
+
 </style>
 </head>
 <body>
@@ -122,6 +138,11 @@
 
   <div id="msg"></div>
 
+  <div class="card" id="stagesCard" style="display:none;margin-top:16px;">
+    <h2>压缩阶段</h2>
+    <div id="stages"></div>
+  </div>
+
   <footer></footer>
 </div>
 
@@ -137,17 +158,15 @@
   var $in=document.getElementById('in'), $out=document.getElementById('out');
   var $msg=document.getElementById('msg'), $badge=document.getElementById('badge');
   var $inStat=document.getElementById('inStat'), $outStat=document.getElementById('outStat');
+  var $stagesCard=document.getElementById('stagesCard'), $stages=document.getElementById('stages');
 
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
 
-  function autoResize(el){ el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
-  function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; autoResize($in); }
+  function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; }
   $in.addEventListener('input', updateInStat);
-  $out.addEventListener('input', function(){ autoResize($out); });
-  autoResize($in); autoResize($out);
 
-  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $badge.innerHTML=''; clearMsg(); updateInStat(); autoResize($out); };
+  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $badge.innerHTML=''; clearMsg(); updateInStat(); $stagesCard.style.display='none'; $stages.innerHTML=''; };
 
   document.getElementById('copy').onclick=function(){
     if(!$out.value) return;
@@ -157,22 +176,51 @@
   };
 
   document.getElementById('run').onclick=function(){
-    clearMsg(); $badge.innerHTML='';
+    clearMsg(); $badge.innerHTML=''; $stagesCard.style.display='none'; $stages.innerHTML='';
     var input=$in.value;
     if(!/\S/.test(input)){ setMsg('err','输入为空。'); return; }
     try{
-      var rep=engine.compress(input);   // 全部技巧默认启用
+      var rep=engine.compress(input);
       $out.value=rep.output;
-      autoResize($out);
       $badge.className='badge ok'; $badge.textContent='校验通过';
       var pct=rep.originalLength? Math.round((rep.originalLength-rep.output.length)/rep.originalLength*100):0;
       $inStat.textContent='输入 '+rep.originalLength+' 字符';
       $outStat.textContent='输出 '+rep.output.length+' 字符　压缩比 '+pct+'%';
+
+      if(rep.stages && rep.stages.length){
+        $stagesCard.style.display='block';
+        var prevLen=rep.originalLength;
+        rep.stages.forEach(function(stage){
+          var delta=prevLen-stage.len;
+          var deltaText=delta>0? '-'+delta : delta<0? '+'+Math.abs(delta) : '±0';
+          var deltaClass=delta>0? 'positive' : delta<0? 'negative' : '';
+          var hasOptimization=delta!==0;
+
+          var item=document.createElement('div');
+          item.className='stage-item'+(hasOptimization?' expandable':'');
+
+          var header=document.createElement('div');
+          header.className='stage-header';
+          header.innerHTML='<span class="stage-name">'+stage.name+'</span><span><span class="stage-len">'+stage.len+' 字符</span><span class="stage-delta '+deltaClass+'">'+deltaText+'</span>'+(hasOptimization?'<span class="stage-expand"></span>':'')+'</span>';
+          item.appendChild(header);
+
+          if(hasOptimization){
+            var codeDiv=document.createElement('div');
+            codeDiv.className='stage-code';
+            codeDiv.textContent=stage.code;
+            item.appendChild(codeDiv);
+
+            item.onclick=function(){
+              item.classList.toggle('expanded');
+            };
+          }
+
+          $stages.appendChild(item);
+          prevLen=stage.len;
+        });
+      }
     }catch(e){
-      $out.value='';
-      autoResize($out);
-      $badge.className='badge err'; $badge.textContent='已拒绝';
-      $outStat.textContent='';
+      $out.value=''; $badge.className='badge err'; $badge.textContent='已拒绝'; $outStat.textContent='';
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
     }
   };
