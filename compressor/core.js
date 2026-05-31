@@ -427,7 +427,8 @@
         if((m-1)*k > (m+8)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
       });
 
-      // (a1) 识别透明别名：local X=GlobalVar 形式的局部变量
+      // (a1) 识别透明别名：local X=GlobalVar 或 local X=LocalAlias 形式的局部变量
+      // 只识别会被折叠的全局变量（globalCands）的别名
       var transparentAliases={};
       var topScopeId=info.topScope.id;
       var globalCandNames=new Set();
@@ -439,13 +440,20 @@
             for(var vi=0;vi<st.variables.length;vi++){
               var v=st.variables[vi],initExpr=st.init[vi];
               if(!initExpr||initExpr.type!=='Identifier')continue;
-              var initBinding=info.varOf.get(initExpr);
-              if(initBinding!==null)continue;
-              var globalName=initExpr.name;
-              if(!globalCandNames.has(globalName))continue;
               var b=info.varOf.get(v);
               if(!b||b.decls.length!==1||b.scope.id!==topScopeId)continue;
-              transparentAliases[b.name]=globalName;
+              var initBinding=info.varOf.get(initExpr);
+              if(initBinding===null){
+                // 直接引用全局变量，检查是否在globalCands中
+                var globalName=initExpr.name;
+                if(!globalCandNames.has(globalName))continue;
+                transparentAliases[b.name]=globalName;
+              }else{
+                // 引用局部变量，检查是否是透明别名的传递
+                if(transparentAliases[initBinding.name]){
+                  transparentAliases[b.name]=transparentAliases[initBinding.name];
+                }
+              }
             }
           }
         }
@@ -564,7 +572,7 @@
               for(var bi=0;bi<bindings.length;bi++){
                 if(bindings[bi].name===localName){
                   bindings[bi].uses.forEach(function(u){edits.push({start:u.range[0],end:u.range[1],name:nm2});});
-                  break;
+                  // 不要break，继续处理所有同名的binding
                 }
               }
             }
@@ -594,7 +602,7 @@
                 }
               }
             })(ast.body);
-            break;
+            // 不要break，继续处理所有同名的binding
           }
         }
       }
