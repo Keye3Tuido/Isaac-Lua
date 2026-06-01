@@ -2542,6 +2542,10 @@
           if(hoistRes){
             current = hoistRes.code;
             report.stages.push({name:'1.7b-声明上提', code:current, len:current.length});
+            // 上提会把多变量 local 降级为多重赋值（如 A,T=a[c],{}）——再跑一次多赋值拆分，
+            // 把符号结尾的尾值贴紧省间隔符（A,T=a[c],{} → A=a[c]T={}）。
+            var splitRes2 = splitMultiAssign(current, activeAliasMap, steps, rec, code);
+            if(splitRes2){ current = splitRes2.code; report.stages.push({name:'1.6-多赋值拆分(二次)', code:current, len:current.length}); }
           }
         }
 
