@@ -103,10 +103,19 @@
   .stage-delta.positive{color:var(--ok);}
   .stage-delta.negative{color:var(--err);}
   .stage-expand{color:var(--muted);margin-left:8px;font-size:10px;}
-  .stage-code{display:none;margin-top:8px;padding:8px;background:#0a0806;border:1px solid var(--line);border-radius:4px;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.4;color:#b8a890;}
+  .stage-code{display:none;margin-top:8px;padding:8px;background:#0a0806;border:1px solid var(--line);border-radius:4px;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;line-height:1.5;color:#b8a890;}
   .stage-item.expanded .stage-code{display:block;}
   .stage-item.expanded .stage-expand::before{content:'▼ ';}
   .stage-item:not(.expanded) .stage-expand::before{content:'▶ ';}
+  /* diff 内联高亮：删除（红删除线）/ 新增（绿） */
+  .stage-code ins{background:rgba(58,140,94,.22);color:#9fe0b6;text-decoration:none;border-radius:2px;}
+  .stage-code del{background:rgba(163,30,30,.22);color:#e88;text-decoration:line-through;border-radius:2px;}
+  .diff-toggle{margin-left:8px;font-size:10px;color:var(--muted);font-family:var(--hud);cursor:pointer;border:1px solid var(--line);border-radius:4px;padding:0 6px;user-select:none;}
+  .diff-toggle:hover{color:var(--gold-l);border-color:var(--line-2);}
+  .diff-toggle.active{color:var(--gold-l);border-color:var(--gold);}
+  .diff-legend{font-size:10px;color:var(--muted);font-family:var(--hud);margin-bottom:6px;}
+  .diff-legend ins{background:rgba(58,140,94,.22);color:#9fe0b6;text-decoration:none;padding:0 4px;border-radius:2px;}
+  .diff-legend del{background:rgba(163,30,30,.22);color:#e88;text-decoration:line-through;padding:0 4px;border-radius:2px;}
 
 </style>
 </head>
@@ -139,7 +148,8 @@
   <div id="msg"></div>
 
   <div class="card" id="stagesCard" style="display:none;margin-top:16px;">
-    <h2>压缩阶段</h2>
+    <h2>压缩阶段（展开查看与上一阶段的 diff）</h2>
+    <div class="diff-legend"><del>删除</del> <ins>新增</ins> ——点击阶段展开，可切换「diff / 完整代码」</div>
     <div id="stages"></div>
   </div>
 
@@ -170,6 +180,71 @@
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
 
+  // ---- 轻量 diff（token 级 LCS）：展示某阶段相对上一阶段的增删 ----
+  function escapeHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  // 把代码切成 diff 友好的 token：标识符/数字整体、其它字符逐个，空白单独成段。
+  function tokenizeForDiff(s){
+    var toks=[], i=0, n=s.length;
+    while(i<n){
+      var c=s[i];
+      if(/[A-Za-z0-9_]/.test(c)){
+        var j=i+1; while(j<n && /[A-Za-z0-9_]/.test(s[j])) j++;
+        toks.push(s.slice(i,j)); i=j;
+      }else if(/\s/.test(c)){
+        var k=i+1; while(k<n && /\s/.test(s[k])) k++;
+        toks.push(s.slice(i,k)); i=k;
+      }else{
+        toks.push(c); i++;
+      }
+    }
+    return toks;
+  }
+  // 标准 LCS diff，返回 [{t:'=', s}|{t:'+', s}|{t:'-', s}]，相邻同类合并。
+  function diffTokens(aToks, bToks){
+    var n=aToks.length, m=bToks.length;
+    // LCS 长度表（防御：超大输入时退化为整体替换，避免卡顿）
+    if(n*m > 4000000){
+      var ops0=[];
+      if(aToks.length) ops0.push({t:'-', s:aToks.join('')});
+      if(bToks.length) ops0.push({t:'+', s:bToks.join('')});
+      return ops0;
+    }
+    var dp=[]; for(var x=0;x<=n;x++){ dp.push(new Uint32Array(m+1)); }
+    for(var i=n-1;i>=0;i--){
+      for(var j=m-1;j>=0;j--){
+        dp[i][j] = aToks[i]===bToks[j] ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    var ops=[], p=0, q=0;
+    function push(t, s){
+      if(ops.length && ops[ops.length-1].t===t) ops[ops.length-1].s+=s;
+      else ops.push({t:t, s:s});
+    }
+    while(p<n && q<m){
+      if(aToks[p]===bToks[q]){ push('=', aToks[p]); p++; q++; }
+      else if(dp[p+1][q] >= dp[p][q+1]){ push('-', aToks[p]); p++; }
+      else { push('+', bToks[q]); q++; }
+    }
+    while(p<n){ push('-', aToks[p]); p++; }
+    while(q<m){ push('+', bToks[q]); q++; }
+    return ops;
+  }
+  // 渲染 diff 为带 <ins>/<del> 的 HTML
+  function renderDiffHtml(before, after){
+    var ops=diffTokens(tokenizeForDiff(before), tokenizeForDiff(after));
+    var html='';
+    for(var i=0;i<ops.length;i++){
+      var o=ops[i], esc=escapeHtml(o.s);
+      if(o.t==='=') html+=esc;
+      else if(o.t==='+') html+='<ins>'+esc+'</ins>';
+      else html+='<del>'+esc+'</del>';
+    }
+    return html;
+  }
+
+
   function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; }
   $in.addEventListener('input', updateInStat);
 
@@ -197,11 +272,14 @@
       if(rep.stages && rep.stages.length){
         $stagesCard.style.display='block';
         var prevLen=rep.originalLength;
+        var prevCode=rep.original!=null ? rep.original : input;   // 第一阶段的 diff 基准 = 预处理后的输入
         rep.stages.forEach(function(stage){
           var delta=prevLen-stage.len;
           var deltaText=delta>0? '-'+delta : delta<0? '+'+Math.abs(delta) : '±0';
           var deltaClass=delta>0? 'positive' : delta<0? 'negative' : '';
-          var hasOptimization=delta!==0;
+          // 只要代码相对上一阶段有变化就可展开看 diff（即使长度不变，如尾值贴紧重排）
+          var changed=(stage.code!==prevCode);
+          var hasOptimization=changed;
 
           var item=document.createElement('div');
           item.className='stage-item'+(hasOptimization?' expandable':'');
@@ -212,18 +290,34 @@
           item.appendChild(header);
 
           if(hasOptimization){
+            // 捕获本阶段相对上一阶段的代码，供 diff / 完整代码切换
+            var beforeCode=prevCode, afterCode=stage.code;
             var codeDiv=document.createElement('div');
             codeDiv.className='stage-code';
-            codeDiv.textContent=stage.code;
+
+            // diff / 完整 切换按钮
+            var toggle=document.createElement('span');
+            toggle.className='diff-toggle active';
+            toggle.textContent='diff';
+            var showingDiff=true;
+            function renderMode(){
+              if(showingDiff){ codeDiv.innerHTML=renderDiffHtml(beforeCode, afterCode); toggle.textContent='diff'; toggle.classList.add('active'); }
+              else { codeDiv.textContent=afterCode; toggle.textContent='完整'; toggle.classList.remove('active'); }
+            }
+            toggle.onclick=function(ev){
+              ev.stopPropagation();   // 不触发整条的展开/收起
+              showingDiff=!showingDiff; renderMode();
+            };
+            header.querySelector('.stage-expand').appendChild(toggle);
+            renderMode();
             item.appendChild(codeDiv);
 
-            item.onclick=function(){
-              item.classList.toggle('expanded');
-            };
+            item.onclick=function(){ item.classList.toggle('expanded'); };
           }
 
           $stages.appendChild(item);
           prevLen=stage.len;
+          prevCode=stage.code;
         });
       }
     }catch(e){
