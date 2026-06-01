@@ -2252,6 +2252,133 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
+    // ---------- 声明上提（前向 nil 声明合并，点3：智能声明合并） ----------
+    // 把【顶层块内、声明在别名头之后】的局部变量上提到别名头里（作为前向 nil 占位），
+    // 并把其原 `local X=v` 降级为普通赋值 `X=v`。借助 canonical 的"死前向声明归一"，
+    // 这类变换可被严格验证。
+    //
+    // 收益模型：每上提一个变量 X，
+    //   + 别名头名列表多 `,X`（2 字，单字母名时）
+    //   − 其声明处省一个 `local `（6 字）减去原本可能搭顺风车的程度
+    // 故单变量降级净省约 4 字；多变量 `local A,T=..` 整体降级省更多（一个 local 覆盖多变量）。
+    // 严格"只缩短"闸门 + canonical 等价 + 真·Lua 语法，三关全过才提交，否则回退。
+    //
+    // 安全前提（在 canonical 等价校验兜底之上，再前置筛除明显不可上提者）：
+    //   - 仅作用于顶层块（ast.body）内的 LocalStatement；
+    //   - 别名头必须存在（priorAlias.dropLeading>0）且是顶层第一条 local；
+    //   - 待上提变量：单作用域（顶层）、未被闭包捕获、声明不在循环体内、
+    //     该变量在【别名头之后 ~ 自身声明之前】区间从不被读（前向 nil 健全性，由 canonical 复核）。
+    function foldDeclHoist(src, priorAlias, steps, rec, originalCode){
+      var priorDrop=(priorAlias && priorAlias.dropLeading)||0;
+      if(priorDrop<=0) return null;
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      if(!ast.body || ast.body.length<=priorDrop) return null;
+
+      // 别名头：顶层前 priorDrop 条语句中的最后一条 batched local（注入点）
+      var headerStmt=ast.body[priorDrop-1];
+      if(!headerStmt || headerStmt.type!=='LocalStatement' || !headerStmt.variables || !headerStmt.variables.length) return null;
+      // 头部 #init==#vars 才能安全在尾部追加 nil 占位（追加的 name 无对应 init → 自动 nil，
+      // 但若头部本身 #init<#vars 已有尾随 nil，我们仍可在最末追加 name；为简单起见要求 #init==#vars）。
+      if(!headerStmt.init || headerStmt.init.length!==headerStmt.variables.length) return null;
+      var headerEnd=headerStmt.range[1];
+      var headerNamesEnd=headerStmt.variables[headerStmt.variables.length-1].range[1]; // 最后一个变量名末尾
+
+      var info=analyze(ast);
+
+      // 顶层作用域 id
+      var topId=info.topScope.id;
+
+      // 循环范围（声明在循环体内的不上提）
+      var loopRanges=[];
+      (function collect(node){
+        if(!node||typeof node!=='object')return;
+        if(Array.isArray(node)){node.forEach(collect);return;}
+        if((node.type==='WhileStatement'||node.type==='RepeatStatement'||node.type==='ForNumericStatement'||node.type==='ForGenericStatement')&&node.range) loopRanges.push(node.range);
+        for(var k in node){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(node,k)) collect(node[k]); }
+      })(ast.body);
+      function inLoop(pos){ for(var i=0;i<loopRanges.length;i++){ if(pos>=loopRanges[i][0]&&pos<loopRanges[i][1]) return true; } return false; }
+
+      // 候选：顶层块内、别名头之后声明的 LocalStatement 里的变量绑定。
+      // 收集每条顶层 LocalStatement（在 header 之后）及其变量绑定。
+      var hoistVars=[];   // {binding, varNode, stmt, posInStmt}
+      var stmtSet=new Set();
+      for(var si=priorDrop; si<ast.body.length; si++){
+        var st=ast.body[si];
+        if(st.type!=='LocalStatement' || !st.variables || !st.init) continue;
+        if(st.init.length!==st.variables.length) continue;     // 多/少值截断，跳过整条
+        if(inLoop(st.range[0])) continue;
+        for(var vi=0; vi<st.variables.length; vi++){
+          var vn=st.variables[vi];
+          if(vn.type!=='Identifier') continue;
+          var b=info.varOf.get(vn);
+          if(!b) continue;
+          if(b.scope.id!==topId) continue;       // 仅顶层
+          if(b.captured) continue;               // 被闭包捕获不上提（捕获语义复杂）
+          if(b.decls.length!==1) continue;
+          hoistVars.push({binding:b, varNode:vn, stmt:st, posInStmt:vi});
+          stmtSet.add(st);
+        }
+      }
+      if(!hoistVars.length) return null;
+
+      // 为避免与别名头重名：收集头部现有名字 + 全局名（保守）。上提的变量名都来自既有局部，
+      // 它们已与头部别名经过 planAll 的统一着色不冲突，这里仅防御性检查不重复追加同名。
+      var headerNames=new Set();
+      headerStmt.variables.forEach(function(v){ if(v.type==='Identifier') headerNames.add(v.name); });
+
+      // 生成候选 edits：
+      //  ① 头部名列表尾部追加 `,X1,X2,...`（每个待上提变量名，去重）；不加 init（自动 nil）。
+      //     但 Lua 要求 #init<=#vars 时尾随变量为 nil——合法。为保险，头部保持原样仅加名字。
+      //  ② 每条待降级 LocalStatement：若其【所有】变量都被上提 → 去掉 'local '（变为赋值序列，
+      //     但多变量 local 去掉 local 后是 `A,T=v1,v2` 多重赋值，仍合法且等价）；
+      //     若仅部分变量被上提（这里全部上提，因为我们收集了该 stmt 的所有合格变量；
+      //     若有不合格变量则不能简单去 local）——需逐条判断。
+      var appendNames=[];
+      var appendSeen=new Set();
+      var edits=[];
+      var hoistCount=0;
+
+      // 按语句聚合
+      var byStmt=new Map();
+      hoistVars.forEach(function(h){ if(!byStmt.has(h.stmt)) byStmt.set(h.stmt, []); byStmt.get(h.stmt).push(h); });
+
+      var abort=false;
+      byStmt.forEach(function(list, st){
+        if(abort) return;
+        // 只有当该 LocalStatement 的【全部】变量都在候选里，才能整体去掉 'local '。
+        if(list.length!==st.variables.length) return;   // 部分变量不合格 → 跳过该条（保守）
+        // 头部追加这些名字
+        list.forEach(function(h){
+          if(!appendSeen.has(h.binding.name) && !headerNames.has(h.binding.name)){
+            appendSeen.add(h.binding.name); appendNames.push(h.binding.name);
+          } else if(headerNames.has(h.binding.name)){
+            abort=true;   // 与头部已有名字冲突，放弃整次（罕见）
+          }
+        });
+        // 去掉该语句的 'local '（前 6 字）。降级后为 `A=v` 或 `A,T=v1,v2`（多重赋值，合法）。
+        if(src.slice(st.range[0], st.range[0]+6)!=='local ') { abort=true; return; }
+        edits.push({start:st.range[0], end:st.range[0]+6, name:''});
+        hoistCount+=list.length;
+      });
+      if(abort || !appendNames.length) return null;
+
+      // 头部名列表尾部注入 `,X1,X2,...`
+      edits.push({start:headerNamesEnd, end:headerNamesEnd, name:','+appendNames.join(',')});
+
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      // 真·Lua 语法
+      if(luaValidate && luaValidate(candidate)) return null;
+      // canonical 等价（借助 forward-nil 归一）
+      var ok=false;
+      try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
+      if(!ok) return null;
+      assertParses(candidate, '阶段1.7b/语法', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7b/等价', steps);
+      if(rec) rec('声明上提(提交)', src.length, candidate.length, '上提 '+hoistCount+' 个变量到别名头并降级其 local');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
     // 删除重复的局部声明
     function removeDuplicateLocalDecls(code){
       // 匹配local声明：支持成员访问(X.Y)、索引(X[Y])、字符串('...')
@@ -2409,6 +2536,13 @@
             if(localRes2){ current = localRes2.code; report.stages.push({name:'1.4-local合并(二次)', code:current, len:current.length}); }
           }
           report.stages.push({name:'1.7-变量复用', code:current, len:current.length});
+
+          // 阶段 1.7b：声明上提（前向 nil 合并）。借助 canonical 的死前向声明归一可严格验证。
+          var hoistRes = foldDeclHoist(current, activeAliasMap, steps, rec, code);
+          if(hoistRes){
+            current = hoistRes.code;
+            report.stages.push({name:'1.7b-声明上提', code:current, len:current.length});
+          }
         }
 
         // 阶段 1.1：去除注释（在所有重命名完成后执行，避免位置偏移）
