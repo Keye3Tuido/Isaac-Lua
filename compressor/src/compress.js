@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot;
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
@@ -118,6 +118,15 @@
             current = splitRes.code;
           }
           report.stages.push({name:'1.6-多赋值拆分', code:current, len:current.length});
+        }
+
+        // 阶段 1.6b：if-not 二择（去 not + 对调分支体）。canonical 的 if-not 归一可严格验证。
+        if(doRename){
+          var ifnotRes = foldIfNot(current, activeAliasMap, steps, rec, code);
+          if(ifnotRes){
+            current = ifnotRes.code;
+          }
+          report.stages.push({name:'1.6b-if-not二择', code:current, len:current.length});
         }
 
         // 阶段 1.7：变量复用（活跃区间不重叠则共享名并省 local；SSA 等价校验 + 缩短闸门）
