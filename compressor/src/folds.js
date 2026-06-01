@@ -960,10 +960,11 @@
       return code;
     }
 
-    // ---------- if-not 二择（去 not + 对调分支体） ----------
-    // `if not C then A else B end` → `if C then B else A end`，省一个 `not`（约 4 字含空格）。
+    // ---------- if-not 二择（去 not + 按奇偶对调分支体） ----------
+    // `if not C then A else B end` → `if C then B else A end`（省一个 `not`）。
+    // 推广到连续若干 not：剥光全部前导 not；not 个数为奇 → 分支对调，偶 → 分支不动（如 `not not c`）。
     // 仅处理恰好两分支（if + else、无 elseif）、且 if 条件顶层是一元 `not` 的语句。
-    // C 只求值一次、对调分支不改变语义；canonical 的 if-not 归一可严格验证。
+    // C 只求值一次、奇偶对调不改语义；canonical 的 if-not 归一可严格验证。
     // 严格"只缩短"闸门 + 真·Lua 语法 + canonical 等价，三关全过才提交，否则回退。
     function foldIfNot(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
@@ -978,20 +979,25 @@
            && n.clauses[0].condition && n.clauses[0].condition.type==='UnaryExpression'
            && n.clauses[0].condition.operator==='not' && n.range){
           var c0=n.clauses[0], c1=n.clauses[1];
-          var arg=c0.condition.argument;
-          if(arg && arg.range){
-            var condText=src.slice(arg.range[0], arg.range[1]);   // 去掉 not 后的条件
+          // 剥光全部前导 not，记个数
+          var notCount=0, inner=c0.condition;
+          while(inner && inner.type==='UnaryExpression' && inner.operator==='not'){ notCount++; inner=inner.argument; }
+          if(inner && inner.range){
+            var condText=src.slice(inner.range[0], inner.range[1]);   // 去掉全部 not 后的条件
             var aBody=c0.body||[], bBody=c1.body||[];
             var aText = aBody.length ? src.slice(aBody[0].range[0], aBody[aBody.length-1].range[1]) : '';
             var bText = bBody.length ? src.slice(bBody[0].range[0], bBody[bBody.length-1].range[1]) : '';
-            // 重建：if <cond> then <B> else <A> end（分支体对调）。空体则该段留空。
-            var rebuilt = 'if '+condText+' then '+bText+' else '+aText+' end';
+            // 奇数个 not → 对调（then=B, else=A）；偶数个 → 不对调（then=A, else=B）
+            var thenText = (notCount%2===1) ? bText : aText;
+            var elseText = (notCount%2===1) ? aText : bText;
+            var rebuilt = 'if '+condText+' then '+thenText+' else '+elseText+' end';
             edits.push({start:n.range[0], end:n.range[1], name:rebuilt});
           }
         }
         for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
       })(ast.body);
       if(!edits.length) return null;
+
 
       var candidate=applyEdits(src, edits);
       if(candidate.length>=src.length) return null;            // 只缩短才提交
