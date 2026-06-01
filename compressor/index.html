@@ -148,6 +148,13 @@
 
 <script src="luaparse.js"></script>
 <script src="fengari-web.js"></script>
+<!-- LuaMin 核心：先加载各 src/ 模块（自注册到 window.__LuaMinParts），再加载 core.js 工厂 -->
+<script src="src/analyze.js"></script>
+<script src="src/plan.js"></script>
+<script src="src/encode.js"></script>
+<script src="src/canonical.js"></script>
+<script src="src/folds.js"></script>
+<script src="src/compress.js"></script>
 <script src="core.js"></script>
 <script>
 (function(){

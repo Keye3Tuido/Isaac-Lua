@@ -14,7 +14,18 @@
 
 ## 使用
 
-双击打开 `index.html` 即可：粘贴代码 → 点「压缩」→ 复制结果。纯静态，文件自带 `luaparse.js`（解析器）、`fengari-web.js`（真·Lua 5.3 VM）与 `core.js`（压缩核心），用 `file://` 直接打开就能跑，无需服务器/构建/联网。
+双击打开 `index.html` 即可：粘贴代码 → 点「压缩」→ 复制结果。纯静态，文件自带 `luaparse.js`（解析器）、`fengari-web.js`（真·Lua 5.3 VM）与压缩核心，用 `file://` 直接打开就能跑，无需服务器/构建/联网。
+
+> **压缩核心的代码结构**（便于维护，按职责拆分；无需构建步骤）：
+> - `core.js`：词法器（`lex`/`needSpace`）+ `create()` 工厂。`create()` 构造共享上下文 `C`，依序运行各模块"安装器"（把函数挂到 `C`），最后导出 API。
+> - `src/analyze.js`：`parse` / `analyze`（作用域解析）/ 全局名收集 / 候选短名 / 成员访问收集。
+> - `src/plan.js`：`planAll`（统一规划：重命名+全局/成员折叠+仿射因子+透明别名消解）/ `buildDeclParts` / `affixCandidate` / `applyEdits`。
+> - `src/encode.js`：`removeComments` / `minimizeSpacing`（间隔符最小化+分号消除）/ `applyEncoding`。
+> - `src/canonical.js`：`canonical`（SSA 版本化归一 + 各等价归一）/ `assert*` 校验。
+> - `src/folds.js`：`preprocess` + 各"只缩短才提交"折叠/复用/上提 pass。
+> - `src/compress.js`：`compress`（流水线编排 + 双流水线取短）。
+>
+> 加载方式：浏览器由 `index.html` 依序 `<script>` 引入 `src/*.js`（自注册到 `window.__LuaMinParts`）后再引入 `core.js`；Node 则由 `core.js` 在 `create()` 内 `require` 各 part。两条路径产出完全一致。`tests/snapshot.js --check` 对全部语料做字节级回归比对，是改动核心时的安全网。
 
 界面只显示输入字符数、输出字符数与压缩比；出错时显示拒绝原因。
 
@@ -105,6 +116,8 @@ node tests/bench.js      # 正常格式代码的压缩率演示
 node tests/test_incremental.js     # 增量压缩测试：验证单条vs合并压缩
 node tests/test_transparent_elision.js  # 透明别名消解（变量值追踪+别名替换）专项测试
 node tests/test_canonical_fwdnil.js # canonical 死前向声明归一专项（5 正例 + 6 负例）
+node tests/snapshot.js          # 全语料压缩结果基线快照（首次生成基线）
+node tests/snapshot.js --check  # 与基线字节级比对：输出变长/由可压缩变报错即 FAIL（改动核心的安全网）
 ```
 
 **注**：所有测试脚本在压缩前会先去除输入中的注释（通过 `removeComments` 辅助函数），确保测试结果反映的是对代码本身的优化效果，而不是被"去除注释"这一操作所掩盖。这样可以准确测量压缩器在结构性折叠、变量重命名、间隔符最小化等方面的真实效果。
