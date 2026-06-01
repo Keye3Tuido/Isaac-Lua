@@ -369,22 +369,28 @@
           case 'ReturnStatement': return {type:'Return', args:(st.arguments||[]).map(normExpr)};
           case 'IfStatement': {
             // if-not 二择归一：`if not C then A else B end` ≡ `if C then B else A end`。
-            // 仅当恰好两个 clause（一个带条件的 if + 一个无条件的 else）、且 if 条件是【一元 not】时，
-            // 把它归一到"去掉 not、两分支对调"的标准形。两种写法经此归一后收敛同一形态，
-            // 从而"去 not 换分支体"优化可被严格验证。
-            // 安全约束：必须有 else（否则无可对调的分支）；条件顶层必须是 `not <X>`（非 `not a and b`
-            //   这类——其顶层是 and/or，不匹配）；只剥一层 not（`not not c` 归一后条件是 `not c`，
-            //   与裸 `c` 不同，故不会误并）。C 只求值一次，对调分支不改变语义。
+            // 推广到【条件顶层是连续若干个 not】：剥光全部前导 not，按 not 个数的奇偶决定是否对调分支——
+            //   偶数个（如 `not not c`）：if 条件本就只看真假，双否抵消 → 去掉全部 not、分支不动；
+            //   奇数个（如 `not c` / `not not not c`）：去掉全部 not、两分支对调一次。
+            // 三种写法（`if c`、`if not not c`、`if not c`-对调）经此归一收敛同形，使"去 not(换分支)"可严格验证。
+            // 安全约束：必须恰好两 clause（if+else，无 elseif，否则无可对调的分支）；
+            //   只在【if 条件】这一布尔语境里抵消 not（值语境的 `not not x` 会强制成布尔，语义不同，不在此处理）；
+            //   被剥的 not 必须层层都是一元 not（顶层是 `not a and b` 这类则不匹配，因为顶层是 and/or）。
+            //   C 只求值一次，奇偶对调不改变语义。
             var ifClauses = st.clauses;
             if(ifClauses && ifClauses.length===2
                && ifClauses[0].type==='IfClause' && ifClauses[1].type==='ElseClause'
                && ifClauses[0].condition && ifClauses[0].condition.type==='UnaryExpression'
                && ifClauses[0].condition.operator==='not'){
-              var inner = ifClauses[0].condition.argument;
-              // 重建为：if <inner> then <else-body> else <if-body> end
+              var notCount=0, inner=ifClauses[0].condition;
+              while(inner && inner.type==='UnaryExpression' && inner.operator==='not'){ notCount++; inner=inner.argument; }
+              var ifBody=ifClauses[0].body, elseBody=ifClauses[1].body;
+              // 奇数个 not → 对调分支；偶数个 → 分支不动。两者都用剥光 not 的 inner 作条件。
+              var thenBody = (notCount%2===1) ? elseBody : ifBody;
+              var elsBody  = (notCount%2===1) ? ifBody  : elseBody;
               ifClauses = [
-                {type:'IfClause', condition: inner, body: ifClauses[1].body},
-                {type:'ElseClause', body: ifClauses[0].body}
+                {type:'IfClause', condition: inner, body: thenBody},
+                {type:'ElseClause', body: elsBody}
               ];
             }
             // 分支：各 clause 从当前版本快照出发；分支后对"任一分支重定义过的 binding"提升到新版本（合并点）
