@@ -43,64 +43,72 @@ local A,M=Isaac.AddCallback,ModCallbacks A({},M.MC_POST_UPDATE,func1)A({},M.MC_P
 
 ---
 
+### 智能声明合并（阶段1.7b 声明上提，待办 #3）✓
+- **对应原待办项 #3（智能声明合并）。**
+- **效果**：多回调用例 `test_multi_callback.js` 从 **186 → 177 字符**（压缩率 29.81% → 33.21%）；bulktest 全量**净省 1788 字节**且零回归。
+
+**两步实现**：
+
+1. **canonical 死前向声明归一（forward-nil elimination，奠基）**：识别 `local v=nil`（或缺省 init）后、`v` 在到达其【同块首次赋值】前从不被读（含闭包捕获、嵌套块读取）的"死前向声明"。canonical 归一时**删除该 nil 声明且不 bumpDef**，使首次赋值成为 v0——于是 `local v=nil ...(不读v)... v=e` 与 `...(不读v)... local v=e` 收敛同一标准形。健全性前提 P1–P5（单声明 / 同块 / 赋值为单或可拆多目标 / 区间不读 v / RHS 不读 v）。该归一对两侧一致施加，外部校验脚本（原始侧不传 aliasMap）也收敛。新增 `tests/test_canonical_fwdnil.js`（5 正例 + 6 负例，含"区间读 v""闭包捕获""自引用"等不可消除反例）。
+
+2. **阶段 1.7b 声明上提变换**：把顶层块内、声明在别名头之后的局部变量上提到别名头（作为前向 nil 占位），并把其 `local X=v` 降级为赋值 `X=v`。多变量 `local A,T=v1,v2` 整体降级为多重赋值后，再跑一次多赋值拆分兑现尾值贴紧。借助上面的 forward-nil 归一，这类变换可被 canonical **严格验证**。三关闸门：只缩短 + 真·Lua 语法 + canonical 等价，任一不过回退。
+
+- **测试状态**：全套件 + bulktest 596/602（与基线一致，零回归）。
+
+
+---
+
 ## 未完成的优化需求
 
 ### 目标：多回调场景进一步优化
 **改动前**：204 字符
-**当前状态**：186 字符（透明别名消解已落地，见上文"已完成"）
+**当前状态**：177 字符（透明别名消解 + 声明上提均已落地，见上文"已完成"）
 **理想状态**：169 字符
-**剩余差距**：17 字符（仅剩下方"智能声明合并"一项未做）
+**剩余差距**：8 字符（受 sound 性边界阻挡，见下文）
 
 ### 测试用例
 ```lua
 // 改动前压缩结果（204字符）
 l local a,b,c=Isaac,ModCallbacks,'AddCallback'a[c]({},b.XXX,func,arg)local A,M=a[c],b;A({},M.XXX,func,arg)local A,M,T=a[c],b,{}A(T,M.XXX,func,arg)local M,A=b,function(...)a[c]({},...)end;A(M.XXX,func,arg)
 
-// 当前压缩结果（186字符，M 已被消解，M.XXX→b.XXX）
-l local a,b,c=Isaac,ModCallbacks,'AddCallback'a[c]({},b.XXX,func,arg)local A=a[c];A({},b.XXX,func,arg)local A,T=a[c],{}A(T,b.XXX,func,arg)A=function(...)a[c]({},...)end;A(b.XXX,func,arg)
+// 当前压缩结果（177字符，M 已消解 + 声明上提 A,T 到别名头）
+l local a,b,c,A,T=Isaac,ModCallbacks,'AddCallback'a[c]({},b.XXX,func,arg)A=a[c];A({},b.XXX,func,arg)A=a[c]T={}A(T,b.XXX,func,arg)A=function(...)a[c]({},...)end;A(b.XXX,func,arg)
 
 // 理想压缩结果（169字符）
 l local a,b,c,T,A=Isaac,ModCallbacks,'AddCallback',{}A=a[c]a[c]({},b.XXX,func,arg)A({},b.XXX,func,arg)A(T,b.XXX,func,arg)A=function(...)a[c]({},...)end;A(b.XXX,func,arg)
 ```
 
-### 仍待实现：智能声明合并（原 #3）
+### 已落地：智能声明合并（声明上提，原 #3）✓
 
-**问题**：消解 `M` 后，仍有多条 `local A=...` / `local A,T=...` 声明。`A` 在每条里都被重新声明（占一个 `local ` 关键字），`T` 只在中间一条出现。理想做法是把首次出现的变量 `A`、`T` 上提到开头那条 batched `local`，后续位置降级为普通赋值。
+见上文"已完成"区。多回调用例 186 → 177，bulktest 全量净省 1788 字节，零回归。
 
-```lua
-// 当前（每条 local A 各占一个 local 关键字）
-local a,b,c=Isaac,ModCallbacks,'AddCallback' ... local A=a[c] ... local A,T=a[c],{} ... A=function(...)...end
+#### 探索记录（实测结论 + 落地后更新）
 
-// 理想（A、T 上提到首条；后续 A= 为重新赋值）
-local a,b,c,T,A=Isaac,ModCallbacks,'AddCallback',{} A=a[c] ... A=a[c] ... A=function(...)...end
-```
-
-**需求**：
-- 识别"部分重叠"的多条 local（不是完全相同的声明）。
-- 把首次出现的变量提取到第一条 batched 声明（搭顺风车省 `local ` 关键字）。
-- 处理后续重新赋值的情况（`local A=` 降级为 `A=`）。
-- **必须保持语义等价**：合并改变 Lua 的变量版本语义（每个 `local` 创建新版本），需在 `planAll` 阶段规划，并让 `canonical` 的 SSA 版本化归一能够验证——这是前序尝试 #1 失败的核心难点。可参考已落地的"透明别名消解"如何在 `canonical` 内置双侧一致归一。
-
-#### 探索记录（2026-06-01，实测结论）
-
-为找最小可行切口，对 `canonical` 做了若干等价性探针，结论如下：
-
-| 变换形态 | canonical 可验证？ | 说明 |
+| 变换形态 | canonical 可验证？ | 状态 |
 |---|---|---|
-| `local A=v`（shadow 重声明）→ `A=v`（降级赋值） | ✅ 可验证 | `foldReuse` 已对**单变量** local 实现 |
-| `local A,T=v1,v2`（A 是 shadow）→ `A=v1 local T=v2`（拆分 + 降级 A） | ✅ 可验证 | 拆分后求值序一致，SSA 等价成立 |
-| 前向声明为 nil：`local x,y=1 ... y=2` ≡ `local x=1 ... local y=2` | ❌ 不可验证 | canonical 按语句**位置**比较；前向 `=nil` 多一条 LocalDecl + 版本号错位 |
-| 把 `T={}` 上提到开头 batched local | ❌ 不可验证 | `{}` 的**求值时机**前移，canonical 按位置比较判负 |
+| `local A=v`（shadow 重声明）→ `A=v`（降级赋值） | ✅ | `foldReuse` 早已实现（单变量） |
+| `local A,T=v1,v2`（A 是 shadow）→ 拆分降级 | ✅ 但全局净负 | 已试并**回退**：bulktest 净增 1670 字节，局部贪心收益不组合 |
+| 前向声明为 nil：`local x,y=1 ... y=2` ≡ `local x=1 ... local y=2` | ✅ **现已可验证** | 已实现 canonical 死前向声明归一（P1–P5 + 多目标支持） |
+| 声明上提（变量上提别名头 nil 占位 + 降级 local） | ✅ **现已可验证** | 阶段 1.7b 已落地，186→177，净省 1788 字节 |
 
-**已尝试并放弃：多变量 local 拆分降级**（上表第 2 行）。虽然单段内能省 `local ` 关键字且通过等价校验，但实测在 bulktest 全量上**净增 1670 字节**——拆出的 `local T=` 往往无法像原 batched 形被 `foldLocals` 重新合并得那样好，局部贪心收益不能组合。遵循"只缩短才提交"的**全局**口径，已回退该改动。多回调用例用此法仅 186→185（省 1 字），不抵全局损失。
+#### 剩余 8 字（177 → 169）：受 sound 性边界阻挡，暂不实现
 
-**通往理想 169 的真正前提**：需要"前向声明为 nil + 后续赋值"这一形态可被 canonical **可靠且 sound 地**判等。其 sound 前提是：被前向声明的变量在"nil 声明点 → 首次真实赋值点"之间**从不被读**（否则读到的是 nil 而非编译期不同变量）。这要求在 canonical 里实现"dead-nil 前向声明消除"归一，且必须对两侧一致施加、不误判——风险高（一旦 sound 性破损会危及整个压缩器的"绝不输出未验证代码"保证）。这是 #3 的核心难点，**留待后续在充分的等价性测试护栏下单独实现**，不在本轮强行落地以免引入不可证变换。
+理想 169 相对当前 177 还差两处，都触及**冗余存储消除（redundant-store elimination）**：
+
+1. 去掉重复的 `A=a[c]`（seg2 已 `A=a[c]`，seg3 又 `A=a[c]`，其间 `A` 未被改写）。
+2. 把 `T={}` 的值直接放进别名头（`,T,A=...,{}`），而非 seg3 里 `T={}`。
+
+**为何暂不做**：消除第二个 `A=a[c]` 需证明"重新求值 `a[c]` 与复用 A 中旧值等价"。但 `a[c]` 是**索引表达式**，理论上可能触发 `__index` 元方法副作用，**静态不可证纯**——因此对索引表达式做冗余存储消除**在一般情况下不 sound**。实测 `canonical(177 形) === canonical(173 形)` 返回 **false**（当前归一正确地拒绝判等）。理想 169 实际上隐含了"`a[c]` 为纯"这一**不可证假设**，属于"手写者凭语境知道安全、机器无法证明"的技巧——本压缩器的设计红线是"只做可机器证明等价的变换"，故不追求该 8 字。
+
+**若将来要安全拿下这 8 字**，可行方向（需各自的等价护栏）：
+- 仅对 **纯局部变量直读**（如 `A=x` 其中 x 是局部、非 index/call/member）做冗余存储消除——这类重新求值确定无副作用，可 sound 实现；index/call/member 一律排除。
+- 值放进别名头需要"上提带初值"，而非仅 nil 占位——同样受求值时机前移的 sound 性约束（只有无副作用且无顺序依赖的初值才安全）。
 
 ---
 
-## 失败的尝试总结（历史教训，已被"透明别名消解"方案吸收）
+## 失败的尝试总结（历史教训，已被后续方案吸收）
 
-> 下列尝试针对的"变量值追踪 + 别名替换"（原 #1/#2）已在上文以"透明别名消解"方案落地。保留这些教训用于指导剩余的"智能声明合并"（#3）。
+> 原 #1/#2 已由"透明别名消解"落地，#3 已由"声明上提 + canonical 死前向声明归一"落地。保留教训供后续冗余存储消除参考。
 
 ### 尝试1：阶段1.10.5 - 跨声明变量合并
 **方法**：AST分析，识别多个声明中的重复变量并删除  
