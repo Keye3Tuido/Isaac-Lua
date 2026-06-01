@@ -116,6 +116,15 @@
   .diff-legend{font-size:10px;color:var(--muted);font-family:var(--hud);margin-bottom:6px;}
   .diff-legend ins{background:rgba(58,140,94,.22);color:#9fe0b6;text-decoration:none;padding:0 4px;border-radius:2px;}
   .diff-legend del{background:rgba(163,30,30,.22);color:#e88;text-decoration:line-through;padding:0 4px;border-radius:2px;}
+  /* 最后阶段：纯说明（受静态审查限制刻意不实现的优化） */
+  .stage-item.info{border-style:dashed;border-color:var(--line-2);opacity:.92;}
+  .stage-item.info .stage-name{color:var(--muted);}
+  .stage-item.info .stage-note{color:var(--muted);font-family:var(--hud);font-size:11px;}
+  .stage-note-body{display:none;margin-top:8px;padding:8px;background:#0a0806;border:1px dashed var(--line-2);border-radius:4px;font-size:11px;line-height:1.6;color:#b8a890;}
+  .stage-item.info.expanded .stage-note-body{display:block;}
+  .stage-note-body ul{margin:0;padding-left:18px;}
+  .stage-note-body li{margin:4px 0;}
+  .stage-note-body code{font-size:11px;padding:0 4px;}
 
 </style>
 </head>
@@ -319,6 +328,26 @@
           prevLen=stage.len;
           prevCode=stage.code;
         });
+
+        // 最后阶段：纯说明——受静态审查限制刻意不实现的优化（点击展开看原因）
+        var info=document.createElement('div');
+        info.className='stage-item info expandable';
+        var ihead=document.createElement('div');
+        ihead.className='stage-header';
+        ihead.innerHTML='<span class="stage-name">最后阶段 · 受静态审查限制（刻意不实现）</span><span class="stage-note">仅说明<span class="stage-expand"></span></span>';
+        info.appendChild(ihead);
+        var ibody=document.createElement('div');
+        ibody.className='stage-note-body';
+        ibody.innerHTML=''
+          +'<div>以下优化依赖运行时语义、静态不可证等价，强行做会破坏"绝不输出未验证代码"的红线，故流水线止步于上方：</div>'
+          +'<ul>'
+          +'<li><b>冗余存储消除</b>（如重复 <code>A=a[c]</code>、提取重复的 <code>b.XXX</code>）：重新求值索引/调用/成员可能触发 <code>__index</code>/<code>__call</code> 等元方法副作用，静态不可证"纯"。</li>'
+          +'<li><b>带副作用初值的上提/重排</b>：只有纯字面量/空表可安全重定位；<code>{x}</code>、函数调用、索引读不可。</li>'
+          +'<li><b>依赖人工语义判断的技巧</b>（<code>if not</code> 换分支体、跨段提全局助手、命名空间表设计等）：自动化易误伤，仅作人工压缩参考。</li>'
+          +'</ul>';
+        info.appendChild(ibody);
+        info.onclick=function(){ info.classList.toggle('expanded'); };
+        $stages.appendChild(info);
       }
     }catch(e){
       $out.value=''; $badge.className='badge err'; $badge.textContent='已拒绝'; $outStat.textContent='';
