@@ -1,132 +1,88 @@
 # LuaMin 测试报告
 
-> 生成时间: 2026-06-01  
-> 提交: 修复透明别名优化导致的等价性检查失败
+> 生成时间: 2026-06-01
+> 范围: 透明别名消解（变量值追踪 + 别名替换）落地 + 阶段1.10 重复声明删除安全闸门修复
 
 ## 测试套件概览
 
 | 套件 | 命令 | 用例数 | 通过 | 说明 |
 |------|------|--------|------|------|
-| unit    | `node tests/test.js`       | 69  | 69 | 作用域/遮蔽/全局保护/前缀/拒绝/真实片段 |
-| edge    | `node tests/edge.js`       | 40  | 40 | 数字-关键字-运算符边界、goto、varargs、:method |
-| incr    | `node tests/test_incremental.js` | 3 | 3 | 增量压缩测试 |
-| real    | `node tests/realtest.js`   | 255 | 255 | 逐段压缩 (Isaac 项目) |
-| real    | `node tests/realtest.js`   | 33  | 33 | 合并全段压缩 (Isaac 项目) |
-| remote  | `node tests/remotetest.js` | 4   | 4  | 远程模组整文件压缩 |
-| **合计** |                            | **404** | **404** | **100%** |
+| unit       | `node tests/test.js`                  | 69  | 69  | 作用域/遮蔽/全局保护/前缀/拒绝/真实片段 |
+| edge       | `node tests/edge.js`                  | 40  | 40  | 数字-关键字-运算符边界、goto、varargs、:method |
+| incr       | `node tests/test_incremental.js`      | 3   | 3   | 增量压缩测试（单条 vs 合并） |
+| elision    | `node tests/test_transparent_elision.js` | 5 | 5 | 透明别名消解专项（多回调/单别名/三相同/别名链/重新赋值） |
+| real(逐段) | `node tests/realtest.js`              | 255 | 255 | Isaac 项目 33 个 .lua 内全部 `l` 段逐段压缩 + 等价复核 |
+| real(合并) | `node tests/realtest.js`              | 33  | 33  | Isaac 项目按文件合并全段压缩 + 等价复核 |
+| remote     | `node tests/remotetest.js`            | 4   | 4   | 远程模组整文件压缩 + 等价复核（缓存于 .remote-cache/） |
+| **合计**   |                                       | **409** | **409** | **100%** |
 
-## 重要修复
+所有用例均通过真·Lua 5.3 `load()` 语法校验 + luaparse 复核 + SSA 版本化 AST 等价校验。
 
-### 透明别名优化已修复
+## 本轮主要改动
 
-透明别名合并优化（commit 279b9cb）在复杂场景下导致等价性检查失败，现已修复并启用。
+### 1. 透明别名消解（阶段1.1，对应待办 #1 变量值追踪 + #2 别名替换）
 
-**问题原因**：
-同名冲突检测不完整。当顶层作用域存在多个同名binding时，canonical函数只使用变量名无法区分它们，导致等价性检查失败。
+在 `planAll`（结构规划阶段）实现 copy-propagation：识别**只读、从不被赋值、init 溯源到从不被赋值全局**的局部别名（含 `local g=Global; local h=g` 的链式溯源到不动点），把对它的所有使用重定向到全局折叠别名（`M.XXX` → `b.XXX`），并删除该别名的声明项。
 
-**修复方案**：
+- **安全判定**：按名归并（同名 binding 必须全部是同一全局的透明别名，规则 R1）+ 单声明单别名、位置对齐（规则 R2）。
+- **等价校验（非旁路）**：`canonical` 内置"透明别名归一"，把只读别名读还原为源全局读、删除其声明；该归一对压缩前/后**双侧自动一致施加**（无需传别名映射），因此 `realtest`/`remotetest`/`bulktest`（原始侧不传映射）也严格收敛。移除了旧版"有透明别名就跳过语义校验"的危险旁路。
+- **只缩短才提交**：`compress` 跑启用/禁用消解两条流水线取更短者（消解在"多条完全相同声明"等形态下反更长，退回阶段1.10 去重）。
+- **效果**：`test_multi_callback.js` 204 → 186 字符（压缩率 23.02% → 29.81%）。
 
-1. 在透明别名识别阶段收集顶层作用域所有binding的名字统计
-2. 只有当binding的名字在顶层作用域唯一时，才将其识别为透明别名
-3. 添加对`info.topScope`的存在性检查，处理简单代码片段的边界情况
+### 2. 阶段1.10 重复声明删除：补安全闸门（修复既有正确性 bug）
 
-**修复结果**：
+阶段1.10 是正则后处理，运行在最后一次 AST 等价校验**之后**，canonical 无法建模其语义。修复前它只有"只缩短"长度判断，缺少语法校验，会在跨语句误删时输出 **broken Lua**（`compress` 仍报成功）。本轮加入：删除后真·Lua `load()` 语法复核 + luaparse 复核，任一不满足回退到删除前快照；并修正了回退路径（旧版 `slice(0,beforeDedup)` 会产出残缺代码）。
 
-- realtest.js 保持 255/255 + 33/33 全部通过
-- 所有测试套件（404个用例）100%通过
-- 透明别名优化正常工作，提供额外的压缩收益
+- 此修复消除了 8 个 bulktest 输出级语法错误（这些文件在改动前 `compress` 报成功但输出不可解析）。
 
-## 批量开源项目测试
+## 批量开源项目测试（bulktest）
 
-自动克隆 19 个知名 Lua 开源项目（4 个克隆失败/无 Lua 文件），**609 个 .lua 文件 (3.7MB)** 全量压缩 + 语法验证。
+自动克隆约 20 个知名 Lua 开源项目（个别仓库归档/无 .lua 文件跳过），**609 个 .lua 文件 (3.7MB)** 全量压缩 + 输出语法验证。
 
-| 项目 | 文件数 | 通过 | 失败 | 说明 |
-|------|--------|------|------|------|
-| penlight | 54 | 53 | 1 | config.lua 原始语法错误 |
-| busted | 52 | 51 | 1 | core.lua 结构阶段语法 |
-| ldoc | 33 | 33 | 0 | ✅ |
-| luacheck | 58 | 58 | 0 | ✅ |
-| microlight | 8 | 8 | 0 | ✅ |
-| moses | 2 | 2 | 0 | ✅ |
-| 30log | 16 | 16 | 0 | ✅ |
-| jumper | 25 | 23 | 2 | 原始输入语法错误 |
-| json-lua | 5 | 5 | 0 | ✅ |
-| middleclass | 3 | 3 | 0 | ✅ |
-| stateful | 1 | 1 | 0 | ✅ |
-| tween | 1 | 1 | 0 | ✅ |
-| sqlite-lua | 17 | 17 | 0 | ✅ |
-| lua-xml | 2 | 2 | 0 | ✅ |
-| ZeroBraneStudio | 234 | 233 | 1 | sha2.lua 原始语法错误 |
-| lapis | 87 | 86 | 1 | spec.lua 原始语法错误 |
-| lua-cjson | 3 | 3 | 0 | ✅ |
-| etlua | 1 | 1 | 0 | ✅ |
-| redis-lua | 7 | 7 | 0 | ✅ |
-| **合计** | **609** | **596** | **6** | **97.9%** |
-
-### 失败明细 (6 条，均为输入自身问题)
-
-| 文件 | 大小 | 原因 |
-|------|------|------|
-| penlight/lua/pl/config.lua | 6944B | 原始代码第80行 Lua 语法错误 |
-| busted/busted/core.lua | 9507B | 结构阶段重命名后语法异常 |
-| jumper/jumper/core/lookuptable.lua | 897B | 原始代码函数声明语法错误 |
-| jumper/specs/pathfinder_specs.lua | 10326B | busted 测试框架语法(非标准Lua) |
-| ZeroBraneStudio/lualibs/sha2.lua | 6531B | 原始代码 Lua 5.2 专有语法 |
-| lapis/lapis/cmd/templates/spec.lua | 3865B | busted 测试框架语法 |
-
-## 克隆失败的项目 (非压缩器问题)
-
-| 项目 | 原因 |
+| 指标 | 数值 |
 |------|------|
-| lua-argon2 | GitHub 仓库已归档/不可访问 |
-| lua-lru | GitHub 仓库已归档/不可访问 |
-| lua-path | GitHub 仓库已归档/不可访问 |
-| lua-gd | GitHub 仓库已归档/不可访问 |
-| luafilesystem (lfs) | 无 .lua 文件 (纯C库) |
+| 文件总数 | 609 |
+| 通过 | 596 |
+| 失败 | 6 |
+| 通过率 | 97.9% |
 
-## 压缩率
+### 失败明细（6 条，均非压缩器正确性问题）
 
-Isaac 项目 255 段 `l` 代码：
-- 输入总字符: 124,942
-- 输出总字符: 123,682
-- 节省: 1,260 字符 (1%)
+| 文件 | 大小 | 失败阶段 | 原因 |
+|------|------|----------|------|
+| penlight/lua/pl/config.lua | 6944B | 输入校验 | 原始文件非标准 Lua（第80行 `=` 处语法错误） |
+| busted/busted/core.lua | 9507B | 阶段1.1/语法 | 结构阶段已知边界（baseline d0c350f 即失败，与本轮改动无关） |
+| jumper/jumper/core/lookuptable.lua | 897B | 输入校验 | 原始文件函数声明语法错误 |
+| jumper/specs/pathfinder_specs.lua | 10326B | 输入校验 | busted 测试框架 DSL，非独立可 load 的 Lua |
+| zerobrane/lualibs/sha2.lua | 6531B | 输入校验 | 原始文件 Lua 5.2 专有语法 |
+| lapis/lapis/cmd/templates/spec.lua | 3865B | 输入校验 | busted 测试框架 DSL |
 
-## 透明别名优化压缩统计
+> 5 条为输入文件自身非标准 Lua（压缩器正确拒绝）；1 条（busted/core.lua）为结构阶段既有边界，与本轮改动无关。
 
-### 测试 1: test_merge_locals
+### 回归核验（三方对比）
 
-**单条压缩**:
-- [1] `local a=ModCallbacks`: 20 → 20 (0.00%)
-- [2] `local b=ModCallbacks`: 20 → 20 (0.00%)
-- [3] `function test1() return a.MC_POST_GAME_END end`: 46 → 45 (2.17%)
-- [4] `function test2() return b.MC_POST_RENDER end`: 44 → 43 (2.27%)
+对同一份缓存仓库分别用三个版本的 `core.js` 跑 bulktest（602 个有效文件子集口径）：
 
-**合并压缩**: 133 → 110 (17.29%)
+| 版本 | 通过 | 失败 |
+|------|------|------|
+| baseline `d0c350f` | 596 | 6 |
+| committed `HEAD`（含先前 stage1.10/别名链提交） | 588 | 14 |
+| 本轮工作树 | 596 | 6 |
 
-### 测试 2: test_incremental - case1
+- 本轮相对 committed HEAD：**0 新增失败，修复 8 个**（先前 stage1.10 引入的输出级 broken 代码）。
+- 本轮相对 baseline `d0c350f`：失败集**完全一致**（零回归），同时新增透明别名消解收益。
 
-**单条压缩**:
-- [1] `function add(x,y) return x+y end`: 32 → 31 (3.13%)
-- [2] `function sub(x,y) return x-y end`: 32 → 31 (3.13%)
-- [3] `function mul(x,y) return x*y end`: 32 → 31 (3.13%)
+## 压缩率（realtest，Isaac 项目）
 
-**合并压缩**: 98 → 95 (3.06%)
+逐段 255 段 `l` 代码：输入 124,978 → 输出 123,718（省 1,260 字符，约 1%）。
 
-### 测试 3: test_incremental - case2
+## 多回调场景（test_multi_callback.js）
 
-**单条压缩**:
-- [1] `local g=Game():GetRoom()`: 24 → 24 (0.00%)
-- [2] `local d=g:GetDoor(DoorSlot.LEFT0)`: 33 → 33 (0.00%)
-- [3] `if d then d:Open() end`: 22 → 21 (4.55%)
+| 阶段 | 字符数 | 压缩率 |
+|------|--------|--------|
+| 原始输入 | 265 | — |
+| 改动前压缩 | 204 | 23.02% |
+| 本轮压缩（透明别名消解） | 186 | 29.81% |
+| 理想目标（待实现"智能声明合并"） | 169 | 36.23% |
 
-**合并压缩**: 81 → 78 (3.70%)
-
-### 统计摘要
-
-| 指标 | 单条压缩 | 合并压缩 |
-|------|----------|----------|
-| 最低压缩率 | 0.00% | 3.06% |
-| 最高压缩率 | 4.55% | 17.29% |
-| 平均压缩率 | 1.84% | 8.02% |
-
-**结论**: 合并压缩的平均压缩率(8.02%)显著高于单条压缩(1.84%)，提升约4.4倍。
+剩余 17 字符差距对应待办 #3（智能声明合并），详见 `OPTIMIZATION_TODO.md`。
