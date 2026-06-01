@@ -15,3 +15,7 @@ compressor/tests/.remote-cache/
 
 # 批量测试克隆的第三方仓库（bulktest.js 自动下载，仅本地使用）
 compressor/tests/_bulk_test_repos/
+
+# 压缩结果快照（snapshot.js 生成的重构安全网基线，仅本地用于回归比对）
+compressor/tests/_snapshot.json
+compressor/tests/_snapshot_baseline.json
