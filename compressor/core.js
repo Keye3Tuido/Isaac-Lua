@@ -429,7 +429,31 @@
 
       // (a1) 识别透明别名：local X=GlobalVar 或 local X=LocalAlias 形式的局部变量
       // 只识别会被折叠的全局变量（globalCands）的别名
-      var transparentAliases={};
+      // 排除被重新赋值的变量（透明别名必须是只读的）
+      var assignedBindings=new Set();
+      (function collectAssigned(node){
+        if(!node||typeof node!=='object')return;
+        if(node.type==='AssignmentStatement'&&node.variables){
+          for(var i=0;i<node.variables.length;i++){
+            var target=node.variables[i];
+            if(target.type==='Identifier'){
+              var b=info.varOf.get(target);
+              if(b)assignedBindings.add(b);
+            }
+          }
+        }
+        for(var k in node){
+          if(k==='parent'||k==='scope')continue;
+          var child=node[k];
+          if(Array.isArray(child)){
+            for(var i=0;i<child.length;i++)collectAssigned(child[i]);
+          }else{
+            collectAssigned(child);
+          }
+        }
+      })(ast);
+
+      var transparentAliasBindings=new Map();
       var topScopeId=info.topScope.id;
       var globalCandNames=new Set();
       globalCands.forEach(function(g){globalCandNames.add(g.name);});
@@ -442,22 +466,30 @@
               if(!initExpr||initExpr.type!=='Identifier')continue;
               var b=info.varOf.get(v);
               if(!b||b.decls.length!==1||b.scope.id!==topScopeId)continue;
+              if(assignedBindings.has(b))continue;
               var initBinding=info.varOf.get(initExpr);
               if(initBinding===null){
-                // 直接引用全局变量，检查是否在globalCands中
                 var globalName=initExpr.name;
                 if(!globalCandNames.has(globalName))continue;
-                transparentAliases[b.name]=globalName;
+                transparentAliasBindings.set(b, globalName);
               }else{
-                // 引用局部变量，检查是否是透明别名的传递
-                if(transparentAliases[initBinding.name]){
-                  transparentAliases[b.name]=transparentAliases[initBinding.name];
+                var sourceGlobal=transparentAliasBindings.get(initBinding);
+                if(sourceGlobal){
+                  transparentAliasBindings.set(b, sourceGlobal);
                 }
               }
             }
           }
         }
       })(ast.body);
+
+      // 收集顶层作用域所有binding的名字统计，用于检测同名冲突
+      var topScopeNameCount=new Map(); // name -> count
+      if(info.topScope && info.topScope.bindings){
+        info.topScope.bindings.forEach(function(b){
+          topScopeNameCount.set(b.name, (topScopeNameCount.get(b.name)||0)+1);
+        });
+      }
 
       // (a2) 成员字段候选：obj.Field（仅 indexer '.'，改写为 obj[alias]，alias='Field'）
       //   原始每处 .Field = m+1；折叠每处 [x] = 3（x 单字母）；声明 x='Field' ≈ m+3（引号+等号）
@@ -551,6 +583,7 @@
 
       // (e) 汇总输出
       var edits=[];          // identNode -> 新名 的 token 级替换
+
       var aliasByName={};
       var memberByLocal={};
       var declNames=[], declVals=[];
@@ -565,18 +598,6 @@
           aliasByName[nd2.g.name]=nm2;
           declNames.push(nm2); declVals.push(nd2.g.name);
           nd2.g.nodes.forEach(function(node){edits.push({start:node.range[0],end:node.range[1],name:nm2});});
-          // 处理透明别名：将引用该全局变量的局部变量的使用也替换为别名
-          for(var localName in transparentAliases){
-            if(transparentAliases[localName]===nd2.g.name){
-              transparentAliases[localName]=nm2;
-              for(var bi=0;bi<bindings.length;bi++){
-                if(bindings[bi].name===localName){
-                  bindings[bi].uses.forEach(function(u){edits.push({start:u.range[0],end:u.range[1],name:nm2});});
-                  // 不要break，继续处理所有同名的binding
-                }
-              }
-            }
-          }
         }else{ // M：成员字段
           if(nm2===null) continue;
           memberByLocal[nm2]=nd2.mc.field;
@@ -588,24 +609,6 @@
         }
       }
 
-      // (f) 删除未使用的透明别名声明（单变量语句）
-      for(var localName in transparentAliases){
-        for(var bi=0;bi<bindings.length;bi++){
-          if(bindings[bi].name===localName){
-            var declNode=bindings[bi].decls[0];
-            (function findStmt(stmts){
-              for(var si=0;si<stmts.length;si++){
-                var st=stmts[si];
-                if(st.type==='LocalStatement'&&st.variables&&st.variables.length===1&&st.variables[0]===declNode){
-                  edits.push({start:st.range[0],end:st.range[1],name:''});
-                  return;
-                }
-              }
-            })(ast.body);
-            // 不要break，继续处理所有同名的binding
-          }
-        }
-      }
 
       // 仿射因子分解：对字符串字面量别名值，提取公共前缀/后缀，按总长度决定是否合并。
       // 需要避开所有已用名字：别名名 + 全部全局名 + 全部最终局部名。
@@ -613,6 +616,15 @@
       allGlobalNames.forEach(function(g){avoid.add(g);});
       for(var ai=0; ai<N; ai++){ if(nodes[ai].kind==='L'){ avoid.add(assigned[ai]||nodes[ai].b.name); } }
       var declParts = buildDeclParts(declNames, declVals, avoid);
+
+      // 将transparentAliasBindings转换为简单对象以便传递
+      // 检测同名冲突：只有当binding的名字在顶层作用域唯一时，才识别为透明别名
+      var transparentAliases={};
+      transparentAliasBindings.forEach(function(globalName, binding){
+        if(topScopeNameCount.get(binding.name)===1){ // 只有当该名字在顶层作用域唯一时才加入
+          transparentAliases[binding.name]=globalName;
+        }
+      });
 
       return {edits:edits, aliasByName:aliasByName, memberByLocal:memberByLocal,
               transparentAliases:transparentAliases,
@@ -842,8 +854,15 @@
         if(node.type==='Identifier' && varOf.has(node)){
           var b=varOf.get(node);
           if(b){
-            if(aliasLocalNames.has(b.name) && globalOfAlias.hasOwnProperty(b.name))
-              return {type:'Identifier', kind:'global', name:globalOfAlias[b.name]};
+            // 只还原全局折叠别名（byName），不还原透明别名（transparentAliases）
+            if(aliasLocalNames.has(b.name) && globalOfAlias.hasOwnProperty(b.name)){
+              var target = globalOfAlias[b.name];
+              // 检查target是否是透明别名（在transparentAliases中）
+              var isTransparent = transparentAliases && transparentAliases.hasOwnProperty(b.name);
+              if(!isTransparent){
+                return {type:'Identifier', kind:'global', name:target};
+              }
+            }
             // 字符串字面量别名：读 u 等价于读字符串字面量 'X'。归一为 StringLiteral 节点
             // （内容用 X，与 normExpr 在 StringLiteral 自然路径上的产出一致）。
             if(aliasLocalNames.has(b.name) && stringOfAlias.hasOwnProperty(b.name))
@@ -1980,6 +1999,35 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
+    // 删除重复的局部声明
+    function removeDuplicateLocalDecls(code){
+      // 匹配local声明：支持成员访问(X.Y)、索引(X[Y])、字符串('...')
+      var localPattern=/local\s+[A-Za-z_,]+=(?:[A-Za-z_]+(?:\.[A-Za-z_]+|\[[^\]]+\])?|'[^']*')(?:,(?:[A-Za-z_]+(?:\.[A-Za-z_]+|\[[^\]]+\])?|'[^']*'))* (?=[A-Z])/g;
+      var matches=[];
+      var match;
+      while((match=localPattern.exec(code))!==null){
+        matches.push({text:match[0], start:match.index, end:match.index+match[0].length});
+      }
+
+      // 识别重复的声明
+      var seen=new Set();
+      var toRemove=[];
+      matches.forEach(function(m){
+        if(seen.has(m.text)){
+          toRemove.push(m);
+        }else{
+          seen.add(m.text);
+        }
+      });
+
+      // 删除重复的声明（从后往前删除，避免索引变化）
+      toRemove.reverse().forEach(function(m){
+        code=code.slice(0,m.start)+code.slice(m.end);
+      });
+
+      return code;
+    }
+
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
@@ -2125,10 +2173,44 @@
         report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
       }
 
+      // 阶段 1.10：重复声明删除（后处理：删除值相同的重复 local 声明）
+      if(doRename){
+        var beforeDedup=current.length;
+        var localPattern=/local\s+[A-Za-z_][A-Za-z0-9_,]*=(?:(?!local).)+? (?=[A-Z])/g;
+        var matches=[];
+        var match;
+        while((match=localPattern.exec(current))!==null){
+          matches.push({text:match[0],start:match.index,end:match.index+match[0].length});
+        }
+        var seen=new Set();
+        var toRemove=[];
+        matches.forEach(function(m){
+          if(seen.has(m.text)){
+            toRemove.push(m);
+          }else{
+            seen.add(m.text);
+          }
+        });
+        if(toRemove.length>0){
+          toRemove.reverse();
+          toRemove.forEach(function(m){
+            current=current.slice(0,m.start)+current.slice(m.end);
+          });
+          if(current.length<beforeDedup){
+            rec('重复声明删除', beforeDedup, current.length, '删除 '+toRemove.length+' 个重复的 local 声明');
+            report.stages.push({name:'1.10-重复声明删除', code:current, len:current.length});
+          }else{
+            current=current.slice(0,beforeDedup);
+          }
+        }
+      }
+
       // 输出：编码层负责单行；若仅重命名则保留换行但仍统一加单一 l 前缀
       var result='l '+current;
+
       report.ok=true;
       report.output=result;
+      report.aliasMapInfo=activeAliasMap;
       report.bodyLength=current.length;       // 不含 'l '
       report.originalLength=input.length;
       report.renamedCount=renamedCount;
