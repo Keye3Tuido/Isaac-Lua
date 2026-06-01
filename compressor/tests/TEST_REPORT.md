@@ -30,6 +30,13 @@
 
 > 重构准则：`node tests/snapshot.js --check` 必须 `RESULT: OK`（regress=0、lost-ok=0）。
 
+## 结构重构（2026-06：core.js 拆分为 src/ 模块）
+
+`core.js`（原 2773 行单文件）按职责拆分，便于维护：`core.js`（231 行）保留词法器与 `create()` 工厂；逻辑分到 `src/analyze.js`(251) / `plan.js`(427) / `encode.js`(89) / `canonical.js`(661) / `folds.js`(966) / `compress.js`(231)。各模块为"安装器"——`create()` 构造共享上下文 `C`，依序运行各安装器把函数挂到 `C`，最后导出 API。函数体逐字保留（仅加导入/导出包裹），故行为不变。
+
+**重构验证**：`snapshot.js --check` 全 898 用例字节级 `RESULT: OK`（regress=0、lost-ok=0）；全部测试套件通过；浏览器加载路径（`index.html` 依序 `<script>` 引入 `src/*.js` + `core.js`，无 require）经模拟验证产出一致（multi_callback=176，与基线相同）。
+
+
 
 ## 测试套件概览
 
