@@ -408,7 +408,7 @@
     // 关键点：高频符号（无论局部还是全局）优先拿最短名。一个出现 72 次的全局
     // 理应比只出现 2 次的局部更先得到单字母。全局别名是顶层 local、整段存活，
     // 因此与所有 binding 冲突（顶层作用域 id 在每个作用域链里）。
-    function planAll(info, allGlobalNames, ast){
+    function planAll(info, allGlobalNames, ast, allowElision){
       var bindings=info.bindings;
 
       // (a) 全局候选：纯读取、从不被赋值；用保守盈亏(L=1)预筛 (m-1)*k > m+8
@@ -453,7 +453,11 @@
         }
       })(ast);
 
+      // transparentAliasBindings: binding -> 它最终别名到的全局名（溯源到最底层）
+      // taSiteStmt/taSiteIdx/taInitNode: 记录每个透明别名 binding 的声明位置与 init 节点，
+      //   供后续生成"删除声明项"的精确 token 区间编辑。
       var transparentAliasBindings=new Map();
+      var taSiteStmt=new Map(), taSiteIdx=new Map(), taInitNode=new Map();
       var topScopeId=info.topScope.id;
       var globalCandNames=new Set();
       globalCands.forEach(function(g){globalCandNames.add(g.name);});
@@ -472,10 +476,12 @@
                 var globalName=initExpr.name;
                 if(!globalCandNames.has(globalName))continue;
                 transparentAliasBindings.set(b, globalName);
+                taSiteStmt.set(b, st); taSiteIdx.set(b, vi); taInitNode.set(b, initExpr);
               }else{
                 var sourceGlobal=transparentAliasBindings.get(initBinding);
                 if(sourceGlobal){
                   transparentAliasBindings.set(b, sourceGlobal);
+                  taSiteStmt.set(b, st); taSiteIdx.set(b, vi); taInitNode.set(b, initExpr);
                 }
               }
             }
@@ -483,13 +489,63 @@
         }
       })(ast.body);
 
-      // 收集顶层作用域所有binding的名字统计，用于检测同名冲突
-      var topScopeNameCount=new Map(); // name -> count
-      if(info.topScope && info.topScope.bindings){
-        info.topScope.bindings.forEach(function(b){
-          topScopeNameCount.set(b.name, (topScopeNameCount.get(b.name)||0)+1);
+      // ---- 透明别名最终判定（在 planAll 内完成"变量值追踪 + 别名替换"规划）----
+      // 规则 R1（按名归并防误判）：一个名字 N 仅当【AST 中所有名为 N 的 binding】都被识别为
+      //   同一全局 G 的透明别名时，N 才可被消解。这保证 canonical 按名还原/删声明的操作是
+      //   全局一致、可证等价的。
+      // 规则 R2（可安全删除声明项）：N 的每个 binding 所在 local 声明里只含 1 个透明别名变量，
+      //   且该声明 #init==#vars（位置对齐），否则放弃该名（其 binding 退回普通局部，正常重命名）。
+      var bindingsByName=new Map();
+      info.bindings.forEach(function(b){
+        if(!bindingsByName.has(b.name)) bindingsByName.set(b.name, []);
+        bindingsByName.get(b.name).push(b);
+      });
+      var candNames=new Map(); // name -> global（通过 R1 的候选名）
+      bindingsByName.forEach(function(list, name){
+        var g=null, ok=true;
+        for(var i=0;i<list.length;i++){
+          if(!transparentAliasBindings.has(list[i])){ ok=false; break; }
+          var gg=transparentAliasBindings.get(list[i]);
+          if(g===null) g=gg; else if(g!==gg){ ok=false; break; }
+        }
+        if(ok && g!==null) candNames.set(name, g);
+      });
+      // 每条声明里的"透明候选变量"计数（仅统计通过 R1 的候选）
+      var cntPerStmt=new Map();
+      transparentAliasBindings.forEach(function(g, b){
+        if(!candNames.has(b.name)) return;
+        var st=taSiteStmt.get(b);
+        cntPerStmt.set(st, (cntPerStmt.get(st)||0)+1);
+      });
+      function elidableBinding(b){
+        var st=taSiteStmt.get(b);
+        if(!st || cntPerStmt.get(st)!==1) return false;          // R2: 单声明内只允许 1 个透明别名
+        if(!st.init || st.init.length!==st.variables.length) return false; // R2: 位置对齐
+        return true;
+      }
+      var finalTA={};            // name -> global（最终消解集）
+      var elideBindings=new Set();
+      if(allowElision){
+        candNames.forEach(function(g, name){
+          var list=bindingsByName.get(name);
+          if(list.every(elidableBinding)){
+            finalTA[name]=g;
+            list.forEach(function(b){ elideBindings.add(b); });
+          }
         });
       }
+      var forceFoldGlobals=new Set();          // 这些全局必须折叠（消解后别名使用都指向它）
+      for(var fk in finalTA){ if(finalTA.hasOwnProperty(fk)) forceFoldGlobals.add(finalTA[fk]); }
+      var reservedElidedNames=new Set(Object.keys(finalTA)); // 禁止其它局部复用被消解的名字
+      // 被消解 binding 的 init 节点：全局 init 用于在全局折叠编辑里跳过（落在删除区间内）；
+      // 全部 init（含局部链式 init）用于在使用重定向里跳过（同样落在删除区间内）。
+      var aliasInitNodes=new Set(), allElidedInitNodes=new Set();
+      elideBindings.forEach(function(b){
+        var init=taInitNode.get(b);
+        if(!init) return;
+        allElidedInitNodes.add(init);
+        if(info.varOf.get(init)===null) aliasInitNodes.add(init);
+      });
 
       // (a2) 成员字段候选：obj.Field（仅 indexer '.'，改写为 obj[alias]，alias='Field'）
       //   原始每处 .Field = m+1；折叠每处 [x] = 3（x 单字母）；声明 x='Field' ≈ m+3（引号+等号）
@@ -503,8 +559,11 @@
       });
 
       // (b) 统一节点表：局部 binding（kind=L）+ 全局候选（kind=G）
+      //   被消解的透明别名 binding 不进入着色表：它们的声明会被删除、使用会重定向到全局别名，
+      //   因此既不参与重命名也不占用名字资源。
       var nodes=[];
       bindings.forEach(function(b,idx){
+        if(elideBindings.has(b)) return;
         nodes.push({kind:'L', b:b, scope:b.scope, freq:b.uses.length+b.decls.length, idx:idx});
       });
       globalCands.forEach(function(g){
@@ -555,6 +614,7 @@
           var cand=POOL[k];
           if(used.has(cand)||KEYWORDS[cand]) continue;
           if(allGlobalNames.has(cand)) continue; // 不与任何全局原名相同（防遮蔽）
+          if(reservedElidedNames.has(cand)) continue; // 不复用被消解的透明别名名字（防止与还原冲突）
           pick=cand; break;
         }
         if(nd.kind==='L'){
@@ -569,8 +629,9 @@
           // 闸门用 (m-L)*k > m+L+1（不严格 +1：临界情况下 break-even 别名占位 0 字符开销，
           // 但保留它能给后续多因子分解 buildDeclParts 提供更多字符串值，可能间接得益。
           // 实测放开此约束在 guidepost 等用例上更优；严格 +2 反而 -13 字）。
+          // forceFoldGlobals：被透明别名消解指向的全局必须折叠，否则重定向后的使用点没有目标别名。
           var m=nd.g.m, kk=nd.g.k, L=pick?pick.length:99;
-          if(pick!==null && (m-L)*kk > (m+L+1)) assigned[ni]=pick;
+          if(pick!==null && ((m-L)*kk > (m+L+1) || forceFoldGlobals.has(nd.g.name))) assigned[ni]=pick;
           else assigned[ni]=null;
         }else{
           // 成员字段：.Field(1+m)/处 → [x](2+L)/处；嵌进 batched local 的声明 ',x'(1+L) + ',\'Field\''(1+m+2) = L+m+4
@@ -597,7 +658,10 @@
           if(nm2===null) continue; // 未折叠
           aliasByName[nd2.g.name]=nm2;
           declNames.push(nm2); declVals.push(nd2.g.name);
-          nd2.g.nodes.forEach(function(node){edits.push({start:node.range[0],end:node.range[1],name:nm2});});
+          nd2.g.nodes.forEach(function(node){
+            if(aliasInitNodes.has(node)) return; // 该全局读位于被删除的透明别名声明里，跳过
+            edits.push({start:node.range[0],end:node.range[1],name:nm2});
+          });
         }else{ // M：成员字段
           if(nm2===null) continue;
           memberByLocal[nm2]=nd2.mc.field;
@@ -609,6 +673,39 @@
         }
       }
 
+      // (e2) 透明别名消解：把别名使用重定向到全局折叠别名，并删除别名声明项。
+      //   仅当目标全局确实拿到了折叠别名（aliasByName 有值）才执行；否则放弃该名的消解
+      //   （binding 已被排除出着色表 → 保持原名与原声明，仍然语义自洽）。
+      var emittedTA={};
+      elideBindings.forEach(function(b){
+        var g=transparentAliasBindings.get(b);
+        var galias=aliasByName[g];
+        if(!galias){ return; } // 目标全局未折叠成功：放弃此 binding 的消解
+        emittedTA[b.name]=g;
+        // 使用点重定向（跳过落在被删声明项里的链式 init 读）
+        b.uses.forEach(function(u){
+          if(allElidedInitNodes.has(u)) return;
+          edits.push({start:u.range[0], end:u.range[1], name:galias});
+        });
+        // 删除声明项
+        var st=taSiteStmt.get(b), vi=taSiteIdx.get(b);
+        var vars=st.variables, inits=st.init, n=vars.length;
+        if(n===1){
+          edits.push({start:st.range[0], end:st.range[1], name:''}); // 整条删除
+        }else if(vi===0){
+          edits.push({start:vars[0].range[0], end:vars[1].range[0], name:''});  // 删 "M,"
+          edits.push({start:inits[0].range[0], end:inits[1].range[0], name:''}); // 删 "val,"
+        }else{
+          edits.push({start:vars[vi-1].range[1], end:vars[vi].range[1], name:''});   // 删 ",M"
+          edits.push({start:inits[vi-1].range[1], end:inits[vi].range[1], name:''}); // 删 ",val"
+        }
+      });
+      // 仅保留真正消解成功的名字进 transparentAliases（供 canonical 双侧还原 + 删声明）
+      var transparentAliases={};
+      for(var en in emittedTA){
+        if(emittedTA.hasOwnProperty(en) && finalTA.hasOwnProperty(en)) transparentAliases[en]=emittedTA[en];
+      }
+
 
       // 仿射因子分解：对字符串字面量别名值，提取公共前缀/后缀，按总长度决定是否合并。
       // 需要避开所有已用名字：别名名 + 全部全局名 + 全部最终局部名。
@@ -616,15 +713,6 @@
       allGlobalNames.forEach(function(g){avoid.add(g);});
       for(var ai=0; ai<N; ai++){ if(nodes[ai].kind==='L'){ avoid.add(assigned[ai]||nodes[ai].b.name); } }
       var declParts = buildDeclParts(declNames, declVals, avoid);
-
-      // 将transparentAliasBindings转换为简单对象以便传递
-      // 检测同名冲突：只有当binding的名字在顶层作用域唯一时，才识别为透明别名
-      var transparentAliases={};
-      transparentAliasBindings.forEach(function(globalName, binding){
-        if(topScopeNameCount.get(binding.name)===1){ // 只有当该名字在顶层作用域唯一时才加入
-          transparentAliases[binding.name]=globalName;
-        }
-      });
 
       return {edits:edits, aliasByName:aliasByName, memberByLocal:memberByLocal,
               transparentAliases:transparentAliases,
@@ -816,6 +904,64 @@
 
       var varOf=info.varOf;
 
+      // ---- 内在透明别名归一（copy-propagation 标准形）----
+      // 一个只读局部 M（单次声明、从不被赋值）若 init 为"从不被赋值的全局 G"或"另一透明别名链至 G"，
+      // 则读 M 与读 G 在语义上完全等价（G 不变，M 即 G 的快照常量）。canonical 把这类 M 的声明删除、
+      // 把对 M 的读还原为对 G 的读。该归一是【纯结构、语义保持】的，对任何代码两侧一致施加，
+      // 因此外部校验（原始侧不传 aliasMap）与压缩侧（传 aliasMap）都会收敛到同一标准形——
+      // 这正是"透明别名消解"优化得以被严格验证的基础（非旁路）。
+      var autoTAByBinding=new Map(); // binding -> 全局名 G
+      (function detectTA(){
+        var assignedG=info.assignedGlobals;           // 被赋值过的全局名（不可作 alias 源）
+        var assignedB=new Set();                      // 被赋值过的局部 binding（不可作透明别名）
+        (function collect(node){
+          if(!node||typeof node!=='object') return;
+          if(Array.isArray(node)){ for(var i=0;i<node.length;i++) collect(node[i]); return; }
+          if(node.type==='AssignmentStatement'&&node.variables){
+            for(var i=0;i<node.variables.length;i++){
+              var t=node.variables[i];
+              if(t&&t.type==='Identifier'){ var bb=varOf.get(t); if(bb) assignedB.add(bb); }
+            }
+          }
+          for(var k in node){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(node,k)) collect(node[k]); }
+        })(ast.body);
+        // 迭代到不动点以解析别名链（local g=Global; local h=g）
+        var changed=true, guard=0;
+        while(changed && guard++<64){
+          changed=false;
+          (function walk(stmts){
+            for(var si=0;si<stmts.length;si++){
+              var st=stmts[si];
+              if(st&&st.type==='LocalStatement'&&st.variables&&st.init){
+                for(var vi=0;vi<st.variables.length;vi++){
+                  var v=st.variables[vi], initExpr=st.init[vi];
+                  if(!v||v.type!=='Identifier'||!initExpr||initExpr.type!=='Identifier') continue;
+                  var b=varOf.get(v);
+                  if(!b||autoTAByBinding.has(b)||b.decls.length!==1||assignedB.has(b)) continue;
+                  var ib=varOf.get(initExpr);
+                  if(ib===null){
+                    // init 是全局标识符；若它本身是 byName 折叠别名（如 a→ModCallbacks），
+                    // 解析为其真实全局名，使"原始侧 M=ModCallbacks"与"输出侧 M=a"收敛同一标准形。
+                    var gname=globalOfAlias.hasOwnProperty(initExpr.name)?globalOfAlias[initExpr.name]:initExpr.name;
+                    if(assignedG.has(gname)) continue;     // 源全局被赋值过 → 不安全
+                    autoTAByBinding.set(b, gname); changed=true;
+                  }else if(autoTAByBinding.has(ib)){
+                    autoTAByBinding.set(b, autoTAByBinding.get(ib)); changed=true;
+                  }
+                }
+              }
+              // 递归进入嵌套块
+              for(var k in st){ if(k==='range'||k==='loc')continue;
+                var ch=st[k];
+                if(Array.isArray(ch)){ for(var ci=0;ci<ch.length;ci++){ var cc=ch[ci]; if(cc&&cc.body&&Array.isArray(cc.body)) walk(cc.body); } }
+                else if(ch&&ch.body&&Array.isArray(ch.body)) walk(ch.body);
+              }
+            }
+          })(ast.body);
+        }
+      })();
+      function autoTAGlobal(b){ return autoTAByBinding.has(b) ? autoTAByBinding.get(b) : null; }
+
       // SSA 版本状态：binding -> 当前版本号；以及全局自增的"逻辑变量"编号表
       var curVer=new Map();      // binding -> int（当前到达版本）
       var defSeq=new Map();      // binding -> 已分配的最大版本号
@@ -854,14 +1000,13 @@
         if(node.type==='Identifier' && varOf.has(node)){
           var b=varOf.get(node);
           if(b){
-            // 只还原全局折叠别名（byName），不还原透明别名（transparentAliases）
+            // 内在透明别名：读 M ≡ 读其源全局 G（两侧一致施加，标准形）。优先于其它别名处理。
+            if(autoTAByBinding.has(b)){
+              return {type:'Identifier', kind:'global', name: autoTAByBinding.get(b)};
+            }
+            // 别名还原（byName 全局折叠别名）：读别名 ≡ 读全局。
             if(aliasLocalNames.has(b.name) && globalOfAlias.hasOwnProperty(b.name)){
-              var target = globalOfAlias[b.name];
-              // 检查target是否是透明别名（在transparentAliases中）
-              var isTransparent = transparentAliases && transparentAliases.hasOwnProperty(b.name);
-              if(!isTransparent){
-                return {type:'Identifier', kind:'global', name:target};
-              }
+              return {type:'Identifier', kind:'global', name: globalOfAlias[b.name]};
             }
             // 字符串字面量别名：读 u 等价于读字符串字面量 'X'。归一为 StringLiteral 节点
             // （内容用 X，与 normExpr 在 StringLiteral 自然路径上的产出一致）。
@@ -958,11 +1103,21 @@
           case 'LocalStatement': {
             // 填充缺省 init 为 NilLiteral：`local x` ≡ `local x=nil`
             var rawInits=st.init||[];
+            // 内在透明别名：声明项若为透明别名（autoTA），两侧一致删除（其读已还原为全局 G）。
+            var keepIdx=[];
+            for(var ki=0;ki<st.variables.length;ki++){
+              var kv=st.variables[ki];
+              var isTA=(kv.type==='Identifier' && varOf.has(kv) && varOf.get(kv) && autoTAByBinding.has(varOf.get(kv)));
+              if(!isTA) keepIdx.push(ki);
+            }
+            if(keepIdx.length===0) return {type:'__DROP__'};
             var inits=[];
-            for(var ii=0;ii<st.variables.length;ii++){
+            for(var kj=0;kj<keepIdx.length;kj++){
+              var ii=keepIdx[kj];
               inits.push(ii<rawInits.length ? normExpr(rawInits[ii]) : {type:'NilLiteral'});
             }
-            var vars=st.variables.map(function(v){
+            var vars=keepIdx.map(function(ii){
+              var v=st.variables[ii];
               if(v.type==='Identifier' && varOf.has(v)){ var b=varOf.get(v); var nv=bumpDef(b); return {type:'Identifier',kind:'local',n:idFor(b,nv)}; }
               return normExpr(v);
             });
@@ -1061,6 +1216,7 @@
         var out=[];
         for(var i=0;i<stmts.length;i++){
           var ns=normStmt(stmts[i]);
+          if(ns && ns.type==='__DROP__') continue; // 透明别名整条声明被消解，两侧一致跳过
           // 把多变量 LocalDecl 展开成单变量序列，消除 `local a,b=1,2` 与
           // `local a=1 local b=2` 的分组结构差异（二者在我们的合并约束下语义一致）。
           if(ns && ns.type==='LocalDecl' && ns.vars.length>1){
@@ -1167,13 +1323,9 @@
       if(!ok) throw new Error('['+stageName+'] 语义等价校验失败：压缩前后 AST 不一致（疑似脚本 bug）');
     }
 
-    // 别名等价：srcB 用 aliasMap 归一（别名局部还原为全局/成员、跳过插入的声明）后应等于原始
+    // 别名等价：srcB 用 aliasMap 归一（别名局部还原为全局/成员、跳过插入的声明）后应等于原始。
+    // 透明别名消解由 canonical 内在归一（autoTA copy-propagation）双侧一致处理，无需在此特殊传参。
     function assertEquivalentAlias(srcOrig, srcB, aliasMap, stageName, steps){
-      // 如果有透明别名，跳过严格的语义等价校验（因为删除了冗余的局部变量声明）
-      if(aliasMap && aliasMap.transparentAliases && Object.keys(aliasMap.transparentAliases).length>0){
-        if(steps) steps.push({stage:stageName, kind:'ast-equiv', ok:true, detail: '跳过语义等价校验（透明别名优化）'});
-        return;
-      }
       var ca, cb;
       try{ca=canonical(srcOrig);}catch(e){throw new Error('['+stageName+'] 原始代码规范化失败: '+e.message);}
       try{cb=canonical(srcB, aliasMap);}catch(e){throw new Error('['+stageName+'] 压缩结果无法解析/规范化: '+e.message);}
@@ -2033,189 +2185,218 @@
       var doRename = opts.rename !== false;
       var doEncode = opts.encode !== false;
       var doMethod = opts.method !== false;   // :method 折叠（带严格缩短闸门）
-      var report={ok:false, stages:[], steps:[], build:[], input:input};
-      var steps=report.steps;
-      var build=report.build;   // 构造过程可视化：每个技巧的"应用前→应用后"长度与说明
-      function rec(name, beforeLen, afterLen, detail){
-        build.push({name:name, before:beforeLen, after:afterLen, delta:afterLen-beforeLen, detail:detail});
-      }
-      var code=preprocess(input);
-      if(!/\S/.test(code)) throw new Error('输入为空（剥离 l/lua 前缀后无内容）');
-      rec('预处理(剥 l/lua 前缀, 合并单段)', input.length, code.length, '去掉每行控制台前缀');
 
-      // 阶段 0：输入语法校验
-      assertParses(code, '输入校验', steps);
-      var ast0=parse(code);
-      report.original=code;
+      var pre=preprocess(input);
+      if(!/\S/.test(pre)) throw new Error('输入为空（剥离 l/lua 前缀后无内容）');
 
-      var current=code;
-      var renamedCount=0;
-      var aliasedCount=0;
-      var activeAliasMap=null;   // 结构阶段产生的别名映射，供后续阶段等价校验沿用
-
-      // 阶段 1.2：结构性（统一规划：局部重命名 + 全局折叠 + 成员折叠 + 仿射因子）
-      if(doRename){
-        var info=analyze(ast0);
-        var allGlobals=collectGlobalNames(ast0, info);
-        var plan=planAll(info, allGlobals, ast0);
-        renamedCount=plan.edits.length;
-        aliasedCount=Object.keys(plan.aliasByName).length;
-
-        var body=applyEdits(code, plan.edits);
-        var declStr='', dropN=0;
-        if(plan.declParts.length){
-          var dp=plan.declParts[0];
-          if(dp.indexOf('@RAW@')===0){ declStr=dp.slice(5); dropN=plan.declDropLeading; }  // 因子分解：因子数+1 条 local
-          else { declStr='local '+plan.declParts.join(','); dropN=1; }    // 普通：一条 local
+      // 透明别名消解（elision）与既有的"重复声明删除"等手段在某些形态下互斥：
+      // 消解后反而更长（如三条完全相同的声明，保留共享别名 + 去重更优）。遵循全局
+      // "只缩短才提交"原则，跑两条流水线（启用/不启用 elision）取更短者。
+      // 仅当启用版真的触发了 elision 时才跑第二条，避免无谓的双倍开销。
+      function runPipeline(allowElision){
+        var report={ok:false, stages:[], steps:[], build:[], input:input};
+        var steps=report.steps;
+        var build=report.build;
+        function rec(name, beforeLen, afterLen, detail){
+          build.push({name:name, before:beforeLen, after:afterLen, delta:afterLen-beforeLen, detail:detail});
         }
-        var afterRename = declStr ? (declStr+' '+body) : body;
+        var code=pre;
+        rec('预处理(剥 l/lua 前缀, 合并单段)', input.length, code.length, '去掉每行控制台前缀');
 
-        assertParses(afterRename, '阶段1.1/语法', steps);
-        var aliasMap = declStr
-          ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], transparentAliases: plan.transparentAliases||{}, prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
-          : null;
-        assertEquivalentAlias(code, afterRename, aliasMap, '阶段1.1/等价', steps);
-        activeAliasMap = aliasMap;
-        rec('结构性折叠(局部重命名+全局/成员/仿射)', code.length, afterRename.length,
-            '重命名/折叠 '+plan.edits.length+' 处引用；全局别名 '+Object.keys(plan.aliasByName).length+' 个，成员别名 '+Object.keys(plan.memberByLocal).length+' 个');
+        // 阶段 0：输入语法校验
+        assertParses(code, '输入校验', steps);
+        var ast0=parse(code);
+        report.original=code;
 
-        current=afterRename;
-        report.stages.push({name:'1.1-结构性(重命名+全局折叠)', code:afterRename, len:afterRename.length});
-        report.aliasMapInfo = aliasMap; // 供外部独立校验复用真实别名映射
-      }
+        var current=code;
+        var renamedCount=0;
+        var aliasedCount=0;
+        var elisionUsed=false;
+        var activeAliasMap=null;   // 结构阶段产生的别名映射，供后续阶段等价校验沿用
 
-      // 阶段 1.2：:method 折叠（仅 base 为简单变量；严格"只缩短"闸门）
-      if(doMethod){
-        var methodRes = foldMethods(current, activeAliasMap, steps, rec, code);
-        if(methodRes){
-          current = methodRes.code;
-          activeAliasMap = methodRes.aliasMap;
-          report.aliasMapInfo = activeAliasMap;
-        }
-        report.stages.push({name:'1.2-method折叠', code:current, len:current.length});
-      }
+        // 阶段 1.2：结构性（统一规划：局部重命名 + 全局折叠 + 成员折叠 + 仿射因子）
+        if(doRename){
+          var info=analyze(ast0);
+          var allGlobals=collectGlobalNames(ast0, info);
+          var plan=planAll(info, allGlobals, ast0, allowElision);
+          renamedCount=plan.edits.length;
+          aliasedCount=Object.keys(plan.aliasByName).length;
+          elisionUsed=Object.keys(plan.transparentAliases||{}).length>0;
 
-      // 阶段 1.3：字段前缀折叠（obj.PREFIX_X 系列共享前缀提取因子；严格"只缩短"闸门）
-      if(doRename){
-        var prefixRes = foldFieldPrefix(current, activeAliasMap, steps, rec, code);
-        if(prefixRes){
-          current = prefixRes.code;
-          activeAliasMap = prefixRes.aliasMap;
-          report.aliasMapInfo = activeAliasMap;
-        }
-        report.stages.push({name:'1.3-字段前缀折叠', code:current, len:current.length});
-      }
-
-      // 阶段 1.4：字符串字面量内联（同字面量重复 ≥2 次 → 提取 local 别名；严格"只缩短"闸门）
-      if(doRename){
-        var litRes = foldStringLiterals(current, activeAliasMap, steps, rec, code);
-        if(litRes){
-          current = litRes.code;
-          activeAliasMap = litRes.aliasMap;
-          report.aliasMapInfo = activeAliasMap;
-        }
-        report.stages.push({name:'1.4-字面量内联', code:current, len:current.length});
-      }
-
-      // 阶段 1.5：local 合并（消除多余 local 关键字；严格"只缩短"闸门）
-      if(doRename){
-        var localRes = foldLocals(current, activeAliasMap, steps, rec, code);
-        if(localRes){
-          current = localRes.code;
-        }
-        report.stages.push({name:'1.5-local合并', code:current, len:current.length});
-      }
-
-      // 阶段 1.6：多重赋值拆分（非 local 场景：a,b=B(),C[x] → a=B()b=C[x] 当符号结尾时省间隔符）
-      if(doRename){
-        var splitRes = splitMultiAssign(current, activeAliasMap, steps, rec, code);
-        if(splitRes){
-          current = splitRes.code;
-        }
-        report.stages.push({name:'1.6-多赋值拆分', code:current, len:current.length});
-      }
-
-      // 阶段 1.7：变量复用（活跃区间不重叠则共享名并省 local；SSA 等价校验 + 缩短闸门）
-      // 该变换跨控制流时 SSA 校验可能保守地判负——此时【优雅回退】（放弃复用，不影响其它阶段），
-      // 绝不输出未通过校验的代码。
-      if(doRename && opts.reuse!==false){
-        var reuseRes = foldReuse(current, activeAliasMap, steps, rec, code);
-        if(reuseRes){
-          current = reuseRes.code;
-          var localRes2 = foldLocals(current, activeAliasMap, steps, rec, code);
-          if(localRes2){ current = localRes2.code; report.stages.push({name:'1.4-local合并(二次)', code:current, len:current.length}); }
-        }
-        report.stages.push({name:'1.7-变量复用', code:current, len:current.length});
-      }
-
-      // 阶段 1.1：去除注释（在所有重命名完成后执行，避免位置偏移）
-      if(doEncode){
-        var beforeRemove=current.length;
-        current=removeComments(current);
-        assertParses(current, '阶段1.8/语法', steps);
-        // 去除注释不改变标识符：沿用 activeAliasMap 与原始比较
-        if(activeAliasMap) assertEquivalentAlias(code, current, activeAliasMap, '阶段1.8/等价', steps);
-        else assertEquivalent(code, current, '阶段1.8/等价', steps);
-        rec('去除注释', beforeRemove, current.length, '移除所有注释，保留代码结构');
-        report.stages.push({name:'1.8-去除注释', code:current, len:current.length});
-      }
-
-      // 阶段 1.9：间隔符最小化 + 单行
-      if(doEncode){
-        var beforeMin=current.length;
-        var afterMinimize=minimizeSpacing(current);
-        assertParses(afterMinimize, '阶段1.9/语法', steps);
-        // 间隔符最小化不改变标识符：沿用 activeAliasMap 与原始比较
-        if(activeAliasMap) assertEquivalentAlias(code, afterMinimize, activeAliasMap, '阶段1.9/等价', steps);
-        else assertEquivalent(code, afterMinimize, '阶段1.9/等价', steps);
-        rec('间隔符最小化+单行', beforeMin, afterMinimize.length, '词法重排，仅在真·Lua 需要处保留空格');
-        current=afterMinimize;
-        report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
-      }
-
-      // 阶段 1.10：重复声明删除（后处理：删除值相同的重复 local 声明）
-      if(doRename){
-        var beforeDedup=current.length;
-        var localPattern=/local\s+[A-Za-z_][A-Za-z0-9_,]*=(?:(?!local).)+? (?=[A-Z])/g;
-        var matches=[];
-        var match;
-        while((match=localPattern.exec(current))!==null){
-          matches.push({text:match[0],start:match.index,end:match.index+match[0].length});
-        }
-        var seen=new Set();
-        var toRemove=[];
-        matches.forEach(function(m){
-          if(seen.has(m.text)){
-            toRemove.push(m);
-          }else{
-            seen.add(m.text);
+          var body=applyEdits(code, plan.edits);
+          var declStr='', dropN=0;
+          if(plan.declParts.length){
+            var dp=plan.declParts[0];
+            if(dp.indexOf('@RAW@')===0){ declStr=dp.slice(5); dropN=plan.declDropLeading; }  // 因子分解：因子数+1 条 local
+            else { declStr='local '+plan.declParts.join(','); dropN=1; }    // 普通：一条 local
           }
-        });
-        if(toRemove.length>0){
-          toRemove.reverse();
-          toRemove.forEach(function(m){
-            current=current.slice(0,m.start)+current.slice(m.end);
+          var afterRename = declStr ? (declStr+' '+body) : body;
+
+          assertParses(afterRename, '阶段1.1/语法', steps);
+          var aliasMap = declStr
+            ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], transparentAliases: plan.transparentAliases||{}, prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
+            : null;
+          assertEquivalentAlias(code, afterRename, aliasMap, '阶段1.1/等价', steps);
+          activeAliasMap = aliasMap;
+          rec('结构性折叠(局部重命名+全局/成员/仿射)', code.length, afterRename.length,
+              '重命名/折叠 '+plan.edits.length+' 处引用；全局别名 '+Object.keys(plan.aliasByName).length+' 个，成员别名 '+Object.keys(plan.memberByLocal).length+' 个'+(elisionUsed?('；透明别名消解 '+Object.keys(plan.transparentAliases).length+' 个'):''));
+
+          current=afterRename;
+          report.stages.push({name:'1.1-结构性(重命名+全局折叠)', code:afterRename, len:afterRename.length});
+          report.aliasMapInfo = aliasMap; // 供外部独立校验复用真实别名映射
+        }
+
+        // 阶段 1.2：:method 折叠（仅 base 为简单变量；严格"只缩短"闸门）
+        if(doMethod){
+          var methodRes = foldMethods(current, activeAliasMap, steps, rec, code);
+          if(methodRes){
+            current = methodRes.code;
+            activeAliasMap = methodRes.aliasMap;
+            report.aliasMapInfo = activeAliasMap;
+          }
+          report.stages.push({name:'1.2-method折叠', code:current, len:current.length});
+        }
+
+        // 阶段 1.3：字段前缀折叠（obj.PREFIX_X 系列共享前缀提取因子；严格"只缩短"闸门）
+        if(doRename){
+          var prefixRes = foldFieldPrefix(current, activeAliasMap, steps, rec, code);
+          if(prefixRes){
+            current = prefixRes.code;
+            activeAliasMap = prefixRes.aliasMap;
+            report.aliasMapInfo = activeAliasMap;
+          }
+          report.stages.push({name:'1.3-字段前缀折叠', code:current, len:current.length});
+        }
+
+        // 阶段 1.4：字符串字面量内联（同字面量重复 ≥2 次 → 提取 local 别名；严格"只缩短"闸门）
+        if(doRename){
+          var litRes = foldStringLiterals(current, activeAliasMap, steps, rec, code);
+          if(litRes){
+            current = litRes.code;
+            activeAliasMap = litRes.aliasMap;
+            report.aliasMapInfo = activeAliasMap;
+          }
+          report.stages.push({name:'1.4-字面量内联', code:current, len:current.length});
+        }
+
+        // 阶段 1.5：local 合并（消除多余 local 关键字；严格"只缩短"闸门）
+        if(doRename){
+          var localRes = foldLocals(current, activeAliasMap, steps, rec, code);
+          if(localRes){
+            current = localRes.code;
+          }
+          report.stages.push({name:'1.5-local合并', code:current, len:current.length});
+        }
+
+        // 阶段 1.6：多重赋值拆分（非 local 场景：a,b=B(),C[x] → a=B()b=C[x] 当符号结尾时省间隔符）
+        if(doRename){
+          var splitRes = splitMultiAssign(current, activeAliasMap, steps, rec, code);
+          if(splitRes){
+            current = splitRes.code;
+          }
+          report.stages.push({name:'1.6-多赋值拆分', code:current, len:current.length});
+        }
+
+        // 阶段 1.7：变量复用（活跃区间不重叠则共享名并省 local；SSA 等价校验 + 缩短闸门）
+        // 该变换跨控制流时 SSA 校验可能保守地判负——此时【优雅回退】（放弃复用，不影响其它阶段），
+        // 绝不输出未通过校验的代码。
+        if(doRename && opts.reuse!==false){
+          var reuseRes = foldReuse(current, activeAliasMap, steps, rec, code);
+          if(reuseRes){
+            current = reuseRes.code;
+            var localRes2 = foldLocals(current, activeAliasMap, steps, rec, code);
+            if(localRes2){ current = localRes2.code; report.stages.push({name:'1.4-local合并(二次)', code:current, len:current.length}); }
+          }
+          report.stages.push({name:'1.7-变量复用', code:current, len:current.length});
+        }
+
+        // 阶段 1.1：去除注释（在所有重命名完成后执行，避免位置偏移）
+        if(doEncode){
+          var beforeRemove=current.length;
+          current=removeComments(current);
+          assertParses(current, '阶段1.8/语法', steps);
+          // 去除注释不改变标识符：沿用 activeAliasMap 与原始比较
+          if(activeAliasMap) assertEquivalentAlias(code, current, activeAliasMap, '阶段1.8/等价', steps);
+          else assertEquivalent(code, current, '阶段1.8/等价', steps);
+          rec('去除注释', beforeRemove, current.length, '移除所有注释，保留代码结构');
+          report.stages.push({name:'1.8-去除注释', code:current, len:current.length});
+        }
+
+        // 阶段 1.9：间隔符最小化 + 单行
+        if(doEncode){
+          var beforeMin=current.length;
+          var afterMinimize=minimizeSpacing(current);
+          assertParses(afterMinimize, '阶段1.9/语法', steps);
+          // 间隔符最小化不改变标识符：沿用 activeAliasMap 与原始比较
+          if(activeAliasMap) assertEquivalentAlias(code, afterMinimize, activeAliasMap, '阶段1.9/等价', steps);
+          else assertEquivalent(code, afterMinimize, '阶段1.9/等价', steps);
+          rec('间隔符最小化+单行', beforeMin, afterMinimize.length, '词法重排，仅在真·Lua 需要处保留空格');
+          current=afterMinimize;
+          report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
+        }
+
+        // 阶段 1.10：重复声明删除（后处理：删除值相同的重复 local 声明）
+        // 注意：本阶段是正则后处理，在最后一次等价校验【之后】执行，canonical 无法建模
+        // "删除重复 local 声明"（会改变 SSA 版本结构）。因此必须自带安全闸门：删除后
+        // 用真·Lua 语法校验复核，任何不可解析的结果一律回退到删除前，绝不输出 broken 代码。
+        if(doRename){
+          var beforeDedup=current.length;
+          var localPattern=/local\s+[A-Za-z_][A-Za-z0-9_,]*=(?:(?!local).)+? (?=[A-Z])/g;
+          var matches=[];
+          var match;
+          while((match=localPattern.exec(current))!==null){
+            matches.push({text:match[0],start:match.index,end:match.index+match[0].length});
+          }
+          var seen=new Set();
+          var toRemove=[];
+          matches.forEach(function(m){
+            if(seen.has(m.text)){
+              toRemove.push(m);
+            }else{
+              seen.add(m.text);
+            }
           });
-          if(current.length<beforeDedup){
-            rec('重复声明删除', beforeDedup, current.length, '删除 '+toRemove.length+' 个重复的 local 声明');
-            report.stages.push({name:'1.10-重复声明删除', code:current, len:current.length});
-          }else{
-            current=current.slice(0,beforeDedup);
+          if(toRemove.length>0){
+            var preDedup=current;     // 删除前快照，校验/收益不满足时回退
+            toRemove.reverse();
+            toRemove.forEach(function(m){
+              current=current.slice(0,m.start)+current.slice(m.end);
+            });
+            // 安全闸门：① 真·Lua 可解析（防正则跨语句误删产生 broken 代码）；② 比删除前更短。
+            // 任一不满足都回退到删除前快照，保证永不输出未通过校验的代码。
+            var dedupValid=true;
+            if(luaValidate && luaValidate(current)) dedupValid=false;
+            if(dedupValid){ try{ parse(current); }catch(e){ dedupValid=false; } }
+            if(dedupValid && current.length<beforeDedup){
+              rec('重复声明删除', beforeDedup, current.length, '删除 '+toRemove.length+' 个重复的 local 声明');
+              report.stages.push({name:'1.10-重复声明删除', code:current, len:current.length});
+            }else{
+              current=preDedup;       // 回退（修复：旧版 slice(0,beforeDedup) 会产出残缺代码）
+            }
           }
         }
+
+        // 输出：编码层负责单行；若仅重命名则保留换行但仍统一加单一 l 前缀
+        var result='l '+current;
+
+        report.ok=true;
+        report.output=result;
+        report.aliasMapInfo=activeAliasMap;
+        report.bodyLength=current.length;       // 不含 'l '
+        report.originalLength=input.length;
+        report.renamedCount=renamedCount;
+        report.aliasedCount=aliasedCount;
+        report.elisionUsed=elisionUsed;
+        return report;
       }
 
-      // 输出：编码层负责单行；若仅重命名则保留换行但仍统一加单一 l 前缀
-      var result='l '+current;
-
-      report.ok=true;
-      report.output=result;
-      report.aliasMapInfo=activeAliasMap;
-      report.bodyLength=current.length;       // 不含 'l '
-      report.originalLength=input.length;
-      report.renamedCount=renamedCount;
-      report.aliasedCount=aliasedCount;
-      return report;
+      // 先跑启用 elision 的流水线；若它确实触发了消解，再跑禁用版对比，取更短者。
+      var repElide=runPipeline(true);
+      if(doRename && repElide.elisionUsed){
+        var repPlain=runPipeline(false);
+        if(repPlain.bodyLength < repElide.bodyLength) return repPlain;
+      }
+      return repElide;
     }
 
     return {
