@@ -960,6 +960,51 @@
       return code;
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.removeDuplicateLocalDecls=removeDuplicateLocalDecls;
+    // ---------- if-not 二择（去 not + 对调分支体） ----------
+    // `if not C then A else B end` → `if C then B else A end`，省一个 `not`（约 4 字含空格）。
+    // 仅处理恰好两分支（if + else、无 elseif）、且 if 条件顶层是一元 `not` 的语句。
+    // C 只求值一次、对调分支不改变语义；canonical 的 if-not 归一可严格验证。
+    // 严格"只缩短"闸门 + 真·Lua 语法 + canonical 等价，三关全过才提交，否则回退。
+    function foldIfNot(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+
+      // 收集合格 IfStatement（不嵌套地由 applyEdits 跳过重叠；这里全收，靠等价校验兜底）
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='IfStatement' && n.clauses && n.clauses.length===2
+           && n.clauses[0].type==='IfClause' && n.clauses[1].type==='ElseClause'
+           && n.clauses[0].condition && n.clauses[0].condition.type==='UnaryExpression'
+           && n.clauses[0].condition.operator==='not' && n.range){
+          var c0=n.clauses[0], c1=n.clauses[1];
+          var arg=c0.condition.argument;
+          if(arg && arg.range){
+            var condText=src.slice(arg.range[0], arg.range[1]);   // 去掉 not 后的条件
+            var aBody=c0.body||[], bBody=c1.body||[];
+            var aText = aBody.length ? src.slice(aBody[0].range[0], aBody[aBody.length-1].range[1]) : '';
+            var bText = bBody.length ? src.slice(bBody[0].range[0], bBody[bBody.length-1].range[1]) : '';
+            // 重建：if <cond> then <B> else <A> end（分支体对调）。空体则该段留空。
+            var rebuilt = 'if '+condText+' then '+bText+' else '+aText+' end';
+            edits.push({start:n.range[0], end:n.range[1], name:rebuilt});
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;            // 只缩短才提交
+      if(luaValidate && luaValidate(candidate)) return null;   // 真·Lua 语法
+      var ok=false;
+      try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
+      if(!ok) return null;
+      assertParses(candidate, '阶段1.7c/语法', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7c/等价', steps);
+      if(rec) rec('if-not二择(提交)', src.length, candidate.length, '去 not 并对调分支体 '+edits.length+' 处');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.removeDuplicateLocalDecls=removeDuplicateLocalDecls; C.foldIfNot=foldIfNot;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);
