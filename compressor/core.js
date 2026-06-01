@@ -962,6 +962,105 @@
       })();
       function autoTAGlobal(b){ return autoTAByBinding.has(b) ? autoTAByBinding.get(b) : null; }
 
+      // ---- 死前向声明归一（forward-nil elimination，标准形）----
+      // 形态：`local v=nil`（或 `local v` 缺省 init）后，v 在到达其【同块内首次赋值】之前
+      // 从不被读到（包括嵌套函数捕获、嵌套块读取），则该 nil 声明与"把首次赋值当作声明"
+      // 语义等价：`local v=nil ...(不读v)... v=e ...`  ≡  `...(不读v)... local v=e ...`。
+      // canonical 对此归一：① 不发射该 nil 声明（fwdNilDeclNodes 标记的 LocalDecl 变量项）；
+      //   ② 不对该 binding 在 nil 声明处 bumpDef（使其首次赋值成为 v0，与 in-place 声明对齐）。
+      // 该归一【对两侧一致施加、纯结构、语义保持】，因此 in-place 与 forward-nil 两种写法收敛同形。
+      //
+      // 健全性前提（任一不满足则不消除该 binding）：
+      //   (P1) binding 单作用域单声明（decls.length===1），且声明 init 为 nil/缺省；
+      //   (P2) 声明语句与"首次赋值"在【同一语句块】内（顶层 ast.body 或同一 block 数组）；
+      //        跨块（if/loop/do 内的赋值）不消除——合并点版本语义复杂，保守放弃；
+      //   (P3) 首次赋值是对该 binding 的【简单赋值】（AssignmentStatement 中 target 为该 binding，
+      //        且该赋值不在更深的嵌套块/函数里）；
+      //   (P4) 从声明语句之后到首次赋值语句之前（不含赋值语句本身的 RHS 之外、含其它目标），
+      //        v 在任何位置都【不被引用】——包括嵌套函数体（捕获）与嵌套块；
+      //   (P5) 首次赋值语句自身的 RHS 不读 v（自引用读到 nil，不等价）。
+      var fwdNilBindings=new Set();       // 可消除的 forward-nil binding
+      var fwdNilDeclVarNode=new Map();    // binding -> 其在声明语句里的变量 Identifier 节点
+      (function detectFwdNil(){
+        // 引用计数辅助：统计某 binding 在给定节点子树内的引用次数（decls 不算引用，uses 算）
+        function refCountIn(node, b){
+          var cnt=0;
+          (function w(n){
+            if(!n||typeof n!=='object') return;
+            if(Array.isArray(n)){ for(var i=0;i<n.length;i++) w(n[i]); return; }
+            if(n.type==='Identifier' && varOf.get(n)===b){ cnt++; }
+            for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); }
+          })(node);
+          return cnt;
+        }
+        // 在一个语句块（stmts 数组）内尝试识别 forward-nil。
+        function scanBlock(stmts){
+          for(var i=0;i<stmts.length;i++){
+            var st=stmts[i];
+            if(st.type==='LocalStatement' && st.variables){
+              for(var vi=0;vi<st.variables.length;vi++){
+                var vnode=st.variables[vi];
+                if(vnode.type!=='Identifier') continue;
+                var b=varOf.get(vnode);
+                if(!b || fwdNilBindings.has(b)) continue;
+                if(b.decls.length!==1) continue;                       // P1
+                // init 必须是 nil / 缺省
+                var initExpr=(st.init&&st.init[vi])?st.init[vi]:null;
+                if(initExpr && initExpr.type!=='NilLiteral') continue;  // P1
+                // 在同块内寻找该 binding 的首次简单赋值（AssignmentStatement，target==b）
+                var assignIdx=-1, assignTargetPos=-1;
+                for(var j=i+1;j<stmts.length;j++){
+                  var s2=stmts[j];
+                  if(s2.type==='AssignmentStatement' && s2.variables){
+                    var hit=-1;
+                    for(var t=0;t<s2.variables.length;t++){
+                      var tv=s2.variables[t];
+                      if(tv.type==='Identifier' && varOf.get(tv)===b){ hit=t; break; }
+                    }
+                    if(hit>=0){ assignIdx=j; assignTargetPos=hit; break; }
+                  }
+                  // 若在找到赋值前，该语句内读到了 b（P4 违反），停止（不可消除）
+                  if(refCountIn(s2, b)>0){ assignIdx=-2; break; }
+                }
+                if(assignIdx<0) continue;                              // 无同块首次赋值（或中途被读）
+                var asg=stmts[assignIdx];
+                // P3：首次赋值是对该 binding 的赋值。单目标直接可消除；多目标仅当该多重赋值
+                //   "安全可拆"（multiAssignSafeToSplit：目标皆简单 Identifier、互不重名、
+                //   #init==#vars、RHS 不读任何目标）时才消除——否则 multi 与 split 两形态在
+                //   canonical 下不收敛，会造成不对称（仅 split 形被消除）的假不等价。
+                if(asg.variables.length===1){
+                  if(asg.init && asg.init.length!==1) continue;
+                }else{
+                  if(!multiAssignSafeToSplit(asg)) continue;
+                }
+                // P5：赋值 RHS 不读 b
+                if(refCountIn(asg.init||[], b)>0) continue;
+                // P4 补充：声明语句【其余变量项的 init】不读 b（同语句内 b 之后的 init 已在解析期处理，
+                //   但保守再查一次整条声明 init，排除 b 出现在其它 init）
+                if(st.init && refCountIn(st.init, b)>0) continue;
+                // 通过全部前提 → 标记消除
+                fwdNilBindings.add(b);
+                fwdNilDeclVarNode.set(b, vnode);
+              }
+            }
+            // 递归进入嵌套块（但 forward-nil 只在【同块】配对，嵌套块自成一作用域）
+            descendBlocks(st, scanBlock);
+          }
+        }
+        function descendBlocks(st, cb){
+          switch(st.type){
+            case 'IfStatement': st.clauses.forEach(function(c){cb(c.body||[]);}); break;
+            case 'WhileStatement': case 'DoStatement': case 'ForNumericStatement':
+            case 'ForGenericStatement': case 'RepeatStatement': cb(st.body||[]); break;
+            default:
+              (function w(n){ if(!n||typeof n!=='object')return; if(Array.isArray(n)){n.forEach(w);return;}
+                if(n.type==='FunctionDeclaration'){ cb(n.body||[]); return; }
+                for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); } })(st);
+          }
+        }
+        scanBlock(ast.body);
+      })();
+
       // SSA 版本状态：binding -> 当前版本号；以及全局自增的"逻辑变量"编号表
       var curVer=new Map();      // binding -> int（当前到达版本）
       var defSeq=new Map();      // binding -> 已分配的最大版本号
@@ -1103,12 +1202,14 @@
           case 'LocalStatement': {
             // 填充缺省 init 为 NilLiteral：`local x` ≡ `local x=nil`
             var rawInits=st.init||[];
-            // 内在透明别名：声明项若为透明别名（autoTA），两侧一致删除（其读已还原为全局 G）。
+            // 声明项过滤：① 透明别名（autoTA）两侧一致删除（其读已还原为全局 G）；
+            //   ② 死前向声明（fwdNil）两侧一致删除（其首次赋值会成为标准声明，且不 bumpDef）。
             var keepIdx=[];
             for(var ki=0;ki<st.variables.length;ki++){
               var kv=st.variables[ki];
-              var isTA=(kv.type==='Identifier' && varOf.has(kv) && varOf.get(kv) && autoTAByBinding.has(varOf.get(kv)));
-              if(!isTA) keepIdx.push(ki);
+              var kb=(kv.type==='Identifier' && varOf.has(kv)) ? varOf.get(kv) : null;
+              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb));
+              if(!drop) keepIdx.push(ki);
             }
             if(keepIdx.length===0) return {type:'__DROP__'};
             var inits=[];
