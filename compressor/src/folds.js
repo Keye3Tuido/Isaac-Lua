@@ -1005,8 +1005,8 @@
       var ok=false;
       try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
       if(!ok) return null;
-      assertParses(candidate, '阶段1.7c/语法', steps);
-      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7c/等价', steps);
+      assertParses(candidate, '阶段1.6b/语法', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.6b/等价', steps);
       if(rec) rec('if-not二择(提交)', src.length, candidate.length, '去 not 并对调分支体 '+edits.length+' 处');
       return {code:candidate, aliasMap:priorAlias};
     }
