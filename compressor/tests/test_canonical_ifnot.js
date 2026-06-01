@@ -26,6 +26,8 @@ pos('idempotent (already swapped form unchanged)', "if c then g() else f() end",
 pos('double not (even, no swap)', "if not not c then f() else g() end", "if c then f() else g() end");
 pos('double not with call', "if not not c() then a() else b() end", "if c() then a() else b() end");
 pos('triple not (odd, one swap)', "if not not not c then f() else g() end", "if c then g() else f() end");
+// nested if-not: both layers strip (pipeline folds to fixed point; canonical sees each layer equivalent)
+pos('nested both strip', "if not c then if not d then a() else b() end else e() end", "if c then e() else if d then b() else a() end end");
 
 // ---------- NEGATIVE: must stay distinct ----------
 // no else branch: cannot swap (there is no body to swap with).

@@ -121,9 +121,13 @@
         }
 
         // 阶段 1.6b：if-not 二择（去 not + 对调分支体）。canonical 的 if-not 归一可严格验证。
+        // 重复到不动点：每轮只折当前最外层（applyEdits 跳过嵌套重叠），故对嵌套 if-not 反复跑，
+        // 直到不再缩短（foldIfNot 返回 null）；上限保护防意外死循环。
         if(doRename){
-          var ifnotRes = foldIfNot(current, activeAliasMap, steps, rec, code);
-          if(ifnotRes){
+          var ifnotGuard=0;
+          while(ifnotGuard++<50){
+            var ifnotRes = foldIfNot(current, activeAliasMap, steps, rec, code);
+            if(!ifnotRes) break;
             current = ifnotRes.code;
           }
           report.stages.push({name:'1.6b-if-not二择', code:current, len:current.length});
