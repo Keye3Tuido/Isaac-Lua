@@ -1383,7 +1383,88 @@
             out.push(ns);
           }
         }
+        // ---- 可重定位声明的下沉归一（hoist-with-value 标准形）----
+        // 把"初值可安全重定位的单变量 LocalDecl"（形如 `LocalDecl T={}` / =数字 / =字符串 /
+        // =布尔 / =nil）在块内向下移动，越过所有【不引用 T】的后续语句，直到 T 被首次引用
+        // 之前（或块尾）。这样两种写法收敛同形：
+        //   (A) 前向 nil + 后续赋值（已由 fwdNil 归一成"赋值处的 LocalDecl T=e"）；
+        //   (B) 值放进别名头（`local ...,T=e ...`）。
+        // 二者经下沉后，`LocalDecl T=e` 都停在 T 首次使用前的同一位置。
+        // 健全性：初值是无副作用、无外部依赖的字面量（重定位不改变其值，也不产生可观察副作用），
+        //   且只越过不读 T 的语句（被越过语句看不到 T 的存在差异）。下沉是块内稳定移动，
+        //   不跨越任何引用 T 的语句，故语义保持。
+        bubbleRelocatableDecls(out);
         return out;
+      }
+
+      // 判断归一后的 init 节点是否"可安全重定位"（重新求值/改变求值时机都不可观察）：
+      //   空表 {}、数字、字符串、布尔、nil。非空表 {..}（字段可能依赖可变状态/有标识语义）、
+      //   调用、索引、成员、标识符读取等一律排除。
+      function isRelocatableInit(node){
+        if(!node||typeof node!=='object') return false;
+        switch(node.type){
+          case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral': case 'NilLiteral':
+            return true;
+          case 'TableConstructorExpression':
+            return !node.fields || node.fields.length===0;   // 仅空表 {}
+          default: return false;
+        }
+      }
+      // 归一节点子树是否引用某 local 逻辑 id n
+      function refsLocalId(node, n){
+        var found=false;
+        (function w(x){
+          if(found||!x||typeof x!=='object') return;
+          if(Array.isArray(x)){ for(var i=0;i<x.length;i++) w(x[i]); return; }
+          if(x.kind==='local' && x.n===n){ found=true; return; }
+          for(var k in x){ if(Object.prototype.hasOwnProperty.call(x,k)) w(x[k]); }
+        })(node);
+        return found;
+      }
+      // 取单变量 LocalDecl 的 (localId, initNode)；不符合则返回 null
+      function singleLocalDecl(stmt){
+        if(!stmt || stmt.type!=='LocalDecl' || stmt.vars.length!==1 || stmt.init.length!==1) return null;
+        var v=stmt.vars[0];
+        if(!v || v.kind!=='local' || typeof v.n!=='number') return null;
+        return {n:v.n, init:stmt.init[0]};
+      }
+      // 块内稳定下沉：对每个可重定位单变量 LocalDecl，后移到其变量【首次被引用】之前。
+      // 仅当该变量在块内后续确有引用时才下沉（否则停在原位，避免无引用声明四处漂移导致
+      // 两种写法发散）。下沉只越过不引用它的语句，停在首个引用它的语句之前。
+      function bubbleRelocatableDecls(list){
+        // 把每个"可重定位单变量 LocalDecl"（字面量/空表初值、单变量）下沉到其变量首次被引用
+        // 之前的规范位置。做法：先把所有【在其后确有引用】的可重定位声明抽离，再按"首次引用所在
+        // （抽离后）语句"为锚点重新插入到该语句之前；同锚点多个声明按逻辑 id 升序稳定排列。
+        // 这样无论原始写法把声明放在批量头还是就近，都收敛到同一规范位置。
+        // 健全性：只在"声明与首次引用之间不含对该变量的引用"时移动（被越过语句看不到该变量），
+        // 且可重定位初值重新定位不可观察。无后续引用的声明不动（避免无依据漂移导致发散）。
+        var pulls=[];   // {decl, n}
+        var rest=[];
+        for(var i=0;i<list.length;i++){
+          var st=list[i];
+          var info=singleLocalDecl(st);
+          if(info && isRelocatableInit(info.init)){
+            // 该变量在 list 后续是否有引用
+            var hasLater=false;
+            for(var k=i+1;k<list.length;k++){ if(refsLocalId(list[k], info.n)){ hasLater=true; break; } }
+            if(hasLater){ pulls.push({decl:st, n:info.n}); continue; }
+          }
+          rest.push(st);
+        }
+        if(!pulls.length) return;
+        // 对每个待插入声明，找到 rest 中首个引用其变量的语句下标作为插入锚点。
+        // 同锚点按 n 升序，保证多个声明的相对顺序规范。
+        pulls.forEach(function(p){
+          var anchor=rest.length;
+          for(var r=0;r<rest.length;r++){ if(refsLocalId(rest[r], p.n)){ anchor=r; break; } }
+          p.anchor=anchor;
+        });
+        pulls.sort(function(a,b){ if(a.anchor!==b.anchor) return a.anchor-b.anchor; return a.n-b.n; });
+        // 从后往前插入，保证已计算的 anchor 下标不被前面的插入破坏。
+        for(var pi=pulls.length-1; pi>=0; pi--){ rest.splice(pulls[pi].anchor, 0, pulls[pi].decl); }
+        // 写回 list
+        list.length=0;
+        for(var q=0;q<rest.length;q++) list.push(rest[q]);
       }
 
       // 判断一条 AssignmentStatement 是否能安全拆成单赋值序列：
