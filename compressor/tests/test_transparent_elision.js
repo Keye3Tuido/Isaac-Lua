@@ -47,7 +47,7 @@ function check(label, code, opts){
   }
 }
 
-// Target case from OPTIMIZATION_TODO (current baseline 204; M-elision target 192).
+// Target case: multi-callback (input 265 chars). Current compressed result is 176.
 check('multi_callback', [
   "l Isaac.AddCallback({},ModCallbacks.XXX,func,arg)",
   "l local A,M=Isaac.AddCallback,ModCallbacks;A({},M.XXX,func,arg)",
