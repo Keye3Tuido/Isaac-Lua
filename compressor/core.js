@@ -5,8 +5,11 @@
  * 设计要点：
  *  - luaparse 不在 AST 保留括号，故【绝不】从 AST 反向生成代码，
  *    一切改写都在 token 流上做，仅依据 AST 的作用域信息。
- *  - 两阶段，每阶段后都做 (a) 重新 parse 语法校验 (b) 规范化 AST 等价校验。
+ *  - 多阶段流水线，每阶段后都做 (a) 重新 parse 语法校验 (b) 规范化 AST 等价校验。
  *    任意校验失败 => 抛错（视为脚本 bug，拒绝输出）。
+ *  - 多阈值策略：尝试 [2..9] 不同全局折叠预筛选阈值，取最短结果。
+ *  - 搜索层（search.js）：在规则系统输出之上做候选探索（表达式提取、激进变量复用），
+ *    canonical 等价验证兜底。无改善则回退 baseline。
  *
  * 结构（便于维护，按职责拆成 src/ 下的"安装器"模块）：
  *  - core.js（本文件）：词法器 + create() 工厂；create() 构造共享上下文 C，
@@ -16,7 +19,8 @@
  *  - src/encode.js    : removeComments / minimizeSpacing（间隔符最小化+分号消除）/ applyEncoding
  *  - src/canonical.js : canonical（SSA 版本化归一 + 各等价归一）/ assert* 校验
  *  - src/folds.js     : preprocess + 各"只缩短才提交"折叠/复用/上提 pass
- *  - src/compress.js  : compress（流水线编排 + 双流水线取短）
+ *  - src/compress.js  : compress（流水线编排 + 多阈值取短）
+ *  - src/search.js    : searchOptimize（搜索层：表达式提取 + 激进变量复用 + canonical 验证）
  *
  * 加载方式（无需构建步骤）：
  *  - 浏览器：index.html 依序 <script> 引入 src/analyze.js ... src/compress.js 再引入 core.js。
@@ -158,7 +162,7 @@
   // ---------- 模块安装器加载 ----------
   // 各 src/*.js part 会把 {name, install} 推入 root.__LuaMinParts。
   // 浏览器侧由 index.html 的 <script> 预先加载；Node 侧在此 require。
-  var PART_ORDER = ['analyze','plan','encode','canonical','folds','compress'];
+  var PART_ORDER = ['analyze','plan','encode','canonical','folds','compress','search'];
   if(typeof module !== 'undefined' && module.exports){
     // Node：显式 require 各 part（它们自注册到 globalThis.__LuaMinParts）
     PART_ORDER.forEach(function(name){ require('./src/'+name+'.js'); });
@@ -212,6 +216,7 @@
 
     return {
       compress: C.compress,
+      searchOptimize: C.searchOptimize,
       // 以下下划线成员仅供测试/调试使用
       _parse: C.parse,
       _analyze: C.analyze,
