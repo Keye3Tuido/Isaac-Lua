@@ -1,22 +1,24 @@
-# Node 依赖（仅本地开发/测试需要）
+# ==================== 依赖与库文件 ====================
+# Node 依赖（本地开发/测试需要）
 compressor/node_modules/
 
 # Vendored 库文件（由 GitHub Actions 从 node_modules 复制，不入库）
 compressor/fengari-web.js
 compressor/luaparse.js
 
-# 构建产物（由 GitHub Actions 用 GenerateHtml.py 现场生成，不入库）
+# ==================== 构建产物 ====================
+# 由 GitHub Actions 用 GenerateHtml.py 生成，不入库
 # 注意用 / 锚定到仓库根，避免误伤 compressor/index.html（压缩器页面需入库）
 /index.html
 /pages/
 
-# 远程测试缓存（remotetest.js 首次联网拉取的外部 main.lua，仅本地复用）
+# ==================== 测试临时文件 ====================
+# 远程测试缓存（remotetest.js 首次联网拉取的外部 main.lua）
 compressor/tests/.remote-cache/
 
-# 批量测试克隆的第三方仓库（bulktest.js 自动下载，仅本地使用）
+# 批量测试克隆的第三方仓库（bulktest.js 自动下载）
 compressor/tests/_bulk_test_repos/
 
-# 压缩结果快照（snapshot.js 生成的重构安全网基线，仅本地用于回归比对）
-compressor/tests/_snapshot.json
-compressor/tests/_snapshot_baseline.json
-TEST_REPORT.json
+# ==================== 快照基线（保留用于回归测试）====================
+# snapshot.js 生成的压缩结果基线，用于检测意外变化
+# 已移除忽略，现在入库以便团队共享基线
