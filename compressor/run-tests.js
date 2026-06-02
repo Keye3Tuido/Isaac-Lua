@@ -57,19 +57,17 @@ allTestFiles.forEach(file => {
   process.stdout.write(`运行 ${file}... `);
 
   try {
-    // bulktest.js 需要更长的超时时间（处理多个仓库）
-    const timeout = file === 'bulktest.js' ? 300000 : 30000;
+    // bulktest/realtest/search_compare 需要更长的超时时间
+    var timeout = 30000;
+    if (file === 'bulktest.js') timeout = 300000;
+    else if (file === 'test_search_compare.js') timeout = 300000;
+    else if (file === 'realtest.js') timeout = 120000;
 
     const output = execSync(`node "${testPath}"`, {
       cwd: testsDir,
       encoding: 'utf8',
       timeout: timeout
     });
-
-    // 调试：输出 bulktest.js 的完整结果到文件
-    if (file === 'bulktest.js') {
-      fs.writeFileSync(path.join(__dirname, 'bulktest_output_debug.txt'), output);
-    }
 
     // 修正：使用更精确的正则，匹配 "X pass, Y fail" 格式，避免跨行匹配
     const summaryMatch = output.match(/(\d+)\s+pass,\s+(\d+)\s+fail/i);

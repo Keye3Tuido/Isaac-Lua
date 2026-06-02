@@ -43,9 +43,15 @@ console.log(result.output);  // l <压缩后的单行代码>
 - `src/encode.js` — 去注释、间隔符最小化、分号消除
 - `src/canonical.js` — SSA 版本化归一 + 等价性验证
 - `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass
-- `src/compress.js` — 流水线编排、多阈值策略
+- `src/compress.js` — 流水线编排、多阈值策略、异步进度回调
+- `src/search.js` — 搜索优化器（表达式提取、激进变量复用，canonical 验证兜底）
 
 **加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护。
+
+**UI 特性**：
+- 压缩进度条：逐阶段实时更新，显示当前阶段名和百分比
+- 搜索优化开关：勾选后启用 `searchOptimize`，用更宽阈值 + 搜索变换探索额外优化空间
+- 压缩期间按钮禁用防重复点击
 
 ### 压缩流水线
 

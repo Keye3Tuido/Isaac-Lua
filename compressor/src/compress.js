@@ -23,6 +23,7 @@
         var build=report.build;
         function rec(name, beforeLen, afterLen, detail){
           build.push({name:name, before:beforeLen, after:afterLen, delta:afterLen-beforeLen, detail:detail});
+          if(opts.stageCallback) opts.stageCallback(name);
         }
         var code=pre;
         rec('预处理(剥 l/lua 前缀, 合并单段)', input.length, code.length, '去掉每行控制台前缀');
@@ -238,11 +239,215 @@
         return report;
       }
 
+      // 异步版 runPipeline：每个阶段之间双 rAF 让浏览器绘制进度条
+      function runPipelineAsync(allowElision, threshold, onDone){
+        var report={ok:false, stages:[], steps:[], build:[], input:input};
+        var _steps=report.steps;
+        var build=report.build;
+        function rec(name, beforeLen, afterLen, detail){
+          build.push({name:name, before:beforeLen, after:afterLen, delta:afterLen-beforeLen, detail:detail});
+        }
+        var code=pre;
+        var ast0, current, renamedCount=0, aliasedCount=0, elisionUsed=false, activeAliasMap=null;
+
+        var stageList=[];
+        function S(name, fn, cond){ if(cond!==false) stageList.push({name:name, fn:fn}); }
+
+        // 阶段定义（按流水线顺序，名称面向普通用户）
+        S('准备', function(){
+          rec('预处理(剥 l/lua 前缀, 合并单段)', input.length, code.length, '去掉每行控制台前缀');
+          assertParses(code, '输入校验', _steps);
+          ast0=parse(code);
+          report.original=code;
+          current=code;
+          renamedCount=0; aliasedCount=0; elisionUsed=false; activeAliasMap=null;
+        });
+
+        S('缩短命名', function(){
+          var info=analyze(ast0);
+          var allGlobals=collectGlobalNames(ast0, info);
+          var plan=planAll(info, allGlobals, ast0, allowElision, threshold);
+          renamedCount=plan.edits.length;
+          aliasedCount=Object.keys(plan.aliasByName).length;
+          elisionUsed=Object.keys(plan.transparentAliases||{}).length>0;
+          var body=applyEdits(code, plan.edits);
+          var declStr='', dropN=0;
+          if(plan.declParts.length){
+            var dp=plan.declParts[0];
+            if(dp.indexOf('@RAW@')===0){ declStr=dp.slice(5); dropN=plan.declDropLeading; }
+            else { declStr='local '+plan.declParts.join(','); dropN=1; }
+          }
+          var afterRename = declStr ? (declStr+' '+body) : body;
+          assertParses(afterRename, '阶段1.1/语法', _steps);
+          var aliasMap = declStr
+            ? { byName: plan.aliasByName, memberByLocal: plan.memberByLocal, factorLocals: plan.factorLocals||[], transparentAliases: plan.transparentAliases||{}, prefixFoldByLocal: {}, stringAliasByLocal: {}, dropLeading: dropN }
+            : null;
+          assertEquivalentAlias(code, afterRename, aliasMap, '阶段1.1/等价', _steps);
+          activeAliasMap = aliasMap;
+          rec('结构性折叠(局部重命名+全局/成员/仿射)', code.length, afterRename.length,
+              '重命名/折叠 '+plan.edits.length+' 处引用');
+          current=afterRename;
+          report.stages.push({name:'1.1-结构性(重命名+全局折叠)', code:afterRename, len:afterRename.length});
+          report.aliasMapInfo = aliasMap;
+        }, doRename);
+
+        S('精简方法调用', function(){
+          var methodRes = foldMethods(current, activeAliasMap, _steps, rec, code);
+          if(methodRes){ current = methodRes.code; activeAliasMap = methodRes.aliasMap; report.aliasMapInfo = activeAliasMap; }
+          report.stages.push({name:'1.2-method折叠', code:current, len:current.length});
+        }, doMethod);
+
+        S('合并字段前缀', function(){
+          var prefixRes = foldFieldPrefix(current, activeAliasMap, _steps, rec, code);
+          if(prefixRes){ current = prefixRes.code; activeAliasMap = prefixRes.aliasMap; report.aliasMapInfo = activeAliasMap; }
+          report.stages.push({name:'1.3-字段前缀折叠', code:current, len:current.length});
+        }, doRename);
+
+        S('复用重复文字', function(){
+          var litRes = foldStringLiterals(current, activeAliasMap, _steps, rec, code);
+          if(litRes){ current = litRes.code; activeAliasMap = litRes.aliasMap; report.aliasMapInfo = activeAliasMap; }
+          report.stages.push({name:'1.4-字面量内联', code:current, len:current.length});
+        }, doRename);
+
+        S('合并声明', function(){
+          var localRes = foldLocals(current, activeAliasMap, _steps, rec, code);
+          if(localRes){ current = localRes.code; }
+          report.stages.push({name:'1.5-local合并', code:current, len:current.length});
+        }, doRename);
+
+        S('拆分赋值', function(){
+          var splitRes = splitMultiAssign(current, activeAliasMap, _steps, rec, code);
+          if(splitRes){ current = splitRes.code; }
+          report.stages.push({name:'1.6-多赋值拆分', code:current, len:current.length});
+        }, doRename);
+
+        S('翻转条件', function(){
+          var ifnotGuard=0;
+          while(ifnotGuard++<50){
+            var ifnotRes = foldIfNot(current, activeAliasMap, _steps, rec, code);
+            if(!ifnotRes) break;
+            current = ifnotRes.code;
+          }
+          report.stages.push({name:'1.6b-if-not二择', code:current, len:current.length});
+        }, doRename);
+
+        S('共用变量', function(){
+          var reuseRes = foldReuse(current, activeAliasMap, _steps, rec, code);
+          if(reuseRes){
+            current = reuseRes.code;
+            var localRes2 = foldLocals(current, activeAliasMap, _steps, rec, code);
+            if(localRes2){ current = localRes2.code; report.stages.push({name:'1.4-local合并(二次)', code:current, len:current.length}); }
+          }
+          report.stages.push({name:'1.7-变量复用', code:current, len:current.length});
+        }, doRename && opts.reuse!==false);
+
+        S('前移声明', function(){
+          var hoistRes = foldDeclHoist(current, activeAliasMap, _steps, rec, code);
+          if(hoistRes){
+            current = hoistRes.code;
+            report.stages.push({name:'1.7b-声明上提', code:current, len:current.length});
+            var splitRes2 = splitMultiAssign(current, activeAliasMap, _steps, rec, code);
+            if(splitRes2){ current = splitRes2.code; report.stages.push({name:'1.6-多赋值拆分(二次)', code:current, len:current.length}); }
+          }
+        }, doRename && opts.reuse!==false);
+
+        S('删除注释', function(){
+          var beforeRemove=current.length;
+          current=removeComments(current);
+          assertParses(current, '阶段1.8/语法', _steps);
+          if(activeAliasMap) assertEquivalentAlias(code, current, activeAliasMap, '阶段1.8/等价', _steps);
+          else assertEquivalent(code, current, '阶段1.8/等价', _steps);
+          rec('去除注释', beforeRemove, current.length, '移除所有注释，保留代码结构');
+          report.stages.push({name:'1.8-去除注释', code:current, len:current.length});
+        }, doEncode);
+
+        S('删除多余空格', function(){
+          var beforeMin=current.length;
+          var afterMinimize=minimizeSpacing(current);
+          assertParses(afterMinimize, '阶段1.9/语法', _steps);
+          if(activeAliasMap) assertEquivalentAlias(code, afterMinimize, activeAliasMap, '阶段1.9/等价', _steps);
+          else assertEquivalent(code, afterMinimize, '阶段1.9/等价', _steps);
+          rec('间隔符最小化+单行', beforeMin, afterMinimize.length, '词法重排');
+          current=afterMinimize;
+          report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
+        }, doEncode);
+
+        S('删除重复声明', function(){
+          var beforeDedup=current.length;
+          var localPattern=/local\s+[A-Za-z_][A-Za-z0-9_,]*=(?:(?!local).)+? (?=[A-Z])/g;
+          var matches=[], match;
+          while((match=localPattern.exec(current))!==null){
+            matches.push({text:match[0],start:match.index,end:match.index+match[0].length});
+          }
+          var seen=new Set();
+          var toRemove=[];
+          matches.forEach(function(m){ if(seen.has(m.text)){ toRemove.push(m); }else{ seen.add(m.text); } });
+          if(toRemove.length>0){
+            var preDedup=current;
+            toRemove.reverse();
+            toRemove.forEach(function(m){ current=current.slice(0,m.start)+current.slice(m.end); });
+            var dedupValid=true;
+            if(luaValidate && luaValidate(current)) dedupValid=false;
+            if(dedupValid){ try{ parse(current); }catch(e){ dedupValid=false; } }
+            if(dedupValid && current.length<beforeDedup){
+              rec('重复声明删除', beforeDedup, current.length, '删除 '+toRemove.length+' 个重复的 local 声明');
+              report.stages.push({name:'1.10-重复声明删除', code:current, len:current.length});
+            }else{ current=preDedup; }
+          }
+        }, doRename);
+
+        // 处理步骤队列
+        var idx=0;
+        var hasRAF = typeof requestAnimationFrame !== 'undefined';
+        function nextStep(){
+          if(idx>=stageList.length){
+            report.ok=true;
+            report.output='l '+current;
+            report.aliasMapInfo=activeAliasMap;
+            report.bodyLength=current.length;
+            report.originalLength=input.length;
+            report.renamedCount=renamedCount;
+            report.aliasedCount=aliasedCount;
+            report.elisionUsed=elisionUsed;
+            onDone(report);
+            return;
+          }
+          try {
+            stageList[idx].fn();
+          } catch(e) {
+            if(opts._error) { opts._error(e); onDone(null); }
+            else onDone(null);
+            return;
+          }
+          var name=stageList[idx].name;
+          if(opts.stageCallback) opts.stageCallback(name);
+          idx++;
+          if(hasRAF){
+            requestAnimationFrame(function(){
+              requestAnimationFrame(nextStep);
+            });
+          } else {
+            setTimeout(nextStep, 0);
+          }
+        }
+        if(hasRAF){
+          requestAnimationFrame(function(){
+            requestAnimationFrame(nextStep);
+          });
+        } else {
+          setTimeout(nextStep, 0);
+        }
+      }
+
       // 多阈值取短策略：尝试多个全局折叠预筛选阈值，选择最短结果。
       // 对每个阈值，先跑启用 elision 的流水线；若触发了消解，再跑禁用版对比。
-      // 阈值 [2, 8]：激进折叠 vs 保守折叠，覆盖两个极端，数学分析和测试验证最优配置。
-      var thresholds = opts.thresholds || [2, 8];
+      var thresholds = opts.thresholds || [2,8];
       var bestResult = null;
+
+      // 若提供了 onProgress 回调，使用异步分段执行（setTimeout 让浏览器刷新进度条）
+      if(opts.onProgress){
+        return compressWithProgress(input, opts, thresholds, runPipeline, runPipelineAsync, doRename);
+      }
 
       for(var ti=0; ti<thresholds.length; ti++){
         var T = thresholds[ti];
@@ -259,15 +464,78 @@
             bestResult = candidate;
           }
         } catch(e) {
-          // 该阈值失败，继续尝试下一个阈值
           continue;
         }
       }
 
-      // 所有阈值都失败，抛出最后一个异常
       if(!bestResult) throw new Error('所有阈值配置均压缩失败');
 
       return bestResult;
+    }
+
+    // 带进度回调的异步压缩（setTimeout 分段执行，让浏览器刷新进度条）
+    function compressWithProgress(input, opts, thresholds, runPipeline, runPipelineAsync, doRename){
+      var onProgress = opts.onProgress;
+      var bestResult = null;
+      var ti = 0;
+      var total = thresholds.length;
+
+      function runOne(allowElision, T, cb){
+        if(opts.stageCallback){
+          runPipelineAsync(allowElision, T, cb);
+        } else {
+          try { cb(runPipeline(allowElision, T)); }
+          catch(e) { if(opts._error) opts._error(e); }
+        }
+      }
+
+      function tryNext(){
+        if(ti >= total){
+          if(!bestResult){
+            if(opts._error) opts._error(new Error('所有阈值配置均压缩失败'));
+            return;
+          }
+          opts._done(bestResult);
+          return;
+        }
+
+        var T = thresholds[ti];
+        runOne(true, T, function(repElide){
+          var candidate = repElide;
+          if(doRename && repElide.elisionUsed){
+            runOne(false, T, function(repPlain){
+              if(repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
+              finishThreshold(T, candidate);
+            });
+          } else {
+            finishThreshold(T, candidate);
+          }
+        });
+      }
+
+      function finishThreshold(T, candidate){
+        if(!bestResult || candidate.bodyLength < bestResult.bodyLength){
+          bestResult = candidate;
+        }
+        onProgress({current: ti+1, total: total, threshold: T, len: bestResult ? bestResult.bodyLength : 0});
+        ti++;
+        if(typeof requestAnimationFrame !== 'undefined'){
+          requestAnimationFrame(function(){
+            requestAnimationFrame(tryNext);
+          });
+        } else {
+          setTimeout(tryNext, 16);
+        }
+      }
+
+      if(typeof requestAnimationFrame !== 'undefined'){
+        requestAnimationFrame(function(){
+          requestAnimationFrame(tryNext);
+        });
+      } else {
+        setTimeout(tryNext, 16);
+      }
+      // 不返回结果；通过 opts._done 回调传递
     }
 
     C.compress=compress;

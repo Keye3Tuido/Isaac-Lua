@@ -79,6 +79,14 @@
   .ghost{background:linear-gradient(180deg,var(--stone-3),var(--stone));color:var(--ink);box-shadow:0 6px 0 #120c09,0 10px 18px rgba(0,0,0,.55),inset 0 1px 2px rgba(255,255,255,.1);}
   .ghost:hover{transform:translateY(-2px);filter:brightness(1.12);box-shadow:0 8px 0 #120c09,0 12px 24px rgba(0,0,0,.6),inset 0 1px 2px rgba(255,255,255,.1);}
   .ghost:active{transform:translateY(3px);box-shadow:0 2px 0 #120c09;}
+  .search-toggle{font-family:var(--hud);font-size:14px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:5px;user-select:none;padding:4px 0;}
+  .search-toggle input{accent-color:var(--gold);}
+  /* 进度条 */
+  #progress{display:none;margin:10px 0;}
+  #progress.active{display:block;}
+  #progress .label{font-family:var(--hud);font-size:12px;color:var(--muted);margin-bottom:4px;}
+  #progress .track{height:18px;background:var(--stone);border-radius:4px;overflow:hidden;}
+  #progress .bar{height:100%;width:0;background:var(--gold);border-radius:3px;transition:width .15s;font-family:var(--hud);font-size:11px;line-height:18px;text-align:center;color:#0e0a07;white-space:nowrap;}
   .stat{font-size:1rem;color:var(--muted);font-family:var(--hud);letter-spacing:.03em;}
   .badge{font-size:1rem;padding:1px 11px;border-radius:999px;color:#fff5e6;font-weight:600;font-family:var(--hud);border:1px solid rgba(0,0,0,.4);}
   .badge.ok{background:linear-gradient(180deg,var(--ok),var(--ok-d));color:#0e1a12;}
@@ -117,14 +125,6 @@
   .diff-legend ins{background:rgba(58,140,94,.22);color:#9fe0b6;text-decoration:none;padding:0 4px;border-radius:2px;}
   .diff-legend del{background:rgba(163,30,30,.22);color:#e88;text-decoration:line-through;padding:0 4px;border-radius:2px;}
   /* 最后阶段：纯说明（受静态审查限制刻意不实现的优化） */
-  .stage-item.info{border-style:dashed;border-color:var(--line-2);opacity:.92;}
-  .stage-item.info .stage-name{color:var(--muted);}
-  .stage-item.info .stage-note{color:var(--muted);font-family:var(--hud);font-size:11px;}
-  .stage-note-body{display:none;margin-top:8px;padding:8px;background:#0a0806;border:1px dashed var(--line-2);border-radius:4px;font-size:11px;line-height:1.6;color:#b8a890;}
-  .stage-item.info.expanded .stage-note-body{display:block;}
-  .stage-note-body ul{margin:0;padding-left:18px;}
-  .stage-note-body li{margin:4px 0;}
-  .stage-note-body code{font-size:11px;padding:0 4px;}
 
 </style>
 </head>
@@ -139,6 +139,7 @@
       <span class="stat" id="inStat"></span>
       <div class="row">
         <button class="primary" id="run">压缩</button>
+        <label class="search-toggle" title="启用搜索层：在规则系统输出之上尝试额外优化（canonical 验证兜底，可能更慢）"><input type="checkbox" id="useSearch"> 搜索优化</label>
         <button class="ghost" id="clear">清空</button>
       </div>
       <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
@@ -155,6 +156,8 @@
   </div>
 
   <div id="msg"></div>
+
+  <div id="progress"><div class="label"></div><div class="track"><div class="bar"></div></div></div>
 
   <div class="card" id="stagesCard" style="display:none;margin-top:16px;">
     <h2>压缩阶段</h2>
@@ -174,6 +177,7 @@
 <script src="src/canonical.js"></script>
 <script src="src/folds.js"></script>
 <script src="src/compress.js"></script>
+<script src="src/search.js"></script>
 <script src="core.js"></script>
 <script>
 (function(){
@@ -185,9 +189,19 @@
   var $msg=document.getElementById('msg'), $badge=document.getElementById('badge');
   var $inStat=document.getElementById('inStat'), $outStat=document.getElementById('outStat');
   var $stagesCard=document.getElementById('stagesCard'), $stages=document.getElementById('stages');
+  var $progress=document.getElementById('progress'), $useSearch=document.getElementById('useSearch');
 
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
+
+  var $runBtn=document.getElementById('run'), $clearBtn=document.getElementById('clear');
+  var running = false;
+  function setRunning(v){
+    running = v;
+    $runBtn.disabled = v;
+    $clearBtn.disabled = v;
+    $useSearch.disabled = v;
+  }
 
   // ---- 轻量 diff（token 级 LCS）：展示某阶段相对上一阶段的增删 ----
   function escapeHtml(s){
@@ -253,11 +267,10 @@
     return html;
   }
 
-
   function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; }
   $in.addEventListener('input', updateInStat);
 
-  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $badge.innerHTML=''; clearMsg(); updateInStat(); $stagesCard.style.display='none'; $stages.innerHTML=''; };
+  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $outStat.textContent=''; $badge.innerHTML=''; $badge.className='badge'; clearMsg(); updateInStat(); $stagesCard.style.display='none'; $stages.innerHTML=''; };
 
   document.getElementById('copy').onclick=function(){
     if(!$out.value) return;
@@ -268,12 +281,32 @@
 
   document.getElementById('run').onclick=function(){
     clearMsg(); $badge.innerHTML=''; $stagesCard.style.display='none'; $stages.innerHTML='';
+    $out.value=''; $outStat.textContent='';
     var input=$in.value;
     if(!/\S/.test(input)){ setMsg('err','输入为空。'); return; }
-    try{
-      var rep=engine.compress(input);
+
+    setRunning(true);
+
+    var useSearch=$useSearch.checked;
+    var t0=Date.now();
+    var $bar=$progress.querySelector('.bar');
+    var $plabel=$progress.querySelector('.label');
+
+    function showResult(rep, baseline){
+      setRunning(false);
+      $progress.classList.remove('active');
+      var elapsed=(Date.now()-t0)/1000;
+
       $out.value=rep.output;
-      $badge.className='badge ok'; $badge.textContent='校验通过';
+      $badge.className='badge ok';
+      var modeTag=useSearch
+        ? (baseline
+            ? (rep.bodyLength<baseline.bodyLength
+                ? '搜索 · 省'+ (baseline.bodyLength-rep.bodyLength) +'字'
+                : '搜索 · ±0')
+            : '搜索模式')
+        : '';
+      $badge.textContent='校验通过'+(modeTag?' ('+modeTag+', '+elapsed.toFixed(1)+'s)':' ('+elapsed.toFixed(1)+'s)');
       var pct=rep.originalLength? Math.round((rep.originalLength-rep.output.length)/rep.originalLength*100):0;
       $inStat.textContent='输入 '+rep.originalLength+' 字符';
       $outStat.textContent='输出 '+rep.output.length+' 字符　压缩比 '+pct+'%';
@@ -281,12 +314,11 @@
       if(rep.stages && rep.stages.length){
         $stagesCard.style.display='block';
         var prevLen=rep.originalLength;
-        var prevCode=rep.original!=null ? rep.original : input;   // 第一阶段的 diff 基准 = 预处理后的输入
+        var prevCode=rep.original!=null ? rep.original : input;
         rep.stages.forEach(function(stage){
           var delta=prevLen-stage.len;
           var deltaText=delta>0? '-'+delta : delta<0? '+'+Math.abs(delta) : '±0';
           var deltaClass=delta>0? 'positive' : delta<0? 'negative' : '';
-          // 只要代码相对上一阶段有变化就可展开看 diff（即使长度不变，如尾值贴紧重排）
           var changed=(stage.code!==prevCode);
           var hasOptimization=changed;
 
@@ -299,28 +331,23 @@
           item.appendChild(header);
 
           if(hasOptimization){
-            // 捕获本阶段相对上一阶段的代码，供 diff / 完整代码切换
             var beforeCode=prevCode, afterCode=stage.code;
             var codeDiv=document.createElement('div');
             codeDiv.className='stage-code';
-
-            // diff / 完整 切换按钮
             var toggle=document.createElement('span');
             toggle.className='diff-toggle active';
             toggle.textContent='diff';
             var showingDiff=true;
+            (function(bc,ac,cd,tg){
             function renderMode(){
-              if(showingDiff){ codeDiv.innerHTML=renderDiffHtml(beforeCode, afterCode); toggle.textContent='diff'; toggle.classList.add('active'); }
-              else { codeDiv.textContent=afterCode; toggle.textContent='完整'; toggle.classList.remove('active'); }
+              if(showingDiff){ cd.innerHTML=renderDiffHtml(bc,ac); tg.textContent='diff'; tg.classList.add('active'); }
+              else { cd.textContent=ac; tg.textContent='完整'; tg.classList.remove('active'); }
             }
-            toggle.onclick=function(ev){
-              ev.stopPropagation();   // 不触发整条的展开/收起
-              showingDiff=!showingDiff; renderMode();
-            };
-            header.querySelector('.stage-expand').appendChild(toggle);
+            tg.onclick=function(ev){ ev.stopPropagation(); showingDiff=!showingDiff; renderMode(); };
             renderMode();
+            })(beforeCode,afterCode,codeDiv,toggle);
+            header.querySelector('.stage-expand').appendChild(toggle);
             item.appendChild(codeDiv);
-
             item.onclick=function(){ item.classList.toggle('expanded'); };
           }
 
@@ -329,35 +356,81 @@
           prevCode=stage.code;
         });
 
-        // 最后阶段：纯说明——还没做/不能做的优化（点击展开看大白话解释）
-        var info=document.createElement('div');
-        info.className='stage-item info expandable';
-        var ihead=document.createElement('div');
-        ihead.className='stage-header';
-        ihead.innerHTML='<span class="stage-name">最后阶段 · 还能再短一点吗？（说明）</span><span class="stage-note">点开看<span class="stage-expand"></span></span>';
-        info.appendChild(ihead);
-        var ibody=document.createElement('div');
-        ibody.className='stage-note-body';
-        ibody.innerHTML=''
-          +'<div style="margin-bottom:12px;"><b>压缩器已做尽全力，剩下这些受制于 Lua 动态特性、静态分析无法安全证明等价：</b></div>'
-          +'<div><b>① 不能做（可能改变运行结果）</b></div>'
-          +'<ul>'
-          +'<li><b>重复表达式提取复用</b> —— <code>f(b.X)f(b.X)f(b.X)</code> 看着能改成 <code>local x=b.X f(x)f(x)f(x)</code>，但 <code>b</code> 可能设了 <code>__index</code> 钩子，每次读 <code>b.X</code> 都执行副作用代码；只读一次会少跑几次，结果可能变。静态看不出有无钩子，只能保守不动。</li>'
-          +'<li><b>语句重排序优化</b> —— 把赋值/调用挪到更早位置。函数调用、表索引可能有副作用（改全局状态、IO、推进计数器），挪动会改执行顺序。只有纯值（数字/字符串/空表 <code>{}</code>）才敢挪，但那些本就不值得提取。</li>'
-          +'</ul>'
-          +'<div style="margin-top:12px;"><b>② 风险大、只做了能严格验证的部分</b></div>'
-          +'<ul>'
-          +'<li><b>跨段全局共享</b> —— 多段重复出现的东西提成共用全局，需大改结构（拼段、重排声明），易破坏语义。目前只做了同源透明别名合并、声明上提等可机器验证的子集，激进跨段重组未做。</li>'
-          +'<li><b>复杂上下文依赖写法</b> —— 如"命名空间表装全部状态""跨段共享辅助函数"，需人脑判断语义安全性，自动化易误判。这些技巧保留在 README 第二部分作人工压缩参考。</li>'
-          +'</ul>'
-          +'<div style="margin-top:12px;color:#9c8a70;font-size:10px;">详细边界说明见 <a href="https://github.com/your-repo/compressor" style="color:#d9a441;">README.md § 已知边界</a></div>';
-        info.appendChild(ibody);
-        info.onclick=function(){ info.classList.toggle('expanded'); };
-        $stages.appendChild(info);
+        if(useSearch && baseline){
+          var saved=baseline.bodyLength-rep.bodyLength;
+          var sItem=document.createElement('div');
+          sItem.className='stage-item'+(saved!==0?' expandable':'');
+          var sHead=document.createElement('div');
+          sHead.className='stage-header';
+          var sDelta=saved>0?'-'+saved:saved<0?'+'+Math.abs(saved):'±0';
+          var sClass=saved>0?'positive':saved<0?'negative':'';
+          sHead.innerHTML='<span class="stage-name">搜索层</span><span><span class="stage-len">'+rep.bodyLength+' 字符</span><span class="stage-delta '+sClass+'">'+sDelta+'</span>'+(saved!==0?'<span class="stage-expand"></span>':'')+'</span>';
+          sItem.appendChild(sHead);
+          if(saved!==0){
+            var sBody=document.createElement('div');
+            sBody.className='stage-code';
+            sBody.textContent='规则基线 '+baseline.bodyLength+' → 搜索 '+rep.bodyLength+' (省 '+saved+' 字符)';
+            sItem.appendChild(sBody);
+            sItem.onclick=function(){ sItem.classList.toggle('expanded'); };
+          }
+          $stages.appendChild(sItem);
+        }
+
       }
-    }catch(e){
+    } // end showResult
+
+    function doError(e){
+      setRunning(false);
+      $progress.classList.remove('active');
       $out.value=''; $badge.className='badge err'; $badge.textContent='已拒绝'; $outStat.textContent='';
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
+    }
+
+    if(useSearch){
+      $bar.style.width='0%'; $bar.textContent='';
+      $plabel.textContent='搜索模式 · 开始…';
+      $progress.classList.add('active');
+      var searchStepN = 0;
+      engine.searchOptimize(input, {
+        budget: 10000,
+        onProgress: function(p){
+          if(p.phase==='baseline'){
+            var pct=Math.round(p.current/p.total*50);
+            $bar.style.width=pct+'%';
+            $bar.textContent=pct+'%';
+            $plabel.textContent='基线压缩 · '+(p.stage||'')+' (阈值'+p.threshold+')';
+          } else {
+            searchStepN++;
+            var base=50+Math.round(searchStepN/15*48);
+            $bar.style.width=Math.min(base,98)+'%';
+            $bar.textContent=Math.min(base,98)+'%';
+            $plabel.textContent='搜索优化 · '+(p.step||'')+(p.round?' 第'+p.round+'轮':'');
+          }
+        },
+        _error: doError,
+        _done: function(rep){
+          showResult(rep, null);
+        }
+      });
+    } else {
+      // 普通模式：带进度回调的异步压缩
+      $bar.style.width='0%'; $bar.textContent='';
+      $plabel.textContent='压缩中…';
+      $progress.classList.add('active');
+      engine.compress(input, {
+        onProgress: function(p){
+          var pct=Math.round(p.current/p.total*100);
+          $bar.style.width=pct+'%';
+          $bar.textContent=pct+'%';
+        },
+        stageCallback: function(name){
+          $plabel.textContent='压缩中 · '+name;
+        },
+        _error: doError,
+        _done: function(rep){
+          showResult(rep, null);
+        }
+      });
     }
   };
 
