@@ -1,0 +1,534 @@
+{
+  "gitSHA": "e9d1f0b1",
+  "gitBranch": "main",
+  "timestamp": "2026-06-02T05:17:22.807Z",
+  "summary": {
+    "testSuites": 12,
+    "totalPass": 238,
+    "totalFail": 0,
+    "status": "PASS"
+  },
+  "suites": [
+    {
+      "file": "bulktest.js",
+      "status": "pass",
+      "pass": 152,
+      "fail": 0
+    },
+    {
+      "file": "edge.js",
+      "status": "pass",
+      "pass": 40,
+      "fail": 0
+    },
+    {
+      "file": "realtest.js",
+      "status": "pass",
+      "pass": 0,
+      "fail": 0
+    },
+    {
+      "file": "remotetest.js",
+      "status": "pass",
+      "pass": 0,
+      "fail": 0
+    },
+    {
+      "file": "test.js",
+      "status": "pass",
+      "pass": 0,
+      "fail": 0
+    },
+    {
+      "file": "test_canonical_fwdnil.js",
+      "status": "pass",
+      "pass": 11,
+      "fail": 0
+    },
+    {
+      "file": "test_canonical_ifnot.js",
+      "status": "pass",
+      "pass": 14,
+      "fail": 0
+    },
+    {
+      "file": "test_canonical_relocpull.js",
+      "status": "pass",
+      "pass": 9,
+      "fail": 0
+    },
+    {
+      "file": "test_incremental.js",
+      "status": "pass",
+      "pass": 0,
+      "fail": 0
+    },
+    {
+      "file": "test_semicolon_elision.js",
+      "status": "pass",
+      "pass": 7,
+      "fail": 0
+    },
+    {
+      "file": "test_threshold_effectiveness.js",
+      "status": "pass",
+      "pass": 0,
+      "fail": 0
+    },
+    {
+      "file": "test_transparent_elision.js",
+      "status": "pass",
+      "pass": 5,
+      "fail": 0
+    }
+  ],
+  "compression": {
+    "totalSegments": 63,
+    "minRatio": 0.15,
+    "maxRatio": 10.86,
+    "avgRatio": 1.95,
+    "details": [
+      {
+        "file": "-1.灵感.lua",
+        "segment": 0,
+        "inputLen": 414,
+        "outputLen": 413,
+        "ratio": 0.24
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 1,
+        "inputLen": 438,
+        "outputLen": 437,
+        "ratio": 0.23
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 2,
+        "inputLen": 546,
+        "outputLen": 545,
+        "ratio": 0.18
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 3,
+        "inputLen": 595,
+        "outputLen": 594,
+        "ratio": 0.17
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 4,
+        "inputLen": 136,
+        "outputLen": 135,
+        "ratio": 0.74
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 5,
+        "inputLen": 366,
+        "outputLen": 365,
+        "ratio": 0.27
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 6,
+        "inputLen": 352,
+        "outputLen": 339,
+        "ratio": 3.69
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 0,
+        "inputLen": 223,
+        "outputLen": 208,
+        "ratio": 6.73
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 1,
+        "inputLen": 604,
+        "outputLen": 603,
+        "ratio": 0.17
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 2,
+        "inputLen": 247,
+        "outputLen": 245,
+        "ratio": 0.81
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 3,
+        "inputLen": 342,
+        "outputLen": 341,
+        "ratio": 0.29
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 4,
+        "inputLen": 69,
+        "outputLen": 68,
+        "ratio": 1.45
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 5,
+        "inputLen": 318,
+        "outputLen": 317,
+        "ratio": 0.31
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 6,
+        "inputLen": 281,
+        "outputLen": 280,
+        "ratio": 0.36
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 7,
+        "inputLen": 434,
+        "outputLen": 433,
+        "ratio": 0.23
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 8,
+        "inputLen": 491,
+        "outputLen": 490,
+        "ratio": 0.2
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 9,
+        "inputLen": 341,
+        "outputLen": 340,
+        "ratio": 0.29
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 10,
+        "inputLen": 371,
+        "outputLen": 370,
+        "ratio": 0.27
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 11,
+        "inputLen": 124,
+        "outputLen": 122,
+        "ratio": 1.61
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 12,
+        "inputLen": 289,
+        "outputLen": 288,
+        "ratio": 0.35
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 13,
+        "inputLen": 469,
+        "outputLen": 467,
+        "ratio": 0.43
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 14,
+        "inputLen": 487,
+        "outputLen": 485,
+        "ratio": 0.41
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 15,
+        "inputLen": 478,
+        "outputLen": 475,
+        "ratio": 0.63
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 16,
+        "inputLen": 207,
+        "outputLen": 206,
+        "ratio": 0.48
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 17,
+        "inputLen": 354,
+        "outputLen": 335,
+        "ratio": 5.37
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 18,
+        "inputLen": 372,
+        "outputLen": 371,
+        "ratio": 0.27
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 19,
+        "inputLen": 163,
+        "outputLen": 162,
+        "ratio": 0.61
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 20,
+        "inputLen": 461,
+        "outputLen": 458,
+        "ratio": 0.65
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 21,
+        "inputLen": 254,
+        "outputLen": 253,
+        "ratio": 0.39
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 22,
+        "inputLen": 662,
+        "outputLen": 661,
+        "ratio": 0.15
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 23,
+        "inputLen": 87,
+        "outputLen": 86,
+        "ratio": 1.15
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 24,
+        "inputLen": 371,
+        "outputLen": 360,
+        "ratio": 2.96
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 25,
+        "inputLen": 693,
+        "outputLen": 689,
+        "ratio": 0.58
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 26,
+        "inputLen": 359,
+        "outputLen": 348,
+        "ratio": 3.06
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 27,
+        "inputLen": 196,
+        "outputLen": 185,
+        "ratio": 5.61
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 28,
+        "inputLen": 443,
+        "outputLen": 428,
+        "ratio": 3.39
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 29,
+        "inputLen": 508,
+        "outputLen": 496,
+        "ratio": 2.36
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 30,
+        "inputLen": 403,
+        "outputLen": 388,
+        "ratio": 3.72
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 31,
+        "inputLen": 174,
+        "outputLen": 173,
+        "ratio": 0.57
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 32,
+        "inputLen": 423,
+        "outputLen": 406,
+        "ratio": 4.02
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 33,
+        "inputLen": 425,
+        "outputLen": 386,
+        "ratio": 9.18
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 34,
+        "inputLen": 287,
+        "outputLen": 270,
+        "ratio": 5.92
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 35,
+        "inputLen": 359,
+        "outputLen": 320,
+        "ratio": 10.86
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 36,
+        "inputLen": 584,
+        "outputLen": 583,
+        "ratio": 0.17
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 37,
+        "inputLen": 684,
+        "outputLen": 681,
+        "ratio": 0.44
+      },
+      {
+        "file": "0.实用代码合辑.lua",
+        "segment": 38,
+        "inputLen": 111,
+        "outputLen": 110,
+        "ratio": 0.9
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 0,
+        "inputLen": 997,
+        "outputLen": 973,
+        "ratio": 2.41
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 1,
+        "inputLen": 212,
+        "outputLen": 192,
+        "ratio": 9.43
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 2,
+        "inputLen": 414,
+        "outputLen": 413,
+        "ratio": 0.24
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 3,
+        "inputLen": 247,
+        "outputLen": 245,
+        "ratio": 0.81
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 4,
+        "inputLen": 3519,
+        "outputLen": 3490,
+        "ratio": 0.82
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 5,
+        "inputLen": 165,
+        "outputLen": 164,
+        "ratio": 0.61
+      },
+      {
+        "file": "1.御灵术.lua",
+        "segment": 6,
+        "inputLen": 174,
+        "outputLen": 173,
+        "ratio": 0.57
+      },
+      {
+        "file": "10.天堂制造.lua",
+        "segment": 0,
+        "inputLen": 997,
+        "outputLen": 973,
+        "ratio": 2.41
+      },
+      {
+        "file": "10.天堂制造.lua",
+        "segment": 1,
+        "inputLen": 212,
+        "outputLen": 192,
+        "ratio": 9.43
+      },
+      {
+        "file": "10.天堂制造.lua",
+        "segment": 2,
+        "inputLen": 414,
+        "outputLen": 413,
+        "ratio": 0.24
+      },
+      {
+        "file": "10.天堂制造.lua",
+        "segment": 3,
+        "inputLen": 393,
+        "outputLen": 392,
+        "ratio": 0.25
+      },
+      {
+        "file": "10.天堂制造.lua",
+        "segment": 4,
+        "inputLen": 491,
+        "outputLen": 490,
+        "ratio": 0.2
+      },
+      {
+        "file": "11.异食游戏.lua",
+        "segment": 0,
+        "inputLen": 997,
+        "outputLen": 973,
+        "ratio": 2.41
+      },
+      {
+        "file": "11.异食游戏.lua",
+        "segment": 1,
+        "inputLen": 212,
+        "outputLen": 192,
+        "ratio": 9.43
+      },
+      {
+        "file": "11.异食游戏.lua",
+        "segment": 2,
+        "inputLen": 414,
+        "outputLen": 413,
+        "ratio": 0.24
+      },
+      {
+        "file": "11.异食游戏.lua",
+        "segment": 3,
+        "inputLen": 341,
+        "outputLen": 340,
+        "ratio": 0.29
+      },
+      {
+        "file": "11.异食游戏.lua",
+        "segment": 4,
+        "inputLen": 367,
+        "outputLen": 366,
+        "ratio": 0.27
+      }
+    ]
+  }
+}
