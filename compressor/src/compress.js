@@ -16,7 +16,8 @@
       // 消解后反而更长（如三条完全相同的声明，保留共享别名 + 去重更优）。遵循全局
       // "只缩短才提交"原则，跑两条流水线（启用/不启用 elision）取更短者。
       // 仅当启用版真的触发了 elision 时才跑第二条，避免无谓的双倍开销。
-      function runPipeline(allowElision){
+      // threshold: 全局折叠预筛选阈值，默认 8。多阈值策略会尝试不同值取最短结果。
+      function runPipeline(allowElision, threshold){
         var report={ok:false, stages:[], steps:[], build:[], input:input};
         var steps=report.steps;
         var build=report.build;
@@ -41,7 +42,7 @@
         if(doRename){
           var info=analyze(ast0);
           var allGlobals=collectGlobalNames(ast0, info);
-          var plan=planAll(info, allGlobals, ast0, allowElision);
+          var plan=planAll(info, allGlobals, ast0, allowElision, threshold);
           renamedCount=plan.edits.length;
           aliasedCount=Object.keys(plan.aliasByName).length;
           elisionUsed=Object.keys(plan.transparentAliases||{}).length>0;
@@ -237,13 +238,28 @@
         return report;
       }
 
-      // 先跑启用 elision 的流水线；若它确实触发了消解，再跑禁用版对比，取更短者。
-      var repElide=runPipeline(true);
-      if(doRename && repElide.elisionUsed){
-        var repPlain=runPipeline(false);
-        if(repPlain.bodyLength < repElide.bodyLength) return repPlain;
+      // 多阈值取短策略：尝试多个全局折叠预筛选阈值，选择最短结果。
+      // 对每个阈值，先跑启用 elision 的流水线；若触发了消解，再跑禁用版对比。
+      // 阈值 [2, 8]：激进折叠 vs 保守折叠，覆盖两个极端，数学分析和测试验证最优配置。
+      var thresholds = opts.thresholds || [2, 8];
+      var bestResult = null;
+
+      for(var ti=0; ti<thresholds.length; ti++){
+        var T = thresholds[ti];
+        var repElide = runPipeline(true, T);
+        var candidate = repElide;
+
+        if(doRename && repElide.elisionUsed){
+          var repPlain = runPipeline(false, T);
+          if(repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
+        }
+
+        if(!bestResult || candidate.bodyLength < bestResult.bodyLength){
+          bestResult = candidate;
+        }
       }
-      return repElide;
+
+      return bestResult;
     }
 
     C.compress=compress;

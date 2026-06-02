@@ -3,11 +3,12 @@
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'plan', install:function(C){
     var KEYWORDS=C.KEYWORDS, candidateGenerator=C.candidateGenerator, collectMemberAccess=C.collectMemberAccess;
-    function planAll(info, allGlobalNames, ast, allowElision){
+    function planAll(info, allGlobalNames, ast, allowElision, threshold){
       var bindings=info.bindings;
+      threshold = threshold !== undefined ? threshold : 8;  // 默认 m+8（保守）
 
-      // (a) 全局候选：纯读取、从不被赋值；用保守盈亏(L=1)预筛 (m-1)*k > m+8
-      // 成本：local x=Name (m+8字符)；每次节省 m-1；需要 (m-1)*k > m+8
+      // (a) 全局候选：纯读取、从不被赋值；用可配置盈亏预筛 (m-1)*k > m+threshold
+      // threshold 可在运行时调整，compress 多阈值取短策略会尝试不同值。
       var groups=new Map();
       info.varOf.forEach(function(b,node){
         if(b!==null) return;
@@ -19,7 +20,7 @@
       var globalCands=[]; // {name, nodes, k, m}
       groups.forEach(function(nodes, nm){
         var k=nodes.length, m=nm.length;
-        if((m-1)*k > (m+8)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
+        if((m-1)*k > (m+threshold)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
       });
 
       // (a1) 识别透明别名：local X=GlobalVar 或 local X=LocalAlias 形式的局部变量
