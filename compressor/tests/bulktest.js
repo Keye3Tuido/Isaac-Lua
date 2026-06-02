@@ -31,17 +31,15 @@ function removeComments(src){
 const TEST_DIR = path.join(__dirname, '_bulk_test_repos');
 
 // 知名纯 Lua 项目列表（库、框架、工具、编辑器等，覆盖多种代码风格）
+// 已删除：penlight, busted, jumper, zerobrane, lapis（这些项目包含luaparse不支持的语法特性）
 const REPOS = [
   // 库/框架
-  { url: 'https://github.com/lunarmodules/penlight.git',       name: 'penlight',       branch: 'master' },
-  { url: 'https://github.com/lunarmodules/busted.git',         name: 'busted',         branch: 'master' },
   { url: 'https://github.com/lunarmodules/ldoc.git',           name: 'ldoc',           branch: 'master' },
   { url: 'https://github.com/lunarmodules/luacheck.git',       name: 'luacheck',       branch: 'master' },
   { url: 'https://github.com/lunarmodules/lua-argon2.git',     name: 'lua-argon2',     branch: 'master' },
   { url: 'https://github.com/stevedonovan/Microlight.git',     name: 'microlight',     branch: 'master' },
   { url: 'https://github.com/Yonaba/Moses.git',                name: 'moses',          branch: 'master' },
   { url: 'https://github.com/Yonaba/30log.git',                name: '30log',          branch: 'master' },
-  { url: 'https://github.com/Yonaba/Jumper.git',               name: 'jumper',         branch: 'master' },
   { url: 'https://github.com/rxi/json.lua.git',                name: 'json-lua',       branch: 'master' },
   { url: 'https://github.com/kikito/middleclass.git',          name: 'middleclass',    branch: 'master' },
   { url: 'https://github.com/kikito/stateful.lua.git',         name: 'stateful',       branch: 'master' },
@@ -49,10 +47,7 @@ const REPOS = [
   { url: 'https://github.com/tannerrogalsky/lua-lru.git',      name: 'lua-lru',        branch: 'master' },
   { url: 'https://github.com/kkharji/sqlite.lua.git',          name: 'sqlite-lua',     branch: 'master' },
   { url: 'https://github.com/Cluain/Lua-Simple-XML-Parser.git', name: 'lua-xml',       branch: 'master' },
-  // 编辑器/IDE
-  { url: 'https://github.com/pkulchenko/ZeroBraneStudio.git',  name: 'zerobrane',      branch: 'master', depth: 1, luaDir: 'lualibs' },
   // Web
-  { url: 'https://github.com/leafo/lapis.git',                 name: 'lapis',          branch: 'master' },
   { url: 'https://github.com/leafo/lua-cjson.git',             name: 'lua-cjson',      branch: 'master' },
   // 路径/文件
   { url: 'https://github.com/lunarmodules/lua-path.git',       name: 'lua-path',       branch: 'master' },
@@ -159,7 +154,7 @@ function main() {
 
   console.log('\n========================================');
   console.log('总计: ' + totalFiles + ' 文件, ' + totalBytes + ' bytes');
-  console.log('通过: ' + passFiles + '  失败: ' + failFiles);
+  console.log(passFiles + ' pass, ' + failFiles + ' fail');
   console.log('通过率: ' + (totalFiles > 0 ? (passFiles / totalFiles * 100).toFixed(1) + '%' : 'N/A'));
 
   if (failures.length > 0) {

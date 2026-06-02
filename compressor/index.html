@@ -339,16 +339,18 @@
         var ibody=document.createElement('div');
         ibody.className='stage-note-body';
         ibody.innerHTML=''
-          +'<div><b>不能再做（做了可能悄悄改变运行结果，所以放弃）：</b></div>'
+          +'<div style="margin-bottom:12px;"><b>压缩器已做尽全力，剩下这些受制于 Lua 动态特性、静态分析无法安全证明等价：</b></div>'
+          +'<div><b>① 不能做（可能改变运行结果）</b></div>'
           +'<ul>'
-          +'<li>同一个值用到好几次，想只算一次、存起来反复用 —— 比如 <code>f(b.XXX)f(b.XXX)f(b.XXX)</code> 想改成 <code>local x=b.XXX f(x)f(x)f(x)</code>。看着能省，但 <code>b</code> 这张表可能被设置过"读取钩子"，每次读 <code>b.XXX</code> 背后都会偷偷执行一段代码；只读一次就少跑了几次，结果可能就变了。压缩器看不出这张表有没有钩子，只能保守地不动。</li>'
-          +'<li>把一句赋值或一次调用挪到更靠前的位置 —— 函数调用、查表取值这类动作可能"顺手改了别的东西"（改了某个变量、写了文件、推进了状态）。挪动它们就改变了这些动作的先后顺序，结果可能不一样。只有像数字、字符串、空表 <code>{}</code> 这种"放哪都一样、不牵连别处"的值才敢挪。</li>'
+          +'<li><b>重复表达式提取复用</b> —— <code>f(b.X)f(b.X)f(b.X)</code> 看着能改成 <code>local x=b.X f(x)f(x)f(x)</code>，但 <code>b</code> 可能设了 <code>__index</code> 钩子，每次读 <code>b.X</code> 都执行副作用代码；只读一次会少跑几次，结果可能变。静态看不出有无钩子，只能保守不动。</li>'
+          +'<li><b>语句重排序优化</b> —— 把赋值/调用挪到更早位置。函数调用、表索引可能有副作用（改全局状态、IO、推进计数器），挪动会改执行顺序。只有纯值（数字/字符串/空表 <code>{}</code>）才敢挪，但那些本就不值得提取。</li>'
           +'</ul>'
-          +'<div><b>风险大、只做了一部分：</b></div>'
+          +'<div style="margin-top:12px;"><b>② 风险大、只做了能严格验证的部分</b></div>'
           +'<ul>'
-          +'<li>把多段代码里重复出现的东西提取成一个共用的全局变量。这要大改代码的整体结构（把好几段拼到一起、调整声明顺序），稍有不慎就会把语义改坏，所以只稳妥地做了能严格验证的那部分（比如把同一全局的多个别名合并、把声明提到开头共用），更激进的跨段重组没做。</li>'
-          +'<li>一些得靠人脑判断上下文才安全的写法（比如用一张表装下所有状态、跨段共享一个辅助函数），自动来做太容易误判，目前只在文档里作人工参考。</li>'
-          +'</ul>';
+          +'<li><b>跨段全局共享</b> —— 多段重复出现的东西提成共用全局，需大改结构（拼段、重排声明），易破坏语义。目前只做了同源透明别名合并、声明上提等可机器验证的子集，激进跨段重组未做。</li>'
+          +'<li><b>复杂上下文依赖写法</b> —— 如"命名空间表装全部状态""跨段共享辅助函数"，需人脑判断语义安全性，自动化易误判。这些技巧保留在 README 第二部分作人工压缩参考。</li>'
+          +'</ul>'
+          +'<div style="margin-top:12px;color:#9c8a70;font-size:10px;">详细边界说明见 <a href="https://github.com/your-repo/compressor" style="color:#d9a441;">README.md § 已知边界</a></div>';
         info.appendChild(ibody);
         info.onclick=function(){ info.classList.toggle('expanded'); };
         $stages.appendChild(info);

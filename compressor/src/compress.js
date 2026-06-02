@@ -246,18 +246,26 @@
 
       for(var ti=0; ti<thresholds.length; ti++){
         var T = thresholds[ti];
-        var repElide = runPipeline(true, T);
-        var candidate = repElide;
+        try {
+          var repElide = runPipeline(true, T);
+          var candidate = repElide;
 
-        if(doRename && repElide.elisionUsed){
-          var repPlain = runPipeline(false, T);
-          if(repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
-        }
+          if(doRename && repElide.elisionUsed){
+            var repPlain = runPipeline(false, T);
+            if(repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
+          }
 
-        if(!bestResult || candidate.bodyLength < bestResult.bodyLength){
-          bestResult = candidate;
+          if(!bestResult || candidate.bodyLength < bestResult.bodyLength){
+            bestResult = candidate;
+          }
+        } catch(e) {
+          // 该阈值失败，继续尝试下一个阈值
+          continue;
         }
       }
+
+      // 所有阈值都失败，抛出最后一个异常
+      if(!bestResult) throw new Error('所有阈值配置均压缩失败');
 
       return bestResult;
     }

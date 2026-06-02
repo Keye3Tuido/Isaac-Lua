@@ -37,59 +37,59 @@ console.log(`时间: ${timestamp}`);
 console.log('='.repeat(80));
 console.log();
 
-const compressorDir = path.join(__dirname, 'compressor');
+const compressorDir = __dirname;
 const testsDir = path.join(compressorDir, 'tests');
 
 // 第一部分：运行基础测试套件
 console.log('第一阶段：运行基础测试套件\n');
 
-const testSuites = [
-  { name: '核心功能', file: 'test.js', critical: true },
-  { name: '边缘情况', file: 'edge.js', critical: true },
-  { name: '透明别名消解', file: 'test_transparent_elision.js', critical: true }
-];
+// 自动发现所有测试文件（排除工具脚本）
+const excludeFiles = ['bench.js', 'collect_stats.js', 'threshold_math_analysis.js', 'snapshot.js'];
+const allTestFiles = fs.readdirSync(testsDir)
+  .filter(f => f.endsWith('.js') && !excludeFiles.includes(f))
+  .sort();
 
 const results = { suites: [], statistics: null };
 let totalPass = 0, totalFail = 0;
 
-testSuites.forEach(suite => {
-  const testPath = path.join(testsDir, suite.file);
-
-  if (!fs.existsSync(testPath)) {
-    console.log(`⊘ ${suite.name}: 文件不存在`);
-    results.suites.push({ ...suite, status: 'skip' });
-    return;
-  }
-
-  process.stdout.write(`运行 ${suite.name}... `);
+allTestFiles.forEach(file => {
+  const testPath = path.join(testsDir, file);
+  process.stdout.write(`运行 ${file}... `);
 
   try {
+    // bulktest.js 需要更长的超时时间（处理多个仓库）
+    const timeout = file === 'bulktest.js' ? 300000 : 30000;
+
     const output = execSync(`node "${testPath}"`, {
       cwd: testsDir,
       encoding: 'utf8',
-      timeout: 30000
+      timeout: timeout
     });
 
-    const passMatch = output.match(/(\d+)\s*pass/i);
-    const failMatch = output.match(/(\d+)\s*fail/i);
+    // 调试：输出 bulktest.js 的完整结果到文件
+    if (file === 'bulktest.js') {
+      fs.writeFileSync(path.join(__dirname, 'bulktest_output_debug.txt'), output);
+    }
 
-    const pass = passMatch ? parseInt(passMatch[1]) : 0;
-    const fail = failMatch ? parseInt(failMatch[1]) : 0;
+    // 修正：使用更精确的正则，匹配 "X pass, Y fail" 格式，避免跨行匹配
+    const summaryMatch = output.match(/(\d+)\s+pass,\s+(\d+)\s+fail/i);
+    const pass = summaryMatch ? parseInt(summaryMatch[1]) : 0;
+    const fail = summaryMatch ? parseInt(summaryMatch[2]) : 0;
 
     totalPass += pass;
     totalFail += fail;
 
     if (fail === 0) {
       console.log(`✓ (${pass} pass)`);
-      results.suites.push({ ...suite, status: 'pass', pass, fail });
+      results.suites.push({ file, status: 'pass', pass, fail });
     } else {
       console.log(`✗ (${pass} pass, ${fail} fail)`);
-      results.suites.push({ ...suite, status: 'fail', pass, fail });
+      results.suites.push({ file, status: 'fail', pass, fail });
     }
   } catch (error) {
     console.log(`✗ 执行失败`);
-    results.suites.push({ ...suite, status: 'error', error: error.message });
-    if (suite.critical) totalFail++;
+    results.suites.push({ file, status: 'error', error: error.message });
+    totalFail++;
   }
 });
 
@@ -104,14 +104,15 @@ require(path.join(compressorDir, 'core.js'));
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
 // 收集所有.lua文件
-const luaFiles = fs.readdirSync(__dirname)
+const projectRoot = path.join(__dirname, '..');
+const luaFiles = fs.readdirSync(projectRoot)
   .filter(f => f.endsWith('.lua') && !f.startsWith('DEBUG'))
   .slice(0, 5); // 先测试5个文件
 
 const compressionStats = [];
 
 luaFiles.forEach(file => {
-  const filePath = path.join(__dirname, file);
+  const filePath = path.join(projectRoot, file);
   const content = fs.readFileSync(filePath, 'utf8');
 
   // 分段压缩
