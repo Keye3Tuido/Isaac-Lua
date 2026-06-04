@@ -327,6 +327,7 @@ html_index = f"""<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{TITLE}</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <style>{COMMON_CSS}</style>
 </head>
 <body>
@@ -416,6 +417,7 @@ def generate_file_page(fname, raw, cleaned):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{safe_title} - 以撒代码挑战</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg">
     <style>{COMMON_CSS}</style>
     <!-- 引入 JSZip，用于生成 zip -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
