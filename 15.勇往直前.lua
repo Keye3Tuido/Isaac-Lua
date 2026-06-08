@@ -18,7 +18,7 @@ l local A,I=ModCallbacks,Isaac;function CLM(t,m)for i,j in pairs(A)do t=I.GetCal
 --0. 避免代码污染、重复输入和模组不兼容问题;
 --游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果;
 --依赖代码* | 提供接口: CLM()删除匿名回调; Wrap()包装模组回调; Unwrap()取消包装。
-l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetFrameCount F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then Unwrap()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>599 then Unwrap()CLM()end return end end F=p end)
+l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then Unwrap()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>999 then Unwrap()CLM()end return end end F=p end)
 
 -- 1. 用于储存数据，无实际效果（兼容发光沙漏，不兼容rewind）
 -- _Data()返回的数据兼容发光沙漏,_Data(entity)=entity:GetData(),_rew()返回当前是否处于rew状态（不更新数据）,_Pata()返回的数据仅在游戏结束时重置;rewind会触发游戏结束和游戏开始。
