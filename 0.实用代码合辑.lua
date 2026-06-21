@@ -123,4 +123,8 @@ l Lag = 15;local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,Mod
 
 --39. 将眼泪替换为混沌卡(CHAOS_CARD)/还可替换为橡皮擦(ERASER)。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)t:ChangeVariant(TearVariant.CHAOS_CARD)end)
+
+--40. 按下"="键，展示所有实体类型。
+l local b,c,d,I,j,k,l=pairs,KColor,Vector,Isaac,Font(),{}j:Load('font/terminus.fnt')I.AddCallback({},ModCallbacks.MC_POST_RENDER,function(f,g,h,a)f=Game()g=f:GetRoom()h=function(e)e=I.WorldToScreen(e)if g:IsMirrorWorld()then e.X=I.GetScreenWidth()-e.X end return e end a=table.insert for i=1,f:GetNumPlayers()do if Input.IsButtonTriggered(Keyboard.KEY_EQUAL,I.GetPlayer(i-1).ControllerIndex)then l=not l break end end if l then for _,e in b(I.GetRoomEntities())do f=e.InitSeed a(k,{s=e.Type..'.'..e.Variant..'.'..((e.SubType<<32)>>32),p=h(e.Position+e.PositionOffset),c=c(((f>>16)&255)/255,((f>>8)&255)/255,(f&255)/255,1.5)})end for i=0,g:GetGridSize()-1 do f=g:GetGridEntity(i)if(f)then a(k,{s=f:GetType()..'.'..f:GetVariant()..'('..f.State..')',p=h(g:GetGridPosition(i)),c=c(1,1,1,.3)})end end h={}for _,e in b(k)do f=(e.p.X//15)..','..(e.p.Y//15)h[f]=h[f]or{}a(h[f],e)end for _,e in b(h)do f=d.Zero for _,i in b(e)do f=f+i.p end f=f/#e g=1.25*(1-#e)for _,i in b(e)do a=d(f.X,f.Y+g)j:DrawStringScaled(i.s,a.X-j:GetStringWidth(i.s)/8,a.Y-j:GetBaselineHeight()/8,.25,.25,i.c)g=g+2.5 end end k={}end end)
+
 --.
