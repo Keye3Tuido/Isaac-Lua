@@ -1,7 +1,7 @@
 {
-  "gitSHA": "7c6bb803",
+  "gitSHA": "82bc3106",
   "gitBranch": "main",
-  "timestamp": "2026-06-02T14:23:24.508Z",
+  "timestamp": "2026-06-22T11:23:55.010Z",
   "summary": {
     "testSuites": 13,
     "totalPass": 238,
@@ -89,10 +89,10 @@
     }
   ],
   "compression": {
-    "totalSegments": 63,
-    "minRatio": 0.15,
+    "totalSegments": 66,
+    "minRatio": 0.09,
     "maxRatio": 10.86,
-    "avgRatio": 1.95,
+    "avgRatio": 1.89,
     "details": [
       {
         "file": "-1.灵感.lua",
@@ -142,6 +142,20 @@
         "inputLen": 352,
         "outputLen": 339,
         "ratio": 3.69
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 7,
+        "inputLen": 345,
+        "outputLen": 344,
+        "ratio": 0.29
+      },
+      {
+        "file": "-1.灵感.lua",
+        "segment": 8,
+        "inputLen": 279,
+        "outputLen": 278,
+        "ratio": 0.36
       },
       {
         "file": "0.实用代码合辑.lua",
@@ -196,8 +210,8 @@
         "file": "0.实用代码合辑.lua",
         "segment": 7,
         "inputLen": 434,
-        "outputLen": 433,
-        "ratio": 0.23
+        "outputLen": 429,
+        "ratio": 1.15
       },
       {
         "file": "0.实用代码合辑.lua",
@@ -417,6 +431,13 @@
         "ratio": 0.9
       },
       {
+        "file": "0.实用代码合辑.lua",
+        "segment": 39,
+        "inputLen": 1136,
+        "outputLen": 1135,
+        "ratio": 0.09
+      },
+      {
         "file": "1.御灵术.lua",
         "segment": 0,
         "inputLen": 997,
@@ -433,8 +454,8 @@
       {
         "file": "1.御灵术.lua",
         "segment": 2,
-        "inputLen": 414,
-        "outputLen": 413,
+        "inputLen": 409,
+        "outputLen": 408,
         "ratio": 0.24
       },
       {
@@ -482,8 +503,8 @@
       {
         "file": "10.天堂制造.lua",
         "segment": 2,
-        "inputLen": 414,
-        "outputLen": 413,
+        "inputLen": 409,
+        "outputLen": 408,
         "ratio": 0.24
       },
       {
@@ -517,8 +538,8 @@
       {
         "file": "11.异食游戏.lua",
         "segment": 2,
-        "inputLen": 414,
-        "outputLen": 413,
+        "inputLen": 409,
+        "outputLen": 408,
         "ratio": 0.24
       },
       {

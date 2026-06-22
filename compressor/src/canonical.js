@@ -27,6 +27,22 @@
       if(stringAliasByLocal){ for(var sk in stringAliasByLocal){ if(stringAliasByLocal.hasOwnProperty(sk)){ aliasLocalNames.add(sk); stringOfAlias[sk]=stringAliasByLocal[sk]; } } }
 
       var varOf=info.varOf;
+      // 别名声明 binding 集合（binding 级，不误伤嵌套同名局部）：
+      // 扫描顶层语句，凡 LocalStatement 中变量名在 aliasLocalNames 里的，把其 binding 加入集合。
+      var aliasLocalBindings=new Set();
+      if(aliasLocalNames.size>0){
+        for(var _si=0;_si<ast.body.length;_si++){
+          var _st=ast.body[_si];
+          if(_st.type==='LocalStatement'&&_st.variables){
+            for(var _vi=0;_vi<_st.variables.length;_vi++){
+              var _vn=_st.variables[_vi];
+              if(_vn.type==='Identifier'&&aliasLocalNames.has(_vn.name)){
+                var _vb=varOf.get(_vn); if(_vb) aliasLocalBindings.add(_vb);
+              }
+            }
+          }
+        }
+      }
 
       // ---- 内在透明别名归一（copy-propagation 标准形）----
       // 一个只读局部 M（单次声明、从不被赋值）若 init 为"从不被赋值的全局 G"或"另一透明别名链至 G"，
@@ -332,7 +348,7 @@
             for(var ki=0;ki<st.variables.length;ki++){
               var kv=st.variables[ki];
               var kb=(kv.type==='Identifier' && varOf.has(kv)) ? varOf.get(kv) : null;
-              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb));
+              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb));
               if(!drop) keepIdx.push(ki);
             }
             if(keepIdx.length===0) return {type:'__DROP__'};
@@ -622,7 +638,6 @@
       }
 
       var body=ast.body;
-      if(aliasMap && aliasMap.dropLeading) body=body.slice(aliasMap.dropLeading);
       var tree=normBlock(body);
       // 逻辑 id 规范化（alpha-归一）：按最终树中首次出现顺序重新编号。
       // 原因：SSA id 原本按"遍历分配顺序"产生，而 local 合并把
