@@ -20,4 +20,7 @@ l function OnHit(p)end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.
 --依赖代码1.
 l Fatal=20;local B,C,I,M,S,G,R,L,D,K,A=Sprite(),CacheFlag.CACHE_DAMAGE,Isaac,ModCallbacks,'!!!'B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=Vector.One*9 B.Color=Color(0,0,0,.3,.5)A=I.AddCallback;A({},M.MC_POST_RENDER,function(d)G=Game()L=G:GetLevel()D=function(i)return L:GetRoomByIdx(i).SpawnSeed%100<Fatal end K=D(L:GetCurrentRoomIndex())R=G:GetRoom()for i=0,7 do d=R:GetDoor(i)if d and D(d.TargetRoomIndex)then d=I.WorldToRenderPosition(d.Position)+R:GetRenderScrollOffset()d.X=R:IsMirrorWorld()and I.GetScreenWidth()-d.X or d.X I.RenderText(S,d.X-I.GetTextWidth(S)/2,d.Y,1,0,0,1)end end if K then B:RenderLayer(0,Vector.Zero)end end)A({},M.MC_EVALUATE_CACHE,function(_,p)if K then p.Damage=p.Damage*2 end end,C)A({},M.MC_POST_PLAYER_UPDATE,function(_,p)p:AddCacheFlags(C)p:EvaluateItems()end)OnHit=function(p)if K then p:Die()end end
 
+--3. 免疫混乱诅咒。
+l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(32)end,31)F({},12,function(_,c)return ~32&c end)
+
 --.
