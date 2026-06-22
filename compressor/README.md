@@ -66,11 +66,12 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.2  :method 折叠（base 为简单变量；只缩短才提交）
 1.3  字段前缀折叠（obj.PREFIX_X 系列提取公共前缀因子）
 1.4  字符串字面量内联（重复标识符样字面量提取别名）
-1.5  local 合并（相邻 local 并一条）
+1.5  local 合并（相邻 body local 并一条）
 1.6  多重赋值拆分（非 local 多赋值 → 单赋值序列；编码层兑现节省）
 1.6b if-not 二择（if not C then A else B → if C then B else A，省 not）
 1.7  变量复用（活跃区间不交 → 共享名 + 省 local；SSA 等价校验）
 1.7b 声明上提（顶层局部上提到别名头作前向 nil 占位 + 降级 local）
+1.7c prefix 合并（声明上提完成后，别名头与紧邻 body local 合并省 local 关键字）
    ↓
 【阶段 2：编码优化】
 1.8  去除注释
@@ -109,7 +110,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - **`:method` 折叠** — `obj:M(args)` → `obj[s](obj,args)` + `s='M'`（仅 base 为简单标识符；只缩短才提交）
 - **字段前缀折叠** — `obj.PREFIX_X` 系列提取公共前缀因子 `U`，改写为 `obj[U..'rest']`；可注入现有 batched local 尾部
 - **字符串字面量内联** — 标识符样字面量（`≥3` 字、`≥2` 次）提取别名 `u='X'` 注入 batched local，替换每处 `'X'` 为 `u`
-- **`local` 合并** — 相邻 `local A=x local B=y` → `local A,B=x,y`，省 `local ` 关键字
+- **`local` 合并** — 相邻 `local A=x local B=y` → `local A,B=x,y`，省 `local ` 关键字；声明上提后额外一轮将别名头与紧邻 body local 合并（阶段 1.7c）
 - **多重赋值拆分** — 非 local 多重赋值安全条件下拆为单赋值序列；编码层每个非末值符号收尾兑现 1 字节省
 - **if-not 二择** — `if not C then A else B end` → `if C then B else A end`，省 `not`（约 4 字）；`canonical` 内置归一验证
 - **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；SSA 等价校验

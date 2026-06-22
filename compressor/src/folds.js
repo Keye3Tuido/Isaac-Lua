@@ -617,10 +617,9 @@
     // 安全前提（否则该处不合并）：后条初始化不引用本组刚声明的名字；组内不重名；
     //   非末条须 #init==#vars 且不以多返回值（调用/...）结尾，避免多/少值截断差异。
     // 严格"只缩短"闸门：合并后整体更短才提交。
-    function foldLocals(src, priorAlias, steps, rec, originalCode){
+    function foldLocals(src, priorAlias, steps, rec, originalCode, allowPrefixMerge){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
-      // 保护：开头由别名/因子注入的 dropLeading 条 local 不参与合并（否则 dropLeading 计数失效）
-      var protectN = (priorAlias && priorAlias.dropLeading) || 0;
+      var protectN = allowPrefixMerge ? 0 : ((priorAlias&&priorAlias.dropLeading)||0);
 
       function isMergeableLocal(st){
         if(st.type!=='LocalStatement'||!st.variables||!st.variables.length) return false;
@@ -729,7 +728,27 @@
       var ast; try{ ast=parse(src); }catch(e){ return null; }
       var info=analyze(ast);
       var protectN=(priorAlias&&priorAlias.dropLeading)||0;
-      var protectEnd=(protectN>0 && ast.body[protectN-1])?ast.body[protectN-1].range[1]:0;
+      // protectEnd：以别名变量 Identifier 节点末尾为界（而非语句末尾），
+      // 避免 foldLocals 合并后混合语句的末尾误覆盖 body 侧变量。
+      var protectEnd=0;
+      if(protectN>0){
+        var _pa=priorAlias, _avSet=new Set();
+        if(_pa.byName){ for(var _k in _pa.byName){if(_pa.byName.hasOwnProperty(_k)) _avSet.add(_pa.byName[_k]);} }
+        if(_pa.memberByLocal){ for(var _k in _pa.memberByLocal){if(_pa.memberByLocal.hasOwnProperty(_k)) _avSet.add(_k);} }
+        if(_pa.factorLocals){ _pa.factorLocals.forEach(function(n){_avSet.add(n);}); }
+        if(_pa.transparentAliases){ for(var _k in _pa.transparentAliases){if(_pa.transparentAliases.hasOwnProperty(_k)) _avSet.add(_k);} }
+        if(_pa.prefixFoldByLocal){ for(var _k in _pa.prefixFoldByLocal){if(_pa.prefixFoldByLocal.hasOwnProperty(_k)) _avSet.add(_k);} }
+        if(_pa.stringAliasByLocal){ for(var _k in _pa.stringAliasByLocal){if(_pa.stringAliasByLocal.hasOwnProperty(_k)) _avSet.add(_k);} }
+        for(var _pi=0;_pi<protectN&&_pi<ast.body.length;_pi++){
+          var _pst=ast.body[_pi];
+          if(_pst.type==='LocalStatement'&&_pst.variables){
+            for(var _pv=0;_pv<_pst.variables.length;_pv++){
+              var _pvn=_pst.variables[_pv];
+              if(_avSet.has(_pvn.name)&&_pvn.range&&_pvn.range[1]>protectEnd) protectEnd=_pvn.range[1];
+            }
+          } else if(_pst.range){ protectEnd=Math.max(protectEnd,_pst.range[1]); }
+        }
+      }
 
       // 单变量 local 声明定位
       var stmtOfDecl=new Map();
