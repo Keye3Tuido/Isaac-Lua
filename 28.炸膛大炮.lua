@@ -23,4 +23,10 @@ l Fatal=50;local B,C,I,M,S,G,R,L,D,K,A=Sprite(),CacheFlag.CACHE_DAMAGE,Isaac,Mod
 --3. 免疫混乱诅咒。
 l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(32)end,31)F({},12,function(_,c)return ~32&c end)
 
+--4. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
+l Isaac.AddCallback({},31,function(s,p,g,c,f)f,s,g=1,'Challenge',Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
+
+--5. 强制给予玩家道具63(蓄电池)、116(9伏特)、352(玻璃大炮)。
+l Isaac.AddCallback({},31,function(c,p,n)if 40~=p:GetPlayerType()and not p:HasCurseMistEffect()then for _,i in pairs({63,116,352})do c,n=table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(c)do p:AddCollectible(c,Isaac.GetItemConfig():GetCollectible(c).InitCharge)end Game():GetItemPool():RemoveCollectible(c)end end end)
+
 --.
