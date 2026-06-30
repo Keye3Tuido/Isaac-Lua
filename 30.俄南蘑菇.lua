@@ -15,7 +15,7 @@ l local A,I=ModCallbacks,Isaac;function CLM(t,m)for i,j in pairs(A)do t=I.GetCal
 l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()local E,I,K,M,N,A,B,T,F=error,Isaac,Keyboard,ModCallbacks,Input B=N.IsButtonTriggered T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then Unwrap()CLM()end end)A({},M.MC_POST_RENDER,function(p,q)p=T()for i=1,Game():GetNumPlayers()do q=I.GetPlayer(i).ControllerIndex if B(K.KEY_MINUS,q)then Unwrap()E('CBWrapper Disabled',0)elseif B(K.KEY_EQUAL,q)then Wrap()E('CBWrapper Enabled',0)end if N.IsActionPressed(ButtonAction.ACTION_RESTART,q)then if p-F>=1e4 then Unwrap()CLM()end return end end F=p end) -- 对外提供接口、自动清理回调、按键包装回调
 
 --1. 玩家的眼泪未命中实体时，使用一次致幻蘑菇
-l local function Action(t)t.SpawnerEntity:ToPlayer():UseActiveItem(CollectibleType.COLLECTIBLE_WAVY_CAP,UseFlag.USE_NOANIM)end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityType,GetPtrHash,ModCallbacks,{}A(T,M.MC_POST_FIRE_TEAR,function(_,e)B[H(e)]=e.SpawnerType==E.ENTITY_PLAYER end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,e)B[H(e)]=N end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)local h=H(e)e=e:ToTear()if B[h]then Action(e)end B[h]=N end,E.ENTITY_TEAR)
+l local function Action(t)t=t.SpawnerEntity if t then t:ToPlayer():UseActiveItem(CollectibleType.COLLECTIBLE_WAVY_CAP,UseFlag.USE_NOANIM)end end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityType,GetPtrHash,ModCallbacks,{}A(T,M.MC_POST_FIRE_TEAR,function(_,e)B[H(e)]=e.SpawnerType==E.ENTITY_PLAYER end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,e)B[H(e)]=N end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)local h=H(e)e=e:ToTear()if B[h]then Action(e)end B[h]=N end,E.ENTITY_TEAR)
 
 --2. 强制给予：道具69(巧克力牛奶)
 -- 格式：c=道具,t/T=饰品(仅保证层数一致),单物品={类别,1}
