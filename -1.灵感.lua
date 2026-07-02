@@ -20,7 +20,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)if f.State==
 l Hail,HailNum=0.1,3;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()if Game():GetFrameCount()%(30*Hail)<1 then for i=1,HailNum do local p=I.Spawn(EntityType.ENTITY_TEAR,TearVariant.ICE,0,I.GetRandomPosition(),Vector.Zero,nil):ToTear()p.FallingAcceleration,p.Height,p.Scale=10,-1e3,.5+math.random()p:AddTearFlags(TearFlags.TEAR_ICE)end end end)
 
 --7. 抵近攻击：敌人距离玩家超过Dist(默认3)格远时，受到的伤害按距离衰减。
-l local Dist=3;local H,G,P,T,O=GetPtrHash,40,'Position',{}O=P..'Offset'Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,...)local h,p,q=H(e),Game():GetRandomPlayer(Vector.Zero,0)if not T[h]and e:IsEnemy()then q=(p[O]+p[P]-e[O]-e[P]):Length()-G*Dist if q>0 then T[h]=true e:TakeDamage(G*a/(G+q),...)T[h]=nil return false end end end)
+l local Dist=3;local H,G,P,T=GetPtrHash,40,'Position',{}Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,...)local h,p,q=H(e),Game():GetRandomPlayer(Vector.Zero,0)if not T[h]and e:IsEnemy()then q=(p[P]-e[P]):Length()-G*Dist if q>0 then T[h]=true e:TakeDamage(G*a/(G+q),...)T[h]=nil return false end end end)
 
 --8. 胎儿博士的炸弹被替换为金色即爆炸弹，兼容特效、伤害和爆炸范围。
 l local I,V,a,c=Isaac,BombVariant.BOMB_GOLDENTROLL,'ExplosionDamage','RadiusMultiplier'I.AddCallback({},ModCallbacks.MC_POST_BOMB_UPDATE,function(f,b,d,r)if b.IsFetus then f=b.Flags d=b[a]r=b[c]if b.Variant~=V then b:Remove()b=I.Spawn(b.Type,V,b.SubType,b.Position,b.Velocity,b.SpawnerEntity):ToBomb()b:AddTearFlags(f)b[a],b[c]=d,r end end end)
