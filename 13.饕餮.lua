@@ -15,7 +15,7 @@ l Wrap,Unwrap=Wrap or CLM,Unwrap or CLM Wrap()CLM()local E,I,K,M,N,A,B,T,F=error
 l Isaac.AddCallback({},31,function(i,p,u,f)i,f,u=p.QueuedItem.Item,3339,'UseActiveItem'if 0~=p:GetTrinket(0)then p[u](p,479,f)end if(not p:IsItemQueueEmpty())then if(i:IsCollectible()and not i:HasTags(1<<15))then p[u](p,477,f)elseif(i:IsTrinket())then p[u](p,479,f)end end end)
 
 --2. 掉落物受玩家吸引。
-l local P,O='Position','PositionOffset'Isaac.AddCallback({},35,function(v,e,p)p=Game():GetNearestPlayer(e[P]+e[O])v=p[P]+p[O]-e[P]-e[O]e.GridCollisionClass=0 e:AddVelocity(10<v:Length()and v:Normalized()or Vector.Zero)end)
+l local P='Position'Isaac.AddCallback({},35,function(v,e,p)p=Game():GetNearestPlayer(e[P])v=p[P]-e[P]e.GridCollisionClass=0 e:AddVelocity(10<v:Length()and v:Normalized()or Vector.Zero)end)
 
 --3. 玩家会自动使用副手的卡牌、符文、药丸等消耗品
 l Isaac.AddCallback({},31,function(_,p,t,u)for i=0,1 do t,u=p:GetPill(i),p:GetCard(i)if t~=0 then p:UsePill(Game():GetItemPool():GetPillEffect(t,p),t)p:SetPill(i,0)elseif u~=0 then p:UseCard(u)p:SetCard(i,0)end end end)
