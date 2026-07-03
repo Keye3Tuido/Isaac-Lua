@@ -31,4 +31,8 @@ l local I,C,Y,T,A=Isaac,{360,399,640,643,680,696,698},true,{}A=I.AddCallback A(T
 
 --6. 强制角色为堕化犹大。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_JUDAS_B if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
+
+--7. 玩家永久飞行。
+l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)p.CanFly=true e=CollectibleType.COLLECTIBLE_BIBLE p=p:GetEffects()if not p:HasCollectibleEffect(e)then p:AddCollectibleEffect(e)end end,CacheFlag.CACHE_FLYING)
+
 --.

@@ -128,4 +128,7 @@ l local a,z,b,c,d,I,j,k,l=table.insert,string.format,pairs,KColor,Vector,Isaac,F
 --40. 玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数(参数：玩家实体)。
 l function OnHit(p)end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)
 
+--41. 玩家永久飞行。
+l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)p.CanFly=true e=CollectibleType.COLLECTIBLE_BIBLE p=p:GetEffects()if not p:HasCollectibleEffect(e)then p:AddCollectibleEffect(e)end end,CacheFlag.CACHE_FLYING)
+
 --.
