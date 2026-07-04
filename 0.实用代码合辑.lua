@@ -131,4 +131,10 @@ l function OnHit(p)end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.
 --41. 玩家永久飞行。
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)p.CanFly=true e=CollectibleType.COLLECTIBLE_BIBLE p=p:GetEffects()if not p:HasCollectibleEffect(e)then p:AddCollectibleEffect(e)end end,CacheFlag.CACHE_FLYING)
 
+--42. 在非贪婪模式，前往妈妈的心脏房间，输入这串代码触发1000次房间清理，获得1000次伊甸代币。
+l for _=1,1e3 do Game():GetRoom():TriggerClear()end
+
+--43. 强制角色副手道具为道具485（掰弯的硬币）。
+l POCKET=485;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p,s)c=POCKET s=ActiveSlot.SLOT_POCKET if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s)end end)
+
 --.
