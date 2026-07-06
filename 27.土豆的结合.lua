@@ -33,7 +33,7 @@ l local F,I,J,K,L,G,H,D,M,O,S,T,U,V,W,X,Z,E,Q,R,C,B,A,P,N,Y=1,Isaac,Game,true,fa
 l local I,C,Y,T,A=Isaac,{122,482,704},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
 --4. 初始给予玩家道具376(补货)、402(混沌)、416(深口袋)、602(会员卡)。
-l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs({376,402,416,602})do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(t)do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
+l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs{376,402,416,602}do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})while n>p:GetCollectibleNum(t)do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
 
 --5. 清理房间时生成硬币
 l local I=Isaac I.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(_,_,p)for _=1,2 do I.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COIN,0,I.GetFreeNearPosition(p,0),Vector.Zero,I.GetPlayer())end end)
