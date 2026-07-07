@@ -25,5 +25,5 @@ l local A,M=Isaac.AddCallback,ModCallbacks;A({},M.XXX,func,arg)
 l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.XXX,func,arg)
 --10<=回调数N | 总字数=65+5N
 l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,arg)
-
 --.
+

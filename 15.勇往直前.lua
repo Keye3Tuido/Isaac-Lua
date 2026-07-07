@@ -35,8 +35,8 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_NEW_ROOM,function()
 -- 依赖代码2
 l local A,M,T,D=Isaac.AddCallback,ModCallbacks,{},_Data()A(T,M.MC_POST_GAME_STARTED,function(_,c)if not c then D=_Data()D.LastDim,D.Locked,D.Now=-1,{},{}end end)A(T,M.MC_POST_NEW_LEVEL,function()D=_Data()D.LastDim,D.Locked,D.Now=-1,{},{}end)A(T,M.MC_POST_NEW_ROOM,function()D=_Data()for k,v in pairs({['LastDim']=-1,['Locked']={},['Now']={}})do D[k]=D[k]or v end local Dim=GetDim()local level=Game():GetLevel()local desc=level:GetCurrentRoomDesc()local idx=desc.SafeGridIndex local room=Game():GetRoom()if not _rew()then if Dim==D.LastDim and idx>=0 then for k,_ in pairs(D.Now)do D.Locked[k]=true end end D.Now={}end if(idx~=level:GetStartingRoomIndex()or not room:IsFirstVisit())and idx>=0 then local doors=desc.Data and desc.Data.Doors for i=0,7 do if not doors or doors&1>0 then if desc.Data and D.Locked[GetDoorId(idx,desc.Data.Shape,i,Dim)]then room:RemoveDoor(i)end end doors=doors and doors>>1 end end if not _rew()and idx>=0 then for i=0,7 do if room:GetDoor(i)then D.Now[GetDoorId(idx,desc.Data and desc.Data.Shape,i,Dim)]=true end end end D.LastDim=Dim end)
 
---5. 免疫失忆症、免疫???、辨认传送药、免疫迷途诅咒、免疫混乱诅咒。
-l local A,M,C,P,T=Isaac.AddCallback,ModCallbacks,LevelCurse,PillEffect,{}A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_THE_LOST)end,P.PILLEFFECT_AMNESIA)A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_MAZE)end,P.PILLEFFECT_QUESTIONMARK)A(T,M.MC_POST_CURSE_EVAL,function(_,c)return ~(C.CURSE_OF_THE_LOST|C.CURSE_OF_MAZE)&c end)A(T,M.MC_GET_PILL_EFFECT,function(_,pillEffect,pillColor)if pillEffect==P.PILLEFFECT_TELEPILLS then Game():GetItemPool():IdentifyPill(pillColor)end end)
+--5. 免疫失忆症、免疫???、免疫迷途诅咒、免疫混乱诅咒。
+l local A,M,C,P,T=Isaac.AddCallback,ModCallbacks,LevelCurse,PillEffect,{}A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_THE_LOST)end,P.PILLEFFECT_AMNESIA)A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_MAZE)end,P.PILLEFFECT_QUESTIONMARK)A(T,M.MC_POST_CURSE_EVAL,function(_,c)return ~(C.CURSE_OF_THE_LOST|C.CURSE_OF_MAZE)&c end)
 
 --6. 从游戏中移除道具76(X光透视)和道具580(红钥匙)。
 l local I,C,Y,T,A=Isaac,{76,580},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
@@ -65,4 +65,8 @@ l local Y,N,A,M,T,E,V,Z,R,L,D,S,H=true,false,Isaac.AddCallback,ModCallbacks,{},E
 
 --12. [不适配手柄]禁止玩家暂停游戏、禁止使用控制台(忏悔+不生效)；可使用Esc返回游戏菜单
 l local A,B,M,T,O,P=Isaac.AddCallback,ButtonAction,ModCallbacks,{},Options,'PauseOnFocusLost'A(T,M.MC_POST_RENDER,function()O[P]=false for i=1,Game():GetNumPlayers()do local c=Isaac.GetPlayer(i-1).ControllerIndex if Input.IsActionPressed(B.ACTION_MENUBACK,c)then Game():Fadeout(1,2)end end end)A(T,M.MC_INPUT_ACTION,function(_,_,h,b)if b==B.ACTION_CONSOLE or b==B.ACTION_PAUSE then return h==InputHook.GET_ACTION_VALUE and 0 or false end end)A(T,M.MC_PRE_MOD_UNLOAD,function()O[P]=true end)
+
+--13. 辨认传送胶囊。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
 --.
+

@@ -22,3 +22,4 @@ l local I,F,G,Z,M,N=Isaac,Isaac.AddCallback,GetPtrHash,Vector.Zero,{}F({},31,fun
 --3. 从游戏中移除捐款机
 l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
 --.
+
