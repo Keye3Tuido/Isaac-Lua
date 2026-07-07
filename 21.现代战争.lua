@@ -26,5 +26,5 @@ l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _
 
 --5. 取消屏幕晃动
 l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()Game():ShakeScreen(0)end)
---.
 
+--.

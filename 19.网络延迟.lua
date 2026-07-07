@@ -18,5 +18,5 @@ l Lag = 15;local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,Mod
 -- 可在控制台输入lua DisplayLag = false 来关闭显示，true来开启显示。
 --依赖代码1
 l DisplayLag=true;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if DisplayLag then local s=string.format('%.2fs',Lag/30)I.RenderText(s,(I.GetScreenWidth()-I.GetTextWidth(s))/2,10,1,1,0,1)end end)
---.
 
+--.
