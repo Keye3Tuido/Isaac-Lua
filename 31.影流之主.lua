@@ -35,5 +35,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 
 --7. 玩家永久飞行。
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)p.CanFly=true e=CollectibleType.COLLECTIBLE_BIBLE p=p:GetEffects()if not p:HasCollectibleEffect(e)then p:AddCollectibleEffect(e)end end,CacheFlag.CACHE_FLYING)
---.
 
+--.

@@ -40,5 +40,5 @@ l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _
 
 --8. 辨认传送胶囊。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
---.
 
+--.
