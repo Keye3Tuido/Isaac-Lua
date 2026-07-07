@@ -27,5 +27,5 @@ l local I,V,a,c=Isaac,BombVariant.BOMB_GOLDENTROLL,'ExplosionDamage','RadiusMult
 
 --9. 实体“我的影子”追随准星。
 l local b,c,a=Isaac,GetPtrHash,'Position'b.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)for k,v in pairs(b.FindByType(1e3))do if(v.Variant==30 or v.Variant==153)and c(v.SpawnerEntity)==c(f.Player)then f:FollowPosition(v[a])f:AddVelocity(v[a]-f[a])end end end,131)
-
 --.
+

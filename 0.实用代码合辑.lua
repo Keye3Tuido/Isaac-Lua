@@ -138,4 +138,7 @@ l for _=1,1e3 do Game():GetRoom():TriggerClear()end
 --43. 强制角色副手道具为道具485（掰弯的硬币）。
 l POCKET=485;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p,s)c=POCKET s=ActiveSlot.SLOT_POCKET if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s)end end)
 
+--44. 辨认传送胶囊。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
 --.
+

@@ -20,3 +20,4 @@ l local B,F,G,H,I,K,M,O,T,U,W,X,Y,Z,Ad,Ca,In,Ma,Un,Et,Ev,Gp,A,C,D,E,J,L,N,P,R,S,
 --2. 从游戏中移除道具482(遥控器)
 l local I,C,Y,T,A=Isaac,{482},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 --.
+

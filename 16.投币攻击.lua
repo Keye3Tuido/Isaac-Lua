@@ -42,3 +42,4 @@ l local I,M,C,A=Isaac,ModCallbacks,{36,74,667}A=I.AddCallback;A({},M.MC_POST_PIC
 --9. 非主角色透明度降低为0.3
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,0.3,c.RO,c.GO,c.BO)end end)
 --.
+
