@@ -121,7 +121,7 @@ l BrokenKeys=3;WaitFrames=90;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCoun
 l Lag = 15;local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
 
 --38. 将眼泪替换为混沌卡(CHAOS_CARD)/还可替换为橡皮擦(ERASER)。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)t:ChangeVariant(TearVariant.CHAOS_CARD)end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_UPDATE,function(v,t)v=TearVariant.CHAOS_CARD if t.Variant~=v and t.SpawnerType==EntityType.ENTITY_PLAYER then t:ChangeVariant(v)end end)
 
 --39. 按下"="键，展示所有实体类型。
 l local a,z,b,c,d,I,j,k,l=table.insert,string.format,pairs,KColor,Vector,Isaac,Font(),{}j:Load('font/terminus.fnt')I.AddCallback({},ModCallbacks.MC_POST_RENDER,function(f,g,h,y)f=Game()g=f:GetRoom()h=function(e)e=I.WorldToScreen(e)if g:IsMirrorWorld()then e.X=I.GetScreenWidth()-e.X end return e end for i=1,f:GetNumPlayers()do if Input.IsButtonTriggered(Keyboard.KEY_EQUAL,I.GetPlayer(i-1).ControllerIndex)then l=not l break end end if l then for _,e in b(I.GetRoomEntities())do f=e.InitSeed y=e.SubType a(k,{s=z('%d.%d.%d',e.Type,e.Variant,y>1<<31 and y-(1<<32)or y),p=h(e.Position),c=c(((f>>16)&255)/255,((f>>8)&255)/255,(f&255)/255,1.5)})end for i=0,g:GetGridSize()-1 do f=g:GetGridEntity(i)if(f)then a(k,{s=z('%d.%d(%d)',f:GetType(),f:GetVariant(),f.State),p=h(g:GetGridPosition(i)),c=c(1,1,1,.3)})end end h={}for _,e in b(k)do f=(e.p.X//15)..','..(e.p.Y//15)h[f]=h[f]or{}a(h[f],e)end for _,e in b(h)do f=d.Zero for _,i in b(e)do f=f+i.p end f=f/#e g=1.25*(1-#e)for _,i in b(e)do y=d(f.X,f.Y+g)j:DrawStringScaled(i.s,y.X-j:GetStringWidth(i.s)/8,y.Y-j:GetBaselineHeight()/8,.25,.25,i.c)g=g+2.5 end end k={}end end)
@@ -140,5 +140,11 @@ l POCKET=485;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,
 
 --44. 辨认传送胶囊。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
+
+--45. 从游戏中移除可绕过眼泪输出的道具
+l local I,C,Y,T,A=Isaac,{52,68,114,118,152,168,244,329,399,579,640,643,678,696},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+
+--46. 移除所有绕过蒙眼输出的道具
+l local I,C,Y,T,A=Isaac,{360,399,640,643,680,696,698},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
 --.
