@@ -147,4 +147,7 @@ l local I,C,Y,T,A=Isaac,{52,68,114,118,152,168,244,329,399,579,640,643,678,696},
 --46. 移除所有绕过蒙眼输出的道具
 l local I,C,Y,T,A=Isaac,{360,399,640,643,680,696,698},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
+--47. 游戏锁定成就。
+l Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end)
+
 --.
