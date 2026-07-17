@@ -38,7 +38,7 @@ def item(f):
     safe_title = html.escape(title, quote=True)
     return (
         f"<div class='file-row' data-search='{num} {safe_title}'>"
-        f"<span class='file-num'>{num}</span>"
+        f"<span class='file-num{' long' if len(num) > 2 else ''}'>{num}</span>"
         f"<a href='{SUBDIR}/file_{num}.html' class='file-title'>{safe_title}</a>"
         f"</div>"
     )
@@ -62,263 +62,92 @@ other_section = (
     if other_files else ""
 )
 
-# ========== 公共样式（The Binding of Isaac 地下室风） ==========
+# ========== 公共样式（The Binding of Isaac 地下室风格） ==========
 COMMON_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Pirata+One&family=VT323&display=swap');
-* { box-sizing: border-box; }
-:root{
-  --bg:#0c0a08; --stone:#1b1410; --stone-2:#241a14; --stone-3:#30231a;
-  --border:#3a2a1f; --border-2:#5a3f2c; --text:#e9ddc6; --muted:#9c8a70;
-  --blood:#a31e1e; --blood-d:#7a1313; --blood-l:#cf3a2c;
-  --gold:#d9a441; --gold-l:#f2c879; --rot:#7d8b3a; --poison:#4a8c6a;
-  --bruise:#7a4a86; --rust:#c2622a; --flesh:#c98a86;
-  --radius:14px; --radius-sm:9px;
-  --shadow:0 22px 60px rgba(0,0,0,.7);
-  --mono:'Cascadia Code','JetBrains Mono',Consolas,'Courier New',monospace;
-  --hud:'VT323','Cascadia Code',monospace;
-  --display:'Pirata One','Microsoft YaHei',serif;
-  --sans:'Segoe UI',system-ui,-apple-system,'Microsoft YaHei',sans-serif;
+@font-face { font-family:'IsaacCode'; src:url('__ASSET__/inconsolata-bold.ttf') format('truetype'); font-display:swap; }
+@font-face { font-family:'IsaacPixel'; src:url('__ASSET__/isaac-pixel-subset.woff2') format('woff2'); font-display:swap; }
+* { box-sizing:border-box; }
+:root {
+  --ink:#302628; --ink-soft:#66575a; --paper:#e2d4d8; --blood:#782033; --cream:#eadbc4;
+  --panel:#17110f; --panel-2:#211713; --line:#5b3d32;
+  --display:'IsaacPixel','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
+  --hud:'IsaacCode',Consolas,monospace; --mono:'IsaacCode','Cascadia Code',Consolas,monospace;
+  --sans:'IsaacPixel','Microsoft YaHei UI','Microsoft YaHei',sans-serif;
 }
-html, body { height: 100%; }
-body {
-  font-family: var(--sans);
-  color: var(--text);
-  margin: 0;
-  padding: 34px 18px 64px;
-  min-height: 100%;
-  background:
-    radial-gradient(1100px 620px at 50% -16%, #4a1414 0%, transparent 60%),
-    radial-gradient(760px 520px at 0% 100%, #2a1410 0%, transparent 58%),
-    radial-gradient(760px 520px at 100% 100%, #1a1d12 0%, transparent 58%),
-    repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 2px, transparent 2px 46px),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.22) 0 2px, transparent 2px 92px),
-    radial-gradient(circle at 20% 80%, rgba(163,30,30,.08) 0%, transparent 40%),
-    radial-gradient(circle at 80% 20%, rgba(122,74,134,.06) 0%, transparent 35%),
-    var(--bg);
-  background-attachment: fixed;
-  -webkit-font-smoothing: antialiased;
+html { min-height:100%; background:#160a07; }
+body { min-height:100%; margin:0; -webkit-font-smoothing:none; font-family:var(--sans); }
+body::before { content:''; position:fixed; inset:0; z-index:0; pointer-events:none; }
+body.home-page {
+  padding:22px 18px 54px; color:var(--cream);
+  background:#4b281f url('__ASSET__/basement-room.webp') center center/cover scroll no-repeat;
 }
-/* 暗角 + 噪点纹理 */
-body::before {
-  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  box-shadow: inset 0 0 220px 60px rgba(0,0,0,.85);
-  background-image:
-    repeating-linear-gradient(0deg, transparent 0, rgba(0,0,0,.03) 1px, transparent 2px),
-    repeating-linear-gradient(90deg, transparent 0, rgba(0,0,0,.03) 1px, transparent 2px);
-  background-size: 3px 3px;
-  opacity: .6;
+body.home-page::before { background:radial-gradient(ellipse at 50% 35%,transparent 28%,rgba(15,5,3,.24) 76%),linear-gradient(rgba(18,6,4,.04),rgba(18,6,4,.3)); }
+body.challenge-page {
+  padding:26px 18px 46px; color:var(--ink);
+  background:#ddd0d3 url('__ASSET__/paper-surface.webp') center top/cover scroll no-repeat;
 }
-@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-@keyframes beat { 0%,100%{ transform: scale(1);} 12%{ transform: scale(1.22);} 24%{ transform: scale(1);} 36%{ transform: scale(1.16);} }
-@keyframes float { 0%,100%{ transform: translateY(0) translateX(0); opacity: .3; } 50%{ transform: translateY(-120px) translateX(20px); opacity: .6; } }
-body::after {
-  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 2;
-  background-image:
-    radial-gradient(1px 1px at 20% 30%, rgba(233,221,198,.4), transparent),
-    radial-gradient(1px 1px at 60% 70%, rgba(233,221,198,.3), transparent),
-    radial-gradient(1px 1px at 80% 10%, rgba(233,221,198,.35), transparent),
-    radial-gradient(1px 1px at 40% 80%, rgba(233,221,198,.25), transparent);
-  background-size: 200% 200%;
-  background-position: 0% 0%;
-  animation: float 25s ease-in-out infinite;
-  opacity: .4;
+body.challenge-page::before {
+  background-image:linear-gradient(rgba(255,255,255,.035),rgba(91,68,72,.045)),url('__ASSET__/challenge-page-background.webp');
+  background-position:center,center center; background-size:cover,cover; background-repeat:no-repeat;
 }
-.container {
-  position: relative; z-index: 1;
-  max-width: 1080px;
-  margin: auto;
-  background:
-    linear-gradient(135deg, transparent 0%, rgba(0,0,0,.15) 100%),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.04) 0px, transparent 1px, transparent 8px),
-    linear-gradient(180deg, rgba(48,35,26,.96), rgba(24,17,13,.97));
-  border: 2px solid var(--border-2);
-  padding: 32px 30px 26px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow), inset 0 0 0 2px rgba(0,0,0,.6), inset 0 0 60px rgba(0,0,0,.55), inset 0 0 120px rgba(163,30,30,.08);
-  animation: rise .4s ease;
+@keyframes appear { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+.container { position:relative; z-index:1; margin:auto; animation:appear .22s ease-out; }
+.home-page .container { max-width:1040px; }
+.challenge-page .container { max-width:1080px; }
+.game-logo { display:block; width:min(330px,68vw); height:auto; margin:0 auto 3px; filter:drop-shadow(0 11px 4px rgba(0,0,0,.66)); }
+.home-hero { margin:0 auto 25px; text-align:center; }
+.home-title { max-width:680px; margin:0 auto; padding:8px 16px 15px; text-shadow:0 3px 2px #140806; }
+.home-title h1 { margin:8px 0 7px; color:#f0dfc7; font:400 clamp(2rem,5vw,3.25rem)/1.1 var(--display); letter-spacing:.04em; }
+.home-title .subtitle { color:#cbb99e; font:400 clamp(.86rem,1.8vw,1.08rem)/1.45 var(--display); }
+.home-meta { display:flex; justify-content:center; flex-wrap:wrap; gap:8px 22px; margin-top:12px; color:#b9a184; font:700 .78rem/1.2 var(--hud); }
+.home-meta span+span::before { content:'/'; margin-right:22px; color:#79594b; }
+.control-row { display:grid; grid-template-columns:220px minmax(300px,1fr); gap:10px; margin:0 0 14px; }
+.search-wrap,.tool-link { min-height:52px; border:14px solid transparent; border-image:url('__ASSET__/basement-panel.webp') 112 fill stretch; background:#1b1210; box-shadow:0 5px 10px rgba(0,0,0,.28); }
+.search-wrap { position:relative; padding:0 16px; }
+.search-wrap::before { content:'>'; position:absolute; left:16px; top:14px; color:#9d7767; font:700 1rem/1 var(--hud); }
+#searchInput { width:100%; height:48px; padding:0 8px 0 25px; border:0; outline:0; color:#eadbc4; background:transparent; font:400 1rem/1 var(--display); }
+#searchInput::placeholder { color:#8e796d; }
+#searchInput:focus { box-shadow:inset 0 -2px #8f3241; }
+.tools { display:flex; }
+.tool-link { width:100%; display:flex; align-items:center; justify-content:center; padding:8px 16px; color:#d8c3a5; text-decoration:none; font:400 .96rem/1.3 var(--display); cursor:url('__ASSET__/menu-cursor.png') 5 1,pointer; transition:.12s; }
+.tool-link:hover { color:#fff0d3; border-color:#875243; background:#261713; transform:translateY(-1px); }
+.list-section { margin:0 0 15px; padding:6px 10px 10px; border:30px solid transparent; border-image:url('__ASSET__/basement-panel.webp') 112 fill stretch; background:#1b1210; box-shadow:0 10px 20px rgba(0,0,0,.3); }
+.list-label { display:flex; align-items:baseline; gap:10px; margin:0 0 8px; padding:0 4px 8px; border-bottom:2px solid #5b3c32; color:#d8c4a7; font:400 1.08rem/1.2 var(--display); }
+.list-label .line { flex:1; border-bottom:1px dotted #5f493e; }.list-count { color:#9e806c; font:700 .78rem/1 var(--hud); }
+.file-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:28px; }
+.file-row { position:relative; min-height:42px; display:grid; grid-template-columns:44px 1fr; align-items:center; border-bottom:1px solid rgba(111,77,64,.48); transition:.1s; }
+.file-row:hover { background:linear-gradient(90deg,rgba(120,32,51,.28),transparent); }
+.file-num { color:#9e7968; font:700 .78rem/1 var(--hud); text-align:right; padding-right:12px; }
+.file-num::after { content:'.'; }.file-num.long { font-size:.62rem; }
+.file-title { position:relative; padding:9px 4px; color:#dfcfb4; text-decoration:none; font:400 .98rem/1.28 var(--display); }
+.file-title::after { content:''; position:absolute; inset:0 -4px; }.file-row:nth-child(odd) .file-title{color:#ead8bc}.file-row:hover .file-title { color:#fff0d2; transform:translateX(3px); }.file-row:hover .file-num{color:#bd4b5e}
+.no-result { padding:28px; color:#d4c2a6; text-align:center; font:400 1rem/1.3 var(--display); }
+.contact { position:relative; z-index:1; margin-top:15px; color:#9d8874; text-align:center; font:700 .74rem/1.3 var(--hud); text-shadow:0 2px 2px #000; }.contact a{margin-left:7px;color:#d2b77d;text-decoration:none}.contact a:hover{color:#e17a78}.challenge-page .contact{text-shadow:none;color:#7d696d}.challenge-page .contact a{color:#704c54}
+.challenge-sheet {
+  position:relative; min-height:680px; padding:44px 48px 38px; border:42px solid transparent;
+  border-image:url('__ASSET__/challenge-sheet.webp') 86 58 110 58 fill stretch;
 }
-.container::before {
-  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: var(--radius);
-  background:
-    radial-gradient(circle at 15% 25%, rgba(163,30,30,.12) 0%, transparent 20%),
-    radial-gradient(circle at 85% 75%, rgba(122,74,134,.08) 0%, transparent 18%);
-  mix-blend-mode: multiply;
-}
-h1 {
-  text-align: center;
-  margin: 4px 0 4px;
-  font-size: 2.5rem;
-  letter-spacing: .06em;
-  font-weight: 700;
-  color: var(--blood-l);
-  text-shadow: 0 0 4px #000, 2px 2px 0 #2a0a0a, 0 0 24px rgba(207,58,44,.7), 0 0 40px rgba(163,30,30,.5), 0 3px 0 #4a0e0e, 0 0 60px rgba(207,58,44,.3);
-  filter: drop-shadow(0 0 8px rgba(207,58,44,.6));
-}
-h1::before, h1::after { content: '\\2020'; color: var(--blood); margin: 0 .4em; font-size: .8em; vertical-align: .06em; text-shadow: 0 0 8px rgba(163,30,30,.8); display: inline-block; animation: beat 2.4s ease-in-out infinite; }
-.subtitle { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 18px; letter-spacing: .04em; font-family: var(--hud); font-size: 1.05rem; }
-
-/* 工具按钮 */
-.tools { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 4px 0 18px; }
-.tool-link {
-  padding: 10px 22px; border-radius: 10px; text-decoration: none; font-weight: 700;
-  color: #1a0a0a; background: linear-gradient(180deg, var(--gold-l), var(--gold));
-  border: 2px solid #8a5a1e; letter-spacing: .03em;
-  box-shadow: 0 6px 0 #6e4716, 0 10px 20px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.3); transition: .12s;
-  position: relative;
-}
-.tool-link::before {
-  content: ''; position: absolute; inset: 2px; border-radius: 8px;
-  background: linear-gradient(180deg, rgba(255,255,255,.15), transparent 50%);
-  pointer-events: none;
-}
-.tool-link:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 7px 0 #6e4716, 0 12px 22px rgba(0,0,0,.55); }
-.tool-link:active { transform: translateY(3px); box-shadow: 0 2px 0 #6e4716, 0 4px 10px rgba(0,0,0,.5); }
-
-/* 搜索框 */
-.search-wrap { position: relative; max-width: 480px; margin: 0 auto 22px; }
-.search-wrap::before {
-  content: '🔍'; position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
-  opacity: .6; font-size: .9rem; pointer-events: none;
-}
-#searchInput {
-  width: 100%; padding: 12px 16px 12px 42px; border-radius: 10px;
-  border: 2px solid var(--border-2); background: #120c09; color: var(--text);
-  font-size: .95rem; outline: none; transition: .18s; font-family: var(--sans);
-  box-shadow: inset 0 3px 10px rgba(0,0,0,.7), inset 0 0 0 1px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
-}
-#searchInput::placeholder { color: var(--muted); }
-#searchInput:focus { border-color: var(--blood); box-shadow: inset 0 2px 8px rgba(0,0,0,.6), 0 0 0 3px rgba(163,30,30,.28); }
-
-/* 分栏标题 */
-.list-section { margin-bottom: 24px; }
-.list-section:last-of-type { margin-bottom: 0; }
-.list-label { display: flex; align-items: center; gap: 12px; margin: 0 2px 13px; color: var(--gold-l); font-weight: 700; font-size: 1.1rem; letter-spacing: .08em; font-family: var(--display); text-shadow: 0 2px 4px rgba(0,0,0,.6), 0 0 12px rgba(217,164,65,.4); }
-.list-label::before { content: '\\2620'; color: var(--blood); font-size: .9em; filter: drop-shadow(0 0 6px rgba(163,30,30,.8)); }
-.list-label .line { flex: 1; height: 2px; background: linear-gradient(90deg, var(--border-2), transparent); }
-.list-label .list-count { flex: 0 0 auto; color: var(--gold-l); font-size: 1.1rem; font-weight: 600; font-family: var(--hud); background: #120c09; border: 1px solid var(--border-2); padding: 0 11px; border-radius: 999px; letter-spacing: .04em; }
-
-/* 文件卡片网格（房间图标风） */
-.file-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 12px; }
-.file-row {
-  --c:#a31e1e; --c2:#cf3a2c;
-  position: relative; display: flex; align-items: center; gap: 12px;
-  background:
-    repeating-linear-gradient(90deg, rgba(0,0,0,.02) 0px, transparent 1px, transparent 6px),
-    linear-gradient(180deg, var(--stone-3), var(--stone));
-  border: 2px solid var(--border);
-  border-radius: var(--radius-sm); padding: 11px 13px; overflow: hidden; transition: .15s;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.5), inset 2px 2px 4px rgba(0,0,0,.3), 0 4px 10px rgba(0,0,0,.4);
-}
-/* 卡片按位置循环取色（地下室色板：血红/铁锈/腐绿/毒青/淤紫/金/血肉） */
-.file-row:nth-child(7n+1){ --c:#a31e1e; --c2:#cf3a2c; }
-.file-row:nth-child(7n+2){ --c:#b5611f; --c2:#d98a33; }
-.file-row:nth-child(7n+3){ --c:#6e7d2e; --c2:#9bb04a; }
-.file-row:nth-child(7n+4){ --c:#2f7d63; --c2:#46b08a; }
-.file-row:nth-child(7n+5){ --c:#6b4080; --c2:#9a5fb0; }
-.file-row:nth-child(7n+6){ --c:#b8902f; --c2:#e6c24a; }
-.file-row:nth-child(7n+7){ --c:#a85a55; --c2:#c98a86; }
-.file-row::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
-  background: linear-gradient(var(--c2), var(--c)); opacity: .4; transition: .15s;
-}
-.file-row:hover {
-  transform: translateY(-3px); border-color: var(--c2);
-  background:
-    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--c2) 15%, transparent), transparent 60%),
-    repeating-linear-gradient(90deg, rgba(0,0,0,.02) 0px, transparent 1px, transparent 6px),
-    linear-gradient(180deg, color-mix(in srgb, var(--c) 26%, var(--stone-3)), var(--stone));
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.5), inset 2px 2px 4px rgba(0,0,0,.3), 0 0 20px color-mix(in srgb, var(--c2) 60%, transparent), 0 0 8px color-mix(in srgb, var(--c2) 40%, transparent), 0 10px 24px rgba(0,0,0,.6);
-}
-.file-row:hover::before { opacity: 1; }
-.file-num {
-  flex: 0 0 auto; min-width: 38px; height: 36px; padding: 0 9px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(180deg, var(--c2), var(--c));
-  color: #fff5e6; font-weight: 700; font-size: 1.1rem; border-radius: 8px;
-  font-family: var(--hud); letter-spacing: .03em;
-  border: 1px solid rgba(0,0,0,.45);
-  box-shadow: 0 3px 0 rgba(0,0,0,.6), inset 0 1px 3px rgba(255,255,255,.3), inset 0 -1px 2px rgba(0,0,0,.4);
-  text-shadow: 0 1px 3px rgba(0,0,0,.8), 0 0 8px rgba(0,0,0,.5);
-  position: relative;
-}
-.file-num::before {
-  content: ''; position: absolute; inset: 1px; border-radius: 7px;
-  background: linear-gradient(180deg, rgba(255,255,255,.2), transparent 40%);
-  pointer-events: none;
-}
-.file-title { flex: 1; text-decoration: none; color: var(--text); font-weight: 600; font-size: .98rem; transition: .15s; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
-.file-title::after { content: ''; position: absolute; inset: 0; }
-.file-row:hover .file-title { color: var(--gold-l); }
-.no-result { text-align: center; color: var(--muted); padding: 26px; font-size: .95rem; font-family: var(--hud); font-size: 1.2rem; }
-
-/* 代码页 */
-.code-area { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
-.section { border: 2px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--stone); transition: .15s; box-shadow: 0 5px 12px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.4); }
-.section:hover { border-color: var(--blood-d); box-shadow: 0 6px 16px rgba(0,0,0,.6), 0 0 12px rgba(163,30,30,.3), inset 0 0 0 1px rgba(0,0,0,.4); }
-.section-header {
-  display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px;
-  background: linear-gradient(180deg, var(--stone-3), var(--stone-2)); cursor: pointer; user-select: none; white-space: pre-wrap;
-  font-weight: 600; line-height: 1.55; font-family: var(--mono); font-size: .9rem; transition: .15s;
-}
-.section-header.no-code { cursor: default; opacity: .7; }
-.section-header:hover { background: linear-gradient(180deg, #3a2a1e, var(--stone-3)); }
-.section .arrow { flex: 0 0 auto; color: var(--gold); transition: transform .18s; font-size: .78rem; margin-top: 3px; }
-.section.collapsed .arrow { transform: rotate(-90deg); }
-.section.collapsed .code-box { display: none; }
-.code-box {
-  display: grid; grid-template-columns: max-content 1fr;
-  background: #0e0a07; border: 0; border-top: 2px solid var(--border);
-  overflow: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.65; padding: 10px 0;
-}
-.cell-ln { text-align: right; padding: 0 12px; color: #6a5640; user-select: none; border-right: 1px solid var(--border); min-height: 1.65em; transition: .12s; }
-.cell-code { padding: 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.65em; color: #d8cbb2; transition: .12s; }
-.code-box:hover .cell-ln { color: var(--gold); }
-.code-box:hover .cell-code { color: #fff5e6; background: rgba(163,30,30,.1); cursor: pointer; }
-
-/* 按钮组 */
-.button-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.button-group button, .back-btn {
-  padding: 10px 18px; border: 2px solid rgba(0,0,0,.45); border-radius: 10px; cursor: pointer;
-  font-weight: 700; font-size: .9rem; font-family: var(--sans); transition: .12s; color: #fff5e6;
-  letter-spacing: .03em; text-shadow: 0 1px 2px rgba(0,0,0,.5);
-}
-.copy-btn { background: linear-gradient(180deg, var(--blood-l), var(--blood-d)); box-shadow: 0 6px 0 #520d0d, 0 10px 18px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.2); }
-.download-btn { background: linear-gradient(180deg, var(--gold-l), var(--gold)); color: #1a0a0a; text-shadow: none; box-shadow: 0 6px 0 #6e4716, 0 10px 18px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.3); }
-.back-btn {
-  background: linear-gradient(180deg, var(--stone-3), var(--stone)); text-decoration: none;
-  display: inline-block; color: var(--text); box-shadow: 0 6px 0 #120c09, 0 10px 18px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.1);
-}
-.button-group button:hover, .back-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
-.copy-btn:hover { box-shadow: 0 8px 0 #520d0d, 0 12px 24px rgba(0,0,0,.6), 0 0 16px rgba(207,58,44,.4), inset 0 1px 2px rgba(255,255,255,.2); }
-.download-btn:hover { box-shadow: 0 8px 0 #6e4716, 0 12px 24px rgba(0,0,0,.6), 0 0 16px rgba(217,164,65,.4), inset 0 1px 2px rgba(255,255,255,.3); }
-.back-btn:hover { box-shadow: 0 8px 0 #120c09, 0 12px 24px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.1); }
-.button-group button:active, .back-btn:active { transform: translateY(3px); }
-
-.legend { font-size: 1rem; color: var(--muted); margin-top: 12px; text-align: right; font-family: var(--hud); letter-spacing: .04em; }
-
-/* 联系方式 */
-.contact { position: relative; z-index: 1; text-align: center; margin-top: 22px; color: var(--muted); font-size: .9rem; font-family: var(--hud); letter-spacing: .04em; }
-.contact a { color: var(--gold-l); text-decoration: none; margin-left: 6px; font-weight: 600; }
-.contact a:hover { color: var(--blood-l); text-decoration: underline; }
-
-/* 浮层 */
-#toast {
-  position: fixed; background: #120c09; color: var(--text); padding: 9px 14px; border-radius: 9px;
-  border: 2px solid var(--gold); box-shadow: var(--shadow); opacity: 0; transition: .2s;
-  pointer-events: none; display: none; font-size: .85rem; z-index: 60; font-family: var(--hud); font-size: 1.05rem;
-}
-.tooltip {
-  position: absolute; background: #120c09; color: var(--gold-l); padding: 5px 10px;
-  border: 1px solid var(--border-2); border-radius: 7px; font-size: 12px; font-family: var(--hud);
-  pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 60;
-}
-
-/* 滚动条 */
-::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-track { background: #0e0a07; box-shadow: inset 0 0 6px rgba(0,0,0,.6); }
-::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--border-2), #3a2a1f); border-radius: 6px; border: 2px solid #0e0a07; box-shadow: inset 0 0 6px rgba(0,0,0,.5); }
-::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--blood-d), #7a1313); box-shadow: inset 0 0 6px rgba(0,0,0,.5), 0 0 8px rgba(163,30,30,.4); }
+.detail-hero { text-align:center; margin-bottom:7px; }
+.detail-paper { padding:0 12px; }
+.detail-paper h1 { margin:9px 0 7px; color:var(--ink); font:400 clamp(1.7rem,4vw,2.75rem)/1.15 var(--display); letter-spacing:.03em; }
+.button-group { display:flex; justify-content:center; flex-wrap:wrap; gap:8px 24px; margin:15px 0 24px; padding:9px 0; border-top:1px solid rgba(84,64,68,.28); border-bottom:1px solid rgba(84,64,68,.28); }
+.button-group button,.back-btn { position:relative; min-height:36px; padding:4px 9px 4px 20px; border:0; border-bottom:2px solid transparent; color:#5d4b4f; background:transparent; text-align:center; text-decoration:none; cursor:url('__ASSET__/menu-cursor.png') 5 1,pointer; font:400 .9rem/1.3 var(--display); transition:.1s; }
+.button-group button::before,.back-btn::before{content:'>';position:absolute;left:4px;top:6px;color:#8c2639;opacity:.35;font:700 .78rem/1 var(--hud);transition:.1s}.button-group button:hover,.back-btn:hover { color:#7c2033; border-bottom-color:#7c2033; transform:translateX(2px); }.button-group button:hover::before,.back-btn:hover::before{opacity:1;left:7px}.copy-btn{color:#6d2737!important}.download-btn{color:#466b61!important}
+.code-area { display:flex; flex-direction:column; gap:18px; }
+.section { overflow:hidden; border-top:2px solid #6f5b5e; content-visibility:auto; contain-intrinsic-size:180px; }
+.section-header { display:flex; align-items:flex-start; gap:9px; padding:11px 4px 8px; color:#4a393d; cursor:url('__ASSET__/menu-cursor.png') 5 1,pointer; user-select:none; white-space:pre-wrap; font:400 .88rem/1.5 var(--display); }
+.section-header.no-code { cursor:default; opacity:.65; }.section .arrow{flex:0 0 auto;color:#7c2033;font:700 .75rem/1.4 var(--hud);transition:transform .14s}.section.collapsed .arrow{transform:rotate(-90deg)}.section.collapsed .code-box{display:none}
+.code-box { display:grid; grid-template-columns:max-content 1fr; overflow:auto; padding:7px 0 13px; border-bottom:1px solid rgba(89,67,71,.34); background:rgba(255,255,255,.12); font:13px/1.62 var(--mono); }
+.cell-ln { min-height:1.62em; padding:0 10px; border-right:1px solid rgba(93,71,74,.28); color:#a48e91; text-align:right; user-select:none; }
+.cell-code { min-height:1.62em; padding:0 13px; color:#3f3235; white-space:pre-wrap; overflow-wrap:anywhere; }.code-box:hover .cell-code{background:rgba(255,255,255,.12);cursor:url('__ASSET__/menu-cursor.png') 5 1,pointer}
+.legend { margin-top:13px; color:#8a7477; text-align:right; font:700 .72rem/1.3 var(--hud); }.sheet-footer{display:flex;justify-content:center;margin-top:19px}
+#toast { position:fixed; z-index:60; display:none; padding:8px 12px; pointer-events:none; opacity:0; transition:.2s; border:2px solid #6b5250; color:#2b2020; background:#d9caca; box-shadow:0 10px 25px rgba(0,0,0,.3); font:400 .86rem/1.3 var(--display); }.tooltip{position:fixed;z-index:60;display:none;padding:5px 9px;pointer-events:none;opacity:0;border:1px solid #6b5250;color:#2b2020;background:#d9caca;font:700 12px/1.3 var(--hud)}
+.tool-link:focus-visible,#searchInput:focus-visible,.file-title:focus-visible,.button-group button:focus-visible,.back-btn:focus-visible{outline:2px solid #9b4553;outline-offset:3px}::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:#ded0d4}::-webkit-scrollbar-thumb{border:3px solid #ded0d4;background:#80666a}
+@media(max-width:760px){body.home-page{padding:16px 9px 40px;background-attachment:scroll}body.challenge-page{padding:10px 4px 28px;background-attachment:scroll}.control-row{grid-template-columns:1fr}.file-list{grid-template-columns:1fr}.challenge-sheet{padding:38px 21px 28px;border-width:24px}.home-meta span+span::before{display:none}.home-meta{gap:7px 16px}}
+@media(max-width:480px){.game-logo{width:min(285px,76vw)}.home-title h1{font-size:1.85rem}.list-section{padding:13px 12px 16px}.file-row{grid-template-columns:39px 1fr}.file-title{font-size:.9rem}.challenge-sheet{padding:31px 7px 22px;border-width:18px}.detail-paper h1{font-size:1.65rem}.button-group{gap:6px 15px}.section-header{font-size:.8rem}.code-box{font-size:12px}.cell-ln{padding:0 6px}.cell-code{padding:0 8px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important}}
 """
+INDEX_CSS = COMMON_CSS.replace("__ASSET__", "assets")
 
 # ========== 主页 HTML ==========
 html_index = f"""<!DOCTYPE html>
@@ -328,17 +157,19 @@ html_index = f"""<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{TITLE}</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <style>{COMMON_CSS}</style>
+    <link rel="prefetch" href="assets/challenge-sheet.webp" as="image">
+    <link rel="prefetch" href="assets/challenge-page-background.webp" as="image">
+    <style>{INDEX_CSS}</style>
 </head>
-<body>
+<body class="home-page">
     <div class="container">
-        <h1>以撒代码挑战</h1>
-        <div class="subtitle">The Binding of Isaac · 自定义挑战代码合辑 · 共 {challenge_count} 项挑战</div>
-        <div class="tools">
-            <a href="compressor/index.html" class="tool-link">🛠 Lua 代码压缩器</a>
-        </div>
-        <div class="search-wrap">
-            <input id="searchInput" placeholder="搜索 Lua 文件..." oninput="handleSearch()">
+        <header class="home-hero">
+            <img class="game-logo" src="assets/repentance-logo.png" alt="The Binding of Isaac: Repentance+">
+            <div class="home-title"><h1>以撒代码挑战</h1><div class="subtitle">自定义挑战代码合辑</div><div class="home-meta"><span>{challenge_count:02d} CHALLENGES</span><span>{other_count:02d} FILES</span><span>LUA</span></div></div>
+        </header>
+        <div class="control-row">
+            <div class="tools"><a href="compressor/index.html" class="tool-link">Lua 代码压缩器</a></div>
+            <div class="search-wrap"><input id="searchInput" placeholder="输入编号或挑战名称…" aria-label="搜索挑战文件" oninput="handleSearch()"></div>
         </div>
         <div class="list-section">
             <div class="list-label"><span>挑战</span><span class="line"></span><span class="list-count">{challenge_count}</span></div>
@@ -348,40 +179,18 @@ html_index = f"""<!DOCTYPE html>
     </div>
     <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
     <script>
-        // 数字标签配色：每次加载随机，且左、上相邻的卡片均不同色
-        const PALETTE = [
-            ["#a31e1e","#cf3a2c"], ["#b5611f","#d98a33"], ["#6e7d2e","#9bb04a"],
-            ["#2f7d63","#46b08a"], ["#6b4080","#9a5fb0"], ["#b8902f","#e6c24a"],
-            ["#a85a55","#c98a86"]
-        ];
-        function paintGrid(list) {{
-            const cards = Array.from(list.querySelectorAll('.file-row'));
-            if (!cards.length) return;
-            // 通过首行 offsetTop 推断列数（对 auto-fill 网格有效）
-            const firstTop = cards[0].offsetTop;
-            let cols = 0;
-            for (const c of cards) {{
-                if (c.offsetTop === firstTop) cols++; else break;
-            }}
-            if (cols < 1) cols = 1;
-            const used = [];
-            cards.forEach((card, i) => {{
-                const left  = (i % cols !== 0) ? used[i - 1] : -1;   // 左邻居
-                const above = (i >= cols)      ? used[i - cols] : -1; // 上邻居
-                const candidates = [];
-                for (let k = 0; k < PALETTE.length; k++) {{
-                    if (k !== left && k !== above) candidates.push(k);
-                }}
-                const idx = candidates[Math.floor(Math.random() * candidates.length)];
-                used[i] = idx;
-                card.style.setProperty('--c',  PALETTE[idx][0]);
-                card.style.setProperty('--c2', PALETTE[idx][1]);
-            }});
+        const prefetched = new Set();
+        function prefetchChallenge(e) {{
+            const link = e.target.closest && e.target.closest('.file-title');
+            if (!link || prefetched.has(link.href)) return;
+            prefetched.add(link.href);
+            const hint = document.createElement('link');
+            hint.rel = 'prefetch';
+            hint.href = link.href;
+            document.head.appendChild(hint);
         }}
-        function paintAll() {{ document.querySelectorAll('.file-list').forEach(paintGrid); }}
-        paintAll();
-        let _rt;
-        window.addEventListener('resize', () => {{ clearTimeout(_rt); _rt = setTimeout(paintAll, 150); }});
+        document.addEventListener('pointerover', prefetchChallenge, {{passive:true}});
+        document.addEventListener('touchstart', prefetchChallenge, {{passive:true}});
 
         function handleSearch() {{
             const t = searchInput.value.toLowerCase();
@@ -410,6 +219,7 @@ def generate_file_page(fname, raw, cleaned):
     num, title = (fname[:-4].split('.', 1) + [""])[:2]
     safe_title = html.escape(title, quote=True)
     safe_fname = html.escape(fname, quote=True)
+    page_css = COMMON_CSS.replace("__ASSET__", "../assets")
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -418,26 +228,22 @@ def generate_file_page(fname, raw, cleaned):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{safe_title} - 以撒代码挑战</title>
     <link rel="icon" type="image/svg+xml" href="../favicon.svg">
-    <style>{COMMON_CSS}</style>
-    <!-- 引入 JSZip，用于生成 zip -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>{page_css}</style>
 </head>
-<body>
+<body class="challenge-page">
     <div class="container">
-        <h1>{safe_title}</h1>
+        <main class="challenge-sheet">
+        <header class="detail-hero">
+            <div class="detail-paper"><h1>{safe_title}</h1></div>
+        </header>
         <div class="button-group">
             <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
             <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
-            <a href="../index.html" class="back-btn">返回主页</a>
+            <a href="../index.html" class="back-btn">\u8fd4\u56de\u6311\u6218\u5217\u8868</a>
         </div>
-        <br>
         <div class="code-area" id="codeArea"></div>
         <div class="legend"><span id="subLegend">{safe_fname} - @Keye3Tuido</span></div>
-        <div class="button-group">
-            <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
-            <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
-            <a href="../index.html" class="back-btn">返回主页</a>
-        </div>
+        </main>
         <div id="toast"></div>
         <div id="hoverTip" class="tooltip"></div>
     </div>
@@ -445,8 +251,6 @@ def generate_file_page(fname, raw, cleaned):
         const FILE = {json.dumps({"raw": raw, "cleaned": cleaned}, ensure_ascii=False)};
         const NUM = "{num}";  // 文件编号用于命名 zip
         const TITLE_NAME = "{safe_title}";  // 用于 metadata.xml
-        const COLORS = ["#cf3a2c","#e8704a","#d98a33","#e6c24a","#9bb04a","#6fc08a","#46b08a","#5fa8d6","#9a7fd0","#c98a86","#e08aa0","#d96a4a","#b8902f"];
-
         const codeArea = document.getElementById('codeArea');
         const toast = document.getElementById('toast');
         const hoverTip = document.getElementById('hoverTip');
@@ -457,18 +261,9 @@ def generate_file_page(fname, raw, cleaned):
         }}
         function isBlank(l) {{ return l.trim() === ""; }}
 
-        let prevColor = null;
-        function pickColor() {{
-            let c;
-            do c = COLORS[Math.floor(Math.random() * COLORS.length)];
-            while (c === prevColor);
-            prevColor = c;
-            return c;
-        }}
-
         function bindHover(el, charCount) {{
             el.onmouseenter = (e) => showHoverTip(e.clientX, e.clientY, charCount);
-            el.onmousemove = (e) => showHoverTip(e.pageX, e.pageY, charCount);
+            el.onmousemove = (e) => showHoverTip(e.clientX, e.clientY, charCount);
             el.onmouseleave = hideHoverTip;
         }}
 
@@ -533,7 +328,6 @@ def generate_file_page(fname, raw, cleaned):
                 if (header.length) {{
                     header.forEach((c, k) => {{
                         const span = document.createElement('span');
-                        span.style.color = pickColor();
                         span.textContent = c;
                         text.appendChild(span);
                         if (k < header.length - 1) text.appendChild(document.createTextNode('\\n'));
@@ -556,18 +350,27 @@ def generate_file_page(fname, raw, cleaned):
             }}
         }}
 
+        let toastTimer;
         function showToastAt(m, x, y) {{
+            clearTimeout(toastTimer);
+            if (toast.parentNode !== document.body) document.body.appendChild(toast);
             toast.textContent = m;
             toast.style.display = 'block';
-            const offset = 12;
-            let left = x + offset, top = y + offset;
+            toast.style.visibility = 'hidden';
+            toast.style.opacity = 0;
+            const offset = 14, pad = 8;
+            const rect = toast.getBoundingClientRect();
+            let left = x + offset;
+            let top = y + offset;
+            if (left + rect.width > innerWidth - pad) left = x - rect.width - offset;
+            if (top + rect.height > innerHeight - pad) top = y - rect.height - offset;
+            left = Math.max(pad, Math.min(left, innerWidth - rect.width - pad));
+            top = Math.max(pad, Math.min(top, innerHeight - rect.height - pad));
             toast.style.left = left + 'px';
             toast.style.top = top + 'px';
+            toast.style.visibility = 'visible';
             toast.style.opacity = 1;
-            const rect = toast.getBoundingClientRect();
-            if (rect.right > innerWidth) toast.style.left = Math.max(0, x - rect.width - offset) + 'px';
-            if (rect.bottom > innerHeight) toast.style.top = Math.max(0, y - rect.height - offset) + 'px';
-            setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 5000);
+            toastTimer = setTimeout(() => {{ toast.style.opacity = 0; toast.style.display = 'none'; }}, 2200);
         }}
 
         function copyBlock(text, count, e) {{
@@ -584,7 +387,24 @@ def generate_file_page(fname, raw, cleaned):
         }}
 
         // 下载模组文件：生成 codeXX.zip，内含 main.lua 和 metadata.xml
+        let jsZipPromise;
+        function ensureJsZip() {{
+            if (window.JSZip) return Promise.resolve(window.JSZip);
+            if (!jsZipPromise) {{
+                jsZipPromise = new Promise((resolve, reject) => {{
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                    script.async = true;
+                    script.onload = () => resolve(window.JSZip);
+                    script.onerror = () => reject(new Error('JSZip load failed'));
+                    document.head.appendChild(script);
+                }});
+            }}
+            return jsZipPromise;
+        }}
+
         async function downloadZip(e) {{
+            await ensureJsZip();
             try {{
                 const filename = "code" + NUM + ".zip";
                 const zip = new JSZip();
@@ -616,12 +436,20 @@ def generate_file_page(fname, raw, cleaned):
                 showToastAt("下载失败: " + err, e.clientX, e.clientY);
             }}
         }}
-        
+
         function showHoverTip(x, y, charCount) {{
-            hoverTip.textContent = "点击以复制该代码块（" + charCount + " 字符）";
-            hoverTip.style.left = (x + 12) + "px";
-            hoverTip.style.top = (y + 12) + "px";
+            if (hoverTip.parentNode !== document.body) document.body.appendChild(hoverTip);
+            hoverTip.textContent = "\u70b9\u51fb\u4ee5\u590d\u5236\u8be5\u4ee3\u7801\u5757\uff08" + charCount + " \u5b57\u7b26\uff09";
             hoverTip.style.display = "block";
+            hoverTip.style.visibility = "hidden";
+            const rect = hoverTip.getBoundingClientRect();
+            const offset = 12, pad = 6;
+            let left = x + offset, top = y + offset;
+            if (left + rect.width > innerWidth - pad) left = x - rect.width - offset;
+            if (top + rect.height > innerHeight - pad) top = y - rect.height - offset;
+            hoverTip.style.left = Math.max(pad, left) + "px";
+            hoverTip.style.top = Math.max(pad, top) + "px";
+            hoverTip.style.visibility = "visible";
             hoverTip.style.opacity = 1;
         }}
 
