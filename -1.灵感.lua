@@ -27,5 +27,7 @@ l local I,V,a,c=Isaac,BombVariant.BOMB_GOLDENTROLL,'ExplosionDamage','RadiusMult
 
 --9. 实体“我的影子”追随准星。
 l local b,c,a=Isaac,GetPtrHash,'Position'b.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)for k,v in pairs(b.FindByType(1e3))do if(v.Variant==30 or v.Variant==153)and c(v.SpawnerEntity)==c(f.Player)then f:FollowPosition(v[a])f:AddVelocity(v[a]-f[a])end end end,131)
---.
 
+--10. 每进入一个新房间，移动键随机互换、攻击键随机互换、功能键随机互换。
+l local A,B,C,D,E,F,Z=Input,Isaac,ModCallbacks,{},{},{'A','D','W','S','<','>','^','v','E','Space','Q','Ctrl'}Z=B.AddCallback for k=0,11 do D[k]=k end Z(E,C.MC_POST_NEW_ROOM,function(a)for i=0,8,4 do for j=i+3,i+1,-1 do a=math.random(i,j)D[j],D[a]=D[a],D[j]end end end)Z(E,C.MC_INPUT_ACTION,function(a,e,h,b)a,e=InputHook,e and e:ToPlayer()b=D[b]if e and b then if h==a.IS_ACTION_PRESSED then h=A.IsActionPressed elseif h==a.IS_ACTION_TRIGGERED then h=A.IsActionTriggered else h=A.GetActionValue end return h(b,e.ControllerIndex)end end)Z(E,C.MC_POST_RENDER,function(a,b,c,p)c=Vector p=c(B.GetScreenWidth()/3,.9*B.GetScreenHeight())a=function(z,y,x,...)B.RenderScaledText(z,y.X-x*B.GetTextWidth(z)/2,y.Y,x,x,...)end for k,v in ipairs{-180,0,-90,90}do b=8*c.FromAngle(v)a(F[D[k-1]+1],p+b,.8,0,1,0,1)a(F[D[k+3]+1],p+2*b,1,1,0,0,1)end p.X=2*p.X for k,v in pairs{Bomb=-12,Active=-4,Card=4,Drop=12}do a(k..': '..F[D[(v+12)//8+8]+1],p+c(0,v),.8,1,1,0,1)end end)
+--.
