@@ -18,7 +18,7 @@ l ITEMS={'c534',{'c649',3},{'t145',5},'c105','c284'}local C,D,E,F,H,I,P,Q,L,M,T=
 l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
 
 --6. 从游戏中移除饰品85(业报)。
-l local G,F,b=32768,Isaac.AddCallback,{85}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,s&G|Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
+l local G,F,b=32768,Isaac.AddCallback,{85}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
 
 --7. 每开启新游戏时，在初始房间根据玩家人数n，生成n组多选一道具(87-洛基的角,229-萌死戳的肺,233-小小星球)
 l local V,g,N=Vector,{87,229,233}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game():GetNumPlayers()if not c then x,y=(720-#g*80)/2,(640-n*80)/2 for i=1,n do for j=1,#g do Isaac.Spawn(5,100,g[j],V(x+80*(j-1),y),V.Zero,N):ToPickup().OptionsPickupIndex=i end y=y+80 end end end)
