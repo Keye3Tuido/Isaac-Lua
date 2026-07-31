@@ -8,9 +8,10 @@ compressor/luaparse.js
 
 # ==================== 构建产物 ====================
 # 由 GitHub Actions 用 GenerateHtml.py 生成，不入库
-# 注意用 / 锚定到仓库根，避免误伤 compressor/index.html（压缩器页面需入库）
 /index.html
-/pages/
+
+# ==================== Python ====================
+__pycache__/
 
 # ==================== 测试临时文件 ====================
 # 远程测试缓存（remotetest.js 首次联网拉取的外部 main.lua）
