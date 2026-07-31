@@ -150,4 +150,7 @@ l local I,C,Y,T,A=Isaac,{360,399,640,643,680,696,698},true,{}A=I.AddCallback A(T
 --47. 游戏锁定成就。
 l Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end)
 
+--48. 达摩克里斯之剑永不落下。
+l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)f.State=1 end,FamiliarVariant.DAMOCLES)
+
 --.
