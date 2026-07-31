@@ -153,4 +153,7 @@ l Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriorit
 --48. 达摩克里斯之剑永不落下。
 l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)f.State=1 end,FamiliarVariant.DAMOCLES)
 
+--49. 保持致幻层数为0。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(a,p,b)a=CollectibleType.COLLECTIBLE_WAVY_CAP b=NullItemID.ID_WAVY_CAP_1 p=p:GetEffects()p:RemoveCollectibleEffect(a,p:GetCollectibleEffectNum(a))p:RemoveNullEffect(b,p:GetNullEffectNum(b))end)
+
 --.
