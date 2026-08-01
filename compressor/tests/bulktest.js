@@ -29,6 +29,7 @@ function removeComments(src){
 }
 
 const TEST_DIR = path.join(__dirname, '_bulk_test_repos');
+const OFFLINE = process.argv.includes('--offline');
 
 // 知名纯 Lua 项目列表（库、框架、工具、编辑器等，覆盖多种代码风格）
 // 已删除：penlight, busted, jumper, zerobrane, lapis（这些项目包含luaparse不支持的语法特性）
@@ -66,6 +67,10 @@ function clone(repo) {
     console.log('  已存在，跳过克隆: ' + repo.name);
     return dir;
   }
+  if (OFFLINE) {
+    console.log('  未缓存，离线跳过: ' + repo.name);
+    return null;
+  }
   console.log('  克隆: ' + repo.name + ' ...');
   const depth = repo.depth || 20;
   try {
@@ -99,6 +104,7 @@ function main() {
   if (!fs.existsSync(TEST_DIR)) fs.mkdirSync(TEST_DIR, { recursive: true });
 
   let totalFiles = 0, totalBytes = 0, passFiles = 0, failFiles = 0;
+  let availableRepos = 0, missingRepos = 0;
   const failures = [];
 
   for (const repo of REPOS) {
@@ -108,9 +114,12 @@ function main() {
       dir = clone(repo);
     } catch (e) {
       console.log('  克隆失败: ' + e.message.slice(0, 100));
+      missingRepos++;
       continue;
     }
 
+    if (!dir) { missingRepos++; continue; }
+    availableRepos++;
     const luaDir = repo.luaDir ? path.join(dir, repo.luaDir) : dir;
     if (!fs.existsSync(luaDir)) {
       console.log('  目录不存在: ' + luaDir);
@@ -153,6 +162,7 @@ function main() {
   }
 
   console.log('\n========================================');
+  console.log('仓库: ' + availableRepos + ' 可用, ' + missingRepos + ' 缺失');
   console.log('总计: ' + totalFiles + ' 文件, ' + totalBytes + ' bytes');
   console.log(passFiles + ' pass, ' + failFiles + ' fail');
   console.log('通过率: ' + (totalFiles > 0 ? (passFiles / totalFiles * 100).toFixed(1) + '%' : 'N/A'));
@@ -163,6 +173,8 @@ function main() {
       console.log('  [' + f.repo + '] ' + f.file + ' (' + f.size + 'B): ' + f.err);
     });
   }
+
+  if (failFiles > 0) process.exitCode = 1;
 
   // 清理
   // fs.rmSync(TEST_DIR, { recursive: true, force: true });

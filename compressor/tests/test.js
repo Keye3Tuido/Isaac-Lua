@@ -87,6 +87,21 @@ const cases = {
 
 Object.keys(cases).forEach(k=>tryCompress(k, cases[k]));
 
+
+// Safe syntax compression: Lua single string/table argument call sugar and trailing table separator.
+(function(){
+  const a=tryCompress('call-sugar-string', 'print("hello")');
+  if(a) ok('call-sugar-string/output', a.output==='l print"hello"', a.output);
+  const b=tryCompress('call-sugar-table', 'f({1,2,3,})');
+  if(b) ok('call-sugar-table/output', b.output==='l f{1,2,3}', b.output);
+})();
+
+// Adjacent locals with matching variable/init counts may merge even when an initializer is a call.
+(function(){
+  const r=tryCompress('local-merge-call', 'local a=f()\nlocal b=g()\nreturn a,b');
+  if(r) ok('local-merge-call/output', /local [A-Za-z],[A-Za-z]=f\(\),g\(\)/.test(r.output), r.output);
+})();
+
 // ---- 前缀处理 ----
 (function(){
   const r=tryCompress('prefix-l', "l local x = 1\nl return x");
@@ -105,6 +120,26 @@ Object.keys(cases).forEach(k=>tryCompress(k, cases[k]));
     ok('globalclash/Isaac', /\bIsaac\b/.test(body), body);
     ok('globalclash/Game', /\bGame\b/.test(body), body);
   }
+})();
+
+
+// Generated aliases must respect Lua 5.3's 200-active-local limit.
+(function(){
+  const locals=Array.from({length:195},(_,i)=>'v'+i).join(',');
+  const globals=Array.from({length:10},(_,i)=>'VeryLongGlobalName'+i);
+  const src='local '+locals+'\nreturn '+globals.flatMap(x=>[x,x,x]).join('+');
+  const r=tryCompress('local-limit-alias-budget', src);
+  if(r) ok('local-limit-alias-budget/capped', r.aliasedCount<=5, 'aliases='+r.aliasedCount);
+})();
+
+
+// Safe deep search may reuse a dead root local inside a nested block and remove the nested local.
+(function(){
+  const src='local a=f()\nprint(a)\ndo local b=g()print(b)end';
+  const base=LuaMin.compress(src);
+  const deep=LuaMin.searchOptimize(src,{budget:1000,maxIters:50});
+  ok('search-cross-scope/shorter', deep.bodyLength<base.bodyLength, base.bodyLength+' -> '+deep.bodyLength);
+  ok('search-cross-scope/equiv', semEq(LuaMin._preprocess(src),deep.output.replace(/^l /,''),deep.aliasMapInfo)===true, deep.output);
 })();
 
 // ---- 语法错误必须被拒绝 ----

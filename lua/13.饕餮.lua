@@ -16,7 +16,7 @@ l Isaac.AddCallback({},31,function(i,p,u,f)i,f,u=p.QueuedItem.Item,3339,'UseActi
 l local P='Position'Isaac.AddCallback({},35,function(v,e,p)p=Game():GetNearestPlayer(e[P])v=p[P]-e[P]e.GridCollisionClass=0 e:AddVelocity(10<v:Length()and v:Normalized()or Vector.Zero)end)
 
 --3. 玩家会自动使用副手的卡牌、符文、药丸等消耗品
-l Isaac.AddCallback({},31,function(_,p,t,u)for i=0,1 do t,u=p:GetPill(i),p:GetCard(i)if t~=0 then p:UsePill(Game():GetItemPool():GetPillEffect(t,p),t)p:SetPill(i,0)elseif u~=0 then p:UseCard(u)p:SetCard(i,0)end end end)
+l Isaac.AddCallback({},31,function(_,p,t,u)for i=0,1 do t=p:GetPill(i)u=p:GetCard(i)if t~=0 then p:UsePill(Game():GetItemPool():GetPillEffect(t,p),t)p:SetPill(i,0)elseif u~=0 then p:UseCard(u)p:SetCard(i,0)end end end)
 
 --4. 强制给予玩家：饰品140(所多玛之果)
 -- 主动道具数量不够时，强制锁门，房间内生成对应道具

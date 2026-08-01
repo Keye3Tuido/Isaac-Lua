@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "suites": {
+    "unit": {
+      "ok": true,
+      "pass": 87,
+      "fail": 0
+    },
+    "edge": {
+      "ok": true,
+      "pass": 40,
+      "fail": 0
+    },
+    "real": {
+      "ok": true,
+      "totalSegments": 259,
+      "passSegments": 259,
+      "failSegments": 0,
+      "totalMerged": 39,
+      "passMerged": 39,
+      "failMerged": 0
+    },
+    "pipelineParity": {
+      "ok": true,
+      "pass": 26,
+      "fail": 0
+    },
+    "semicolon": {
+      "ok": true,
+      "pass": 7,
+      "fail": 0
+    },
+    "transparent": {
+      "ok": true,
+      "pass": 5,
+      "fail": 0
+    },
+    "forwardNil": {
+      "ok": true,
+      "pass": 11,
+      "fail": 0
+    },
+    "ifNot": {
+      "ok": true,
+      "pass": 14,
+      "fail": 0
+    },
+    "relocation": {
+      "ok": true,
+      "pass": 9,
+      "fail": 0
+    },
+    "incremental": {
+      "ok": true,
+      "pass": 3,
+      "fail": 0
+    },
+    "remote": {
+      "ok": true,
+      "pass": 4,
+      "fail": 0,
+      "total": 4
+    },
+    "search": {
+      "ok": true,
+      "ruleBytes": 282854,
+      "searchBytes": 282840,
+      "savedBytes": 14
+    },
+    "bulk": {
+      "ok": true,
+      "availableRepos": 15,
+      "missingRepos": 4,
+      "totalFiles": 157,
+      "totalBytes": 1113601,
+      "pass": 152,
+      "fail": 0
+    },
+    "snapshot": {
+      "ok": true,
+      "total": 908,
+      "changed": 0,
+      "regress": 0,
+      "improve": 0,
+      "lostOk": 0,
+      "newOk": 0
+    },
+    "performance": {
+      "ok": true,
+      "sampleCount": 5,
+      "parseCount": 378,
+      "inputBytes": 52958,
+      "outputBytes": 46972
+    }
+  }
+}

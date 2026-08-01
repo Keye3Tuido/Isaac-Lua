@@ -3,7 +3,43 @@
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'canonical', install:function(C){
     var luaparse=C.luaparse, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze;
+
+    // Canonical output is immutable text. Cache only the alias-free form by exact source,
+    // because alias-aware canonicalization depends on the complete alias map.
+    // A bounded LRU prevents browser sessions from retaining unbounded user source.
+    var CANONICAL_CACHE_ENTRIES=32;
+    var CANONICAL_CACHE_CHARS=2*1024*1024;
+    var canonicalCache=new Map();
+    var canonicalCacheChars=0;
+    function getCachedCanonical(src){
+      if(!canonicalCache.has(src)) return undefined;
+      var value=canonicalCache.get(src);
+      canonicalCache.delete(src);
+      canonicalCache.set(src,value);
+      return value;
+    }
+    function putCachedCanonical(src, value){
+      var cost=src.length+value.length;
+      if(cost>CANONICAL_CACHE_CHARS) return;
+      if(canonicalCache.has(src)){
+        canonicalCacheChars-=src.length+canonicalCache.get(src).length;
+        canonicalCache.delete(src);
+      }
+      canonicalCache.set(src,value);
+      canonicalCacheChars+=cost;
+      while(canonicalCache.size>CANONICAL_CACHE_ENTRIES || canonicalCacheChars>CANONICAL_CACHE_CHARS){
+        var oldest=canonicalCache.keys().next().value;
+        var oldValue=canonicalCache.get(oldest);
+        canonicalCacheChars-=oldest.length+oldValue.length;
+        canonicalCache.delete(oldest);
+      }
+    }
     function canonical(src, aliasMap){
+      var cacheable=aliasMap==null;
+      if(cacheable){
+        var cached=getCachedCanonical(src);
+        if(cached!==undefined) return cached;
+      }
       var ast=parse(src);
       var info=analyze(ast);
       var byName=(aliasMap&&aliasMap.byName)||null;
@@ -657,7 +693,9 @@
         }
         for(var k in n){ if(Object.prototype.hasOwnProperty.call(n,k)) relabel(n[k]); }
       })(tree);
-      return JSON.stringify(tree);
+      var result=JSON.stringify(tree);
+      if(cacheable) putCachedCanonical(src,result);
+      return result;
     }
 
     function assertEquivalent(srcA, srcB, stageName, steps){
@@ -687,12 +725,14 @@
         if(steps) steps.push({stage:stageName, kind:'lua-syntax', ok:!err, detail: err||'真·Lua load() 通过'});
         if(err) throw new Error('['+stageName+'] 真·Lua 语法校验失败: '+err);
       }
-      try{ parse(src); }
+      var ast;
+      try{ ast=parse(src); }
       catch(e){
         if(steps) steps.push({stage:stageName, kind:'luaparse', ok:false, detail:e.message||String(e)});
         throw new Error('['+stageName+'] luaparse 语法校验失败: '+(e.message||e));
       }
       if(steps) steps.push({stage:stageName, kind:'luaparse', ok:true, detail:'luaparse AST 构建通过'});
+      return ast;
     }
 
     C.canonical=canonical; C.assertEquivalent=assertEquivalent; C.assertEquivalentAlias=assertEquivalentAlias; C.assertParses=assertParses;

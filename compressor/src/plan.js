@@ -157,6 +157,44 @@
       // (b) 统一节点表：局部 binding（kind=L）+ 全局候选（kind=G）
       //   被消解的透明别名 binding 不进入着色表：它们的声明会被删除、使用会重定向到全局别名，
       //   因此既不参与重命名也不占用名字资源。
+      // Lua 5.3 allows at most 200 simultaneously active locals per function.
+      // All generated global/member aliases live in the root chunk scope, so reserve only
+      // the slots that are provably free on the deepest root-function scope path.
+      var scopeLocalCounts=new Map(), rootScopes=new Set();
+      bindings.forEach(function(b){
+        if(b.scope.funcDepth!==0) return;
+        rootScopes.add(b.scope);
+        scopeLocalCounts.set(b.scope,(scopeLocalCounts.get(b.scope)||0)+1);
+      });
+      rootScopes.add(info.topScope);
+      var maxRootActive=0;
+      rootScopes.forEach(function(scope){
+        var count=0, cur=scope;
+        while(cur && cur.funcDepth===0){ count+=scopeLocalCounts.get(cur)||0; cur=cur.parent; }
+        if(count>maxRootActive) maxRootActive=count;
+      });
+      var aliasLocalBudget=Math.max(0,200-maxRootActive);
+      var rankedAliases=[];
+      globalCands.forEach(function(g){
+        rankedAliases.push({kind:'G', value:g, forced:forceFoldGlobals.has(g.name),
+          gain:(g.m-1)*g.k-(g.m+2)});
+      });
+      memberCands.forEach(function(mc){
+        rankedAliases.push({kind:'M', value:mc, forced:false,
+          gain:(mc.m+1)*mc.k-3*mc.k-(mc.m+4)});
+      });
+      rankedAliases.sort(function(a,b){
+        if(a.forced!==b.forced) return a.forced?-1:1;
+        if(b.gain!==a.gain) return b.gain-a.gain;
+        return b.value.k-a.value.k;
+      });
+      if(rankedAliases.length>aliasLocalBudget) rankedAliases.length=aliasLocalBudget;
+      var keptGlobals=new Set(), keptMembers=new Set();
+      rankedAliases.forEach(function(x){ if(x.kind==='G') keptGlobals.add(x.value); else keptMembers.add(x.value); });
+      // Preserve discovery order so unconstrained inputs remain byte-for-byte stable.
+      globalCands=globalCands.filter(function(g){return keptGlobals.has(g);});
+      memberCands=memberCands.filter(function(mc){return keptMembers.has(mc);});
+
       var nodes=[];
       bindings.forEach(function(b,idx){
         if(elideBindings.has(b)) return;
@@ -308,7 +346,7 @@
       var avoid=new Set(declNames);
       allGlobalNames.forEach(function(g){avoid.add(g);});
       for(var ai=0; ai<N; ai++){ if(nodes[ai].kind==='L'){ avoid.add(assigned[ai]||nodes[ai].b.name); } }
-      var declParts = buildDeclParts(declNames, declVals, avoid);
+      var declParts = buildDeclParts(declNames, declVals, avoid, Math.max(0,aliasLocalBudget-declNames.length));
 
       return {edits:edits, aliasByName:aliasByName, memberByLocal:memberByLocal,
               transparentAliases:transparentAliases,
@@ -324,8 +362,9 @@
     // 直到再也找不到正收益因子。每个因子各自一条 local（与 gain 公式的 'local ' 计费一致）。
     // avoid: 不可用作因子名的名字集合（全局/局部/别名名/关键字）。
     // 返回 { parts:[...], factorLocals:[factorName,...], dropLeading:int }
-    function buildDeclParts(names, vals, avoid){
+    function buildDeclParts(names, vals, avoid, maxFactorLocals){
       if(!names.length) return {parts:[], factorLocals:[], dropLeading:0};
+      if(maxFactorLocals===undefined) maxFactorLocals=Infinity;
       var newNames=names.slice(), newVals=vals.slice();
       // 仍可参与因子分解的纯字符串项：{idx, content}（content 为去引号原文）
       function plainStrItems(){
@@ -349,7 +388,7 @@
 
       var factorDecls=[]; // 'f=\'ROOMSHAPE_\''
       var factorNames=[];
-      while(true){
+      while(factorNames.length<maxFactorLocals){
         var items=plainStrItems();
         if(items.length<2) break;
         // 先探一个名字长度（用 1 估算；实际分配后长度一致，单字母池足够时恒为 1）

@@ -43,6 +43,14 @@
         if(tk.type==='Punct'){
           if(tk.value==='('||tk.value==='['||tk.value==='{'){ stack.push(tk.value); kept.push(tk); continue; }
           if(tk.value===')'||tk.value===']'||tk.value==='}'){ if(stack.length) stack.pop(); kept.push(tk); continue; }
+          if(tk.value===','||tk.value===';'){
+            var inTable = stack.length>0 && stack[stack.length-1]==='{';
+            var nextIndex=ti+1;
+            while(nextIndex<toks.length && toks[nextIndex].type==='Comment') nextIndex++;
+            if(inTable && nextIndex<toks.length && toks[nextIndex].value==='}'){
+              continue;
+            }
+          }
           if(tk.value===';'){
             var inTable = stack.length>0 && stack[stack.length-1]==='{';
             if(inTable){ kept.push(tk); continue; }       // 表内字段分隔符：保留

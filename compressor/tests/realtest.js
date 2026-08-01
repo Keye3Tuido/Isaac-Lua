@@ -4,6 +4,7 @@ const luaparse=require('../node_modules/luaparse');
 const fengari=require('fengari');
 require('../core.js');
 const LuaMin=globalThis.LuaMin.create(luaparse, fengari);
+const { listRepoLuaFiles } = require('./repo-lua-files');
 
 // 去除注释的辅助函数
 function removeComments(src){
@@ -27,15 +28,15 @@ function removeComments(src){
   }
 }
 
-const dir=path.join(__dirname,'../..');
-const files=fs.readdirSync(dir).filter(f=>f.endsWith('.lua'));
+const files=listRepoLuaFiles();
 let segTotal=0, segOk=0, segReject=0, errs=[];
 let bytesIn=0, bytesOut=0;
 
 // 逐段测试
-for(const f of files){
+for(const file of files){
+  const f=file.rel;
   let text;
-  try{ text=fs.readFileSync(path.join(dir,f),'utf8'); }catch(e){ continue; }
+  try{ text=fs.readFileSync(file.abs,'utf8'); }catch(e){ continue; }
   const lines=text.split(/\r?\n/);
   for(const line of lines){
     if(!/^l\s/.test(line)) continue;       // 只取 l 段
@@ -61,9 +62,10 @@ console.log('成功段 正文总字符: 输入',bytesIn,'→ 输出',bytesOut,'(
 
 // 按文件合并所有 l 段一起压缩（模拟用户全选粘贴的真实场景）
 let fileTotal=0, fileOk=0, fileReject=0, fileErrs=[];
-for(const f of files){
+for(const file of files){
+  const f=file.rel;
   let text;
-  try{ text=fs.readFileSync(path.join(dir,f),'utf8'); }catch(e){ continue; }
+  try{ text=fs.readFileSync(file.abs,'utf8'); }catch(e){ continue; }
   const lines=text.split(/\r?\n/);
   const segs=[];
   for(const line of lines){

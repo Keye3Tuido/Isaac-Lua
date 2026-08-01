@@ -3,6 +3,14 @@
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'folds', install:function(C){
     var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart;
+
+    function canCommit(originalCode, candidate, aliasMap){
+      if(luaValidate && luaValidate(candidate)) return false;
+      try{
+        parse(candidate);
+        return canonical(originalCode)===canonical(candidate, aliasMap);
+      }catch(e){ return false; }
+    }
     function preprocess(input){
       var lines=input.replace(/\r\n?/g,'\n').split('\n');
       var stripped=lines.map(function(line){
@@ -100,7 +108,6 @@
       }
 
       // 语法 + 等价校验（把新 method 别名也并入 memberByLocal 还原）
-      assertParses(candidate, '阶段1.7/语法', steps);
       var newAlias = {
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: memberByLocal,
@@ -109,6 +116,8 @@
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + 1   // 多了一条 local 声明
       };
+      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      assertParses(candidate, 'method-fold/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
       if(rec) rec(':method 折叠(提交)', src.length, candidate.length,
                   '折叠 '+chosen.map(function(c){return c.method+'×'+c.sites.length;}).join(', '));
@@ -313,7 +322,6 @@
         return null;
       }
 
-      assertParses(candidate, '阶段1.7/语法', steps);
       var newAlias = {
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
@@ -324,6 +332,8 @@
         // 退路独立 local 时 +1
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
       };
+      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      assertParses(candidate, 'field-prefix/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
       if(rec) rec('字段前缀折叠(提交)', src.length, candidate.length,
                   '提取 '+chosen.map(function(c){return c.alias+"='"+c.prefix+"'×"+c.totalSites+'处';}).join('；'));
@@ -490,7 +500,6 @@
         return null;
       }
 
-      assertParses(candidate, '阶段1.7/语法', steps);
       var newAlias = {
         byName: (priorAlias&&priorAlias.byName)||{},
         memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
@@ -499,10 +508,46 @@
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}, newStringMap),
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
       };
+      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      assertParses(candidate, 'string-alias/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
       if(rec) rec('字面量内联(提交)', src.length, candidate.length,
                   '提取 '+chosen.map(function(c){return c.alias+"='"+c.content+"'×"+c.sites.length;}).join('；'));
       return {code:candidate, aliasMap:newAlias};
+    }
+
+    // Lua 5.3 call sugar: f("x") -> f"x", f({}) -> f{}.
+    // Only syntax parentheses are removed; parsing and canonical equivalence still gate the edit.
+    function foldCallSugar(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='CallExpression' && n.arguments && n.arguments.length===1 && n.base && n.base.range && n.range){
+          var arg=n.arguments[0];
+          if(arg && arg.range && (arg.type==='StringLiteral'||arg.type==='TableConstructorExpression')){
+            var left=src.slice(n.base.range[1],arg.range[0]);
+            var right=src.slice(arg.range[1],n.range[1]);
+            if(left.indexOf('(')>=0 && right.lastIndexOf(')')>=0){
+              edits.push({start:n.base.range[1],end:arg.range[0],name:''});
+              edits.push({start:arg.range[1],end:n.range[1],name:''});
+            }
+          }
+        }
+        for(var k in n){
+          if(k==='range'||k==='loc') continue;
+          if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]);
+        }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'call-sugar/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'call-sugar/equivalence', steps);
+      if(rec) rec('call-sugar', src.length, candidate.length, 'removed '+(edits.length/2)+' call-parenthesis pairs');
+      return {code:candidate, aliasMap:priorAlias};
     }
 
     // ---------- 多重赋值拆分（点：a,b=v1,v2 → a=v1 b=v2 当 v1 符号结尾时省间隔） ----------
@@ -565,7 +610,6 @@
       }
 
       var candidate=applyEdits(src, edits);
-      assertParses(candidate, '阶段1.7/语法', steps);
 
       // 用编码层模拟一遍：只有"编码后真的更短"才提交（结构层加空格后通常打平）
       var bodyCur = applyEncoding(src);
@@ -576,6 +620,8 @@
         return null;
       }
 
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'split/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7/等价', steps);
       if(rec) rec('多赋值拆分(提交)', src.length, candidate.length,
                   '拆分 '+candidates.length+' 条多重赋值');
@@ -636,12 +682,6 @@
         })(exprs);
         return found;
       }
-      function tailMultiRet(st){
-        var ex=st.init||[]; if(!ex.length) return false;
-        var last=ex[ex.length-1];
-        return last.type==='CallExpression'||last.type==='StringCallExpression'||last.type==='TableCallExpression'||last.type==='VarargLiteral';
-      }
-
       var edits=[];
       function processBlock(stmts, skip){
         var i=skip||0;
@@ -679,7 +719,7 @@
           for(var n=0;n<names.length;n++) if(declared.has(names[n])) unsafe=true;
           if(!unsafe){
             var prev=cur[cur.length-1];
-            if((prev.init||[]).length!==prev.variables.length || tailMultiRet(prev)) unsafe=true;
+            if((prev.init||[]).length!==prev.variables.length) unsafe=true;
           }
           if(unsafe){
             if(cur.length>=2) groups.push(cur);
@@ -710,6 +750,7 @@
         if(rec) rec('local 合并(放弃: 不缩短)', src.length, src.length, '候选 '+candidate.length+' ≥ '+src.length);
         return null;
       }
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
       assertParses(candidate, '阶段1.7/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7/等价', steps);
       if(rec) rec('local 合并(提交)', src.length, candidate.length, '合并 '+edits.length+' 组相邻 local');
@@ -950,40 +991,6 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    // 删除重复的局部声明
-    function removeDuplicateLocalDecls(code){
-      // 匹配local声明：支持成员访问(X.Y)、索引(X[Y])、字符串('...')
-      var localPattern=/local\s+[A-Za-z_,]+=(?:[A-Za-z_]+(?:\.[A-Za-z_]+|\[[^\]]+\])?|'[^']*')(?:,(?:[A-Za-z_]+(?:\.[A-Za-z_]+|\[[^\]]+\])?|'[^']*'))* (?=[A-Z])/g;
-      var matches=[];
-      var match;
-      while((match=localPattern.exec(code))!==null){
-        matches.push({text:match[0], start:match.index, end:match.index+match[0].length});
-      }
-
-      // 识别重复的声明
-      var seen=new Set();
-      var toRemove=[];
-      matches.forEach(function(m){
-        if(seen.has(m.text)){
-          toRemove.push(m);
-        }else{
-          seen.add(m.text);
-        }
-      });
-
-      // 删除重复的声明（从后往前删除，避免索引变化）
-      toRemove.reverse().forEach(function(m){
-        code=code.slice(0,m.start)+code.slice(m.end);
-      });
-
-      return code;
-    }
-
-    // ---------- if-not 二择（去 not + 按奇偶对调分支体） ----------
-    // `if not C then A else B end` → `if C then B else A end`（省一个 `not`）。
-    // 推广到连续若干 not：剥光全部前导 not；not 个数为奇 → 分支对调，偶 → 分支不动（如 `not not c`）。
-    // 仅处理恰好两分支（if + else、无 elseif）、且 if 条件顶层是一元 `not` 的语句。
-    // C 只求值一次、奇偶对调不改语义；canonical 的 if-not 归一可严格验证。
     // 严格"只缩短"闸门 + 真·Lua 语法 + canonical 等价，三关全过才提交，否则回退。
     function foldIfNot(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
@@ -1030,6 +1037,6 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.removeDuplicateLocalDecls=removeDuplicateLocalDecls; C.foldIfNot=foldIfNot;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

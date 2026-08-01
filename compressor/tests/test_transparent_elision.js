@@ -64,11 +64,12 @@ check('single_alias', [
 // best (keeps the shared alias); elision must NOT make it worse. The 1.10 dedup
 // output is intentionally not modeled by canonical (pre-existing behavior), so
 // we only assert length here, not canonical equivalence.
+// Safe mode keeps repeated member lookups across callback calls; those calls may mutate the table.
 check('three_identical', [
   "l local A,M=Isaac.AddCallback,ModCallbacks A({},M.MC_POST_UPDATE,func1)",
   "l local A,M=Isaac.AddCallback,ModCallbacks A({},M.MC_POST_RENDER,func2)",
   "l local A,M=Isaac.AddCallback,ModCallbacks A({},M.MC_POST_NEW_ROOM,func3)"
-].join('\n'), {maxLen: 145, skipEquiv: true});
+].join('\n'), {maxLen: 152, skipEquiv: true});
 
 // Alias chain: local b=Global; local M=b.
 check('alias_chain', [

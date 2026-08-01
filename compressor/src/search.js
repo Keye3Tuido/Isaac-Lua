@@ -585,68 +585,63 @@
     // ================================================================
 
     function tryCrossScopeReuse(bestBody, origPre, best, deadline, maxIters, count, verbose) {
-      if (bestBody.length < 50) return null;
-
       var ast;
       try { ast = parse(bestBody); } catch (e) { return null; }
       var info;
       try { info = analyze(ast); } catch (e) { return null; }
 
-      // 收集所有顶层局部（scope === topScope）
-      var topLocals = [];
-      var nestedLocals = [];
-      var topScopeId = info.topScope.id;
-
-      info.bindings.forEach(function(b) {
-        if (b.decls.length !== 1 || b.pinned) return;
-        if (!b.decls[0].range) return;
-        var entry = { binding: b, name: b.name, declPos: b.decls[0].range[0], scopeId: b.scope.id };
-        if (b.scope.id === topScopeId) {
-          topLocals.push(entry);
-        } else {
-          nestedLocals.push(entry);
+      var stmtOfDecl = new Map();
+      (function collectStatements(node) {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { for (var i = 0; i < node.length; i++) collectStatements(node[i]); return; }
+        if (node.type === 'LocalStatement' && node.variables) {
+          for (var v = 0; v < node.variables.length; v++) stmtOfDecl.set(node.variables[v], node);
         }
-      });
+        for (var k in node) {
+          if (k === 'range' || k === 'loc') continue;
+          if (Object.prototype.hasOwnProperty.call(node, k)) collectStatements(node[k]);
+        }
+      })(ast.body);
 
+      var topLocals = [], nestedLocals = [];
+      var topScopeId = info.topScope.id;
+      info.bindings.forEach(function(b) {
+        if (b.decls.length !== 1 || b.pinned || b.captured || b.scope.funcDepth !== 0) return;
+        if (!b.decls[0].range) return;
+        var stmt = stmtOfDecl.get(b.decls[0]);
+        var entry = { binding: b, name: b.name, declPos: b.decls[0].range[0], scopeId: b.scope.id, stmt: stmt };
+        if (b.scope.id === topScopeId) topLocals.push(entry);
+        else if (stmt && stmt.variables && stmt.variables.length === 1) nestedLocals.push(entry);
+      });
       if (!topLocals.length || !nestedLocals.length) return null;
 
-      var bestResult = null;
+      function lastUsePos(b) {
+        var last = b.decls[0].range[1];
+        b.uses.forEach(function(u) { if (u.range && u.range[1] > last) last = u.range[1]; });
+        return last;
+      }
 
-      // 尝试把嵌套作用域的单次使用局部合并到顶层
-      for (var ni = 0; ni < Math.min(nestedLocals.length, 5); ni++) {
+      var bestResult = null;
+      for (var ni = 0; ni < nestedLocals.length; ni++) {
         if (bestResult || count.v >= maxIters || Date.now() >= deadline) break;
         var nl = nestedLocals[ni];
-        // 只考虑使用次数少（1-2次）的嵌套局部 — 合并收益大
-        if (nl.binding.uses.length > 2) continue;
-
-        for (var ti = 0; ti < Math.min(topLocals.length, 5); ti++) {
+        for (var ti = 0; ti < topLocals.length; ti++) {
           if (bestResult || count.v >= maxIters || Date.now() >= deadline) break;
           var tl = topLocals[ti];
+          if (nl.name === tl.name || lastUsePos(tl.binding) >= nl.declPos) continue;
+          if (!nl.stmt || bestBody.slice(nl.stmt.range[0], nl.stmt.range[0] + 6) !== 'local ') continue;
 
-          if (nl.name === tl.name) continue;
-
-          // 简单估算：省一次 local 声明 + 若原名更长则省更多
-          var saving = 6 + (nl.name.length - tl.name.length) * (nl.binding.uses.length + 1);
-          if (saving <= 0) continue;
-
-          // 重命名嵌套局部
-          var edits = [];
-          nl.binding.decls.forEach(function(d) {
-            edits.push({ start: d.range[0], end: d.range[1], name: tl.name });
+          var edits = [{ start: nl.stmt.range[0], end: nl.stmt.range[0] + 6, name: '' }];
+          nl.binding.decls.concat(nl.binding.uses).forEach(function(n) {
+            edits.push({ start: n.range[0], end: n.range[1], name: tl.name });
           });
-          nl.binding.uses.forEach(function(u) {
-            edits.push({ start: u.range[0], end: u.range[1], name: tl.name });
-          });
-
-          var candidate = bestBody;
           edits.sort(function(a, b) { return b.start - a.start; });
+          var candidate = bestBody;
           for (var ei = 0; ei < edits.length; ei++) {
             candidate = candidate.slice(0, edits[ei].start) + edits[ei].name + candidate.slice(edits[ei].end);
           }
-
-          if (!isValid(candidate)) continue;
+          if (candidate.length >= bestBody.length || !isValid(candidate)) continue;
           if (!canonicalEq(origPre, candidate, null)) continue;
-
           count.v++;
 
           try {
@@ -654,14 +649,13 @@
             if (cand && cand.ok && cand.bodyLength < best.bodyLength) {
               var candBody = bodyOf(cand);
               if (canonicalEq(origPre, candBody, cand.aliasMapInfo)) {
-                if (verbose) log('xreuse: ' + nl.name + ' → ' + tl.name + ' (cross-scope)');
+                if (verbose) log('xreuse: ' + nl.name + ' -> ' + tl.name + ' (removed nested local)');
                 bestResult = cand;
               }
             }
           } catch (e) {}
         }
       }
-
       return bestResult;
     }
 

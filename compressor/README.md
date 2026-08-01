@@ -21,7 +21,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - ✓ 纯静态，`file://` 直接运行，无需服务器/构建/联网
 - ✓ 每个优化阶段后都做语法+语义等价校验，**不等价则拒绝输出**
 - ✓ 支持多段输入（每行可带 `l`/`lua` 前缀），自动合并为单段
-- ✓ 测试覆盖：238 用例 100% 通过，bulktest 152 个真实 Lua 文件 100% 通过
+- ✓ 测试覆盖：基础 87 + 边界 40 + 流水线一致性 26 项；仓库 39 个 Lua 文件 / 259 个 `l` 段；bulktest 已执行文件 152/152 通过
 
 ---
 
@@ -41,12 +41,12 @@ console.log(result.output);  // l <压缩后的单行代码>
 - `src/analyze.js` — AST 解析、作用域分析、全局/成员访问收集
 - `src/plan.js` — 统一规划（重命名+折叠+因子分解+透明别名消解）
 - `src/encode.js` — 去注释、间隔符最小化、分号消除
-- `src/canonical.js` — SSA 版本化归一 + 等价性验证
+- `src/canonical.js` — SSA 版本化归一 + 等价性验证；无别名 canonical 使用精确源码键控的有界 LRU 缓存
 - `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass
-- `src/compress.js` — 流水线编排、多阈值策略、异步进度回调
+- `src/compress.js` — 单一阶段注册表 + 同步/异步执行器、多阈值策略、异步进度回调
 - `src/search.js` — 搜索优化器（表达式提取、激进变量复用，canonical 验证兜底）
 
-**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护。
+**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；同步与带进度的异步压缩共享同一阶段表，由 `tests/test_pipeline_parity.js` 校验报告和输出一致。
 
 **UI 特性**：
 - 压缩进度条：逐阶段实时更新，显示当前阶段名和百分比
@@ -65,7 +65,8 @@ console.log(result.output);  // l <压缩后的单行代码>
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.2  :method 折叠（base 为简单变量；只缩短才提交）
 1.3  字段前缀折叠（obj.PREFIX_X 系列提取公共前缀因子）
-1.4  字符串字面量内联（重复标识符样字面量提取别名）
+1.4  Safe call sugar: `f("x")` -> `f"x"`, `f({})` -> `f{}`
+1.4b 字符串字面量内联（重复标识符样字面量提取别名）
 1.5  local 合并（相邻 body local 并一条）
 1.6  多重赋值拆分（非 local 多赋值 → 单赋值序列；编码层兑现节省）
 1.6b if-not 二择（if not C then A else B → if C then B else A，省 not）
@@ -78,7 +79,8 @@ console.log(result.output);  // l <压缩后的单行代码>
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.9  间隔符最小化 + 单行化
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
-1.10 重复声明删除（值完全相同的重复 local 声明去重；自带回退闸门）
+Safety: text-based duplicate `local` deletion is disabled because syntax validity alone cannot prove equivalent scope or evaluation timing.
+Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limit candidates are rejected without aborting the pipeline.
    ↓
 输出：'l ' + 结果
 ```
@@ -115,7 +117,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - **if-not 二择** — `if not C then A else B end` → `if C then B else A end`，省 `not`（约 4 字）；`canonical` 内置归一验证
 - **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；SSA 等价校验
 - **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证
-- **重复声明删除** — 值完全相同的重复 `local` 声明只保留首条；自带真·Lua 语法复核 + 只缩短闸门
+- **重复声明删除（禁用）** — 文本相同不能证明求值时机和副作用相同；安全模式保留重复 `local` 声明
 
 **编码优化**（阶段 1.8~1.9）：
 - **去注释** — 在所有重命名完成后删除全部注释
@@ -149,22 +151,27 @@ console.log(result.output);  // l <压缩后的单行代码>
 
 **运行测试**：
 ```bash
+npm test                                 # 完整门禁：本地+远程+批量+搜索+快照+性能，并对照历史结果
+npm run test:local                       # 本地快速回归（完整提交前仍必须执行 npm test）
+npm run test:baseline                    # 仅在明确接受新基线时重建“重构前基线”
 node tests/test.js                      # 基础：作用域/遮蔽/全局保护/拒绝边界
 node tests/edge.js                      # 边界：数字-关键字-运算符、goto、varargs、:method
-node tests/realtest.js                  # 真实：仓库 33 个 .lua 全部 l 段（逐段+合并）
+node tests/realtest.js                  # 真实：递归扫描仓库 39 个 .lua 的全部 l 段（逐段+合并）
 node tests/remotetest.js                # 远程：4 个真实模组 main.lua（首次联网缓存）
 node tests/bulktest.js                  # 批量：19 个开源 Lua 项目（>150 文件）
-node tests/bench.js                     # 压缩率演示
 node tests/test_incremental.js          # 增量压缩（单条vs合并）
+node tests/test_pipeline_parity.js      # 同步/异步流水线输出、报告、错误回调一致性
+node tests/test_validation_cache.js      # canonical 缓存隔离、命中与语义一致性
+node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度
 node tests/test_transparent_elision.js  # 透明别名消解专项
 node tests/test_canonical_fwdnil.js     # 死前向声明归一专项
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：238 用例全部通过（12 测试文件），bulktest 152/152 文件 100% 通过率
+**当前状态**：基础 87/87、边界 40/40、仓库真实语料 259/259 段与 39/39 合并文件、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料 parse 次数从基线 378 降至 275，输出保持 46968 字节。
 
-**注**：测试前自动去除输入注释，确保结果反映对代码本身的优化，不被"去注释"操作掩盖。详见 [tests/TEST_REPORT.md](TEST_REPORT.md)。
+**注**：测试结果默认只输出到控制台；仓库仅保留快照、重构前基线和上一次通过结果这三类回归所需数据。
 
 ### 已知边界
 

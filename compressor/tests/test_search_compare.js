@@ -6,6 +6,7 @@ const luaparse = require('../node_modules/luaparse');
 const fengari = require('fengari');
 require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
+const { listRepoLuaFiles } = require('./repo-lua-files');
 
 function removeComments(src) {
   try {
@@ -26,16 +27,16 @@ function canonicalEq(a, b, aliasMap) {
   catch (e) { return false; }
 }
 
-const dir = path.join(__dirname, '../..');
-const files = fs.readdirSync(dir).filter(f => f.endsWith('.lua'));
+const files = listRepoLuaFiles();
 
 let baselineTotal = 0, searchTotal = 0;
 let wins = [], losses = [], equivalenceErrors = [];
 let segCount = 0, mergeCount = 0;
 
-for (const f of files) {
+for (const file of files) {
+  const f = file.rel;
   let text;
-  try { text = fs.readFileSync(path.join(dir, f), 'utf8'); } catch (e) { continue; }
+  try { text = fs.readFileSync(file.abs, 'utf8'); } catch (e) { continue; }
   const lines = text.split(/\r?\n/);
 
   const segs = [];
