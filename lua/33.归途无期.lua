@@ -63,4 +63,7 @@ l local b,Y,F,G={92},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i i
 --12. 从游戏中移除饰品138('M)。
 l local G,F,b=32768,Isaac.AddCallback,{138}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
 
+--13. 一分钟内未击败首层boss自动重开。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l)l=Game():GetLevel()if not l:IsAscent()and 3>l:GetStageType()and LevelStage.STAGE1_1==l:GetStage()and 1800<Game():GetFrameCount()and not l:GetRooms():Get(l:GetLastBossRoomListIndex()).Clear then Isaac.ExecuteCommand('restart')end end)
+
 --.
