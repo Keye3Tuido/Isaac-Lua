@@ -57,8 +57,8 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l,s,c,a)a=LevelStage
 --11. 强制下妈腿。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l,s,c,a,b)a=LevelStage l=Game():GetLevel()s=l:GetStage()c=0<LevelCurse.CURSE_OF_LABYRINTH&l:GetCurses()b=3>l:GetStageType()if not l:IsAscent()and(not b and(s==a.STAGE2_1 and c or s==a.STAGE2_2 and not c)or b and s==a.STAGE3_1 and not c)and GridRooms.ROOM_SECRET_EXIT_IDX==l:GetCurrentRoomIndex()then s=l:GetCurrentRoom()for i=0,s:GetGridSize()-1 do c=s:GetGridEntity(i)if c and GridEntityType.GRID_TRAPDOOR==c:GetType()then s:RemoveGridEntity(i,0,false)end end for _,v in pairs(Isaac.FindByType(EntityType.ENTITY_EFFECT,EffectVariant.HEAVEN_LIGHT_DOOR,0))do v:Remove()end end end)
 
---12. 从游戏中移除魂石92(莉莉丝的魂石)。
-l local b,Y,F,G={92},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and -1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
+--12. 从游戏中移除卡牌73(XVII-星星?)、魂石92(莉莉丝的魂石)。
+l local b,Y,F,G={73,92},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and -1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
 
 --12. 从游戏中移除饰品138('M)。
 l local G,F,b=32768,Isaac.AddCallback,{138}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
