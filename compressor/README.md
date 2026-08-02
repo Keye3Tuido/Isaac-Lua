@@ -169,7 +169,7 @@ node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 87/87、边界 40/40、仓库真实语料 259/259 段与 39/39 合并文件、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料 parse 次数从基线 378 降至 275，输出保持 46968 字节。
+**当前状态**：基础 89/89、边界 40/40、仓库真实语料 261/261 段与 39/39 合并文件、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料 parse 次数从基线 378 降至 275，输出保持 46968 字节。
 
 **注**：测试结果默认只输出到控制台；仓库仅保留快照、重构前基线和上一次通过结果这三类回归所需数据。
 

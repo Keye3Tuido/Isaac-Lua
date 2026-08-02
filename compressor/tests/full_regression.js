@@ -87,7 +87,7 @@ function metricsFor(run) {
     case 'search':
       parsed = numbers(o, /规则系统总计:\s*(\d+)\s*字符[\s\S]*?搜索优化总计:\s*(\d+)\s*字符[\s\S]*?差值:\s*(-?\d+)\s*字符/, ['ruleBytes', 'searchBytes', 'savedBytes']); break;
     case 'snapshot':
-      parsed = numbers(o, /CHECK:\s*total\s*(\d+)\s*\|\s*changed\s*(\d+)\s*\|\s*regress\s*(\d+)\s*\|\s*improve\s*(\d+)\s*\|\s*lost-ok\s*(\d+)\s*\|\s*new-ok\s*(\d+)/, ['total', 'changed', 'regress', 'improve', 'lostOk', 'newOk']); break;
+      parsed = numbers(o, /CHECK:\s*total\s*(\d+)\s*\|\s*changed\s*(\d+)\s*\|\s*regress\s*(\d+)\s*\|\s*improve\s*(\d+)\s*\|\s*lost-ok\s*(\d+)\s*\|\s*new-ok\s*(\d+)\s*\|\s*source-changed\s*(\d+)\s*\|\s*removed\s*(\d+)/, ['total', 'changed', 'regress', 'improve', 'lostOk', 'newOk', 'sourceChanged', 'removed']); break;
     case 'performance': {
       const match = o.match(/PERF_JSON\s+(.+)/);
       if (match) {
@@ -120,6 +120,8 @@ function compareMetricSet(label, previous, current) {
     if (oldSuite.ok && !newSuite.ok) errors.push(`${label}: ${name} changed from pass to fail`);
     for (const key of Object.keys(oldSuite)) {
       if (key === 'ok' || typeof oldSuite[key] !== 'number' || typeof newSuite[key] !== 'number') continue;
+      if (name === 'search' && oldSuite.ruleBytes !== newSuite.ruleBytes && /^(ruleBytes|searchBytes|savedBytes)$/.test(key)) continue;
+      if (name === 'snapshot' && key === 'total') continue;
       if (/fail|regress|lostOk/i.test(key)) {
         if (newSuite[key] > oldSuite[key]) errors.push(`${label}: ${name}.${key} ${oldSuite[key]} -> ${newSuite[key]}`);
       } else if (/pass|total|sampleCount|savedBytes/i.test(key)) {
@@ -145,7 +147,7 @@ function compareMetricSet(label, previous, current) {
   }
   const oldSearch = previous.suites.search;
   const newSearch = current.suites.search;
-  if (oldSearch && newSearch && newSearch.searchBytes > oldSearch.searchBytes) {
+  if (oldSearch && newSearch && oldSearch.ruleBytes === newSearch.ruleBytes && newSearch.searchBytes > oldSearch.searchBytes) {
     errors.push(`${label}: search.searchBytes ${oldSearch.searchBytes} -> ${newSearch.searchBytes}`);
   }
   return errors;

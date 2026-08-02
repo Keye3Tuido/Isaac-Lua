@@ -140,3 +140,5 @@ if (equivalenceErrors.length > 0) {
 console.log('\n' + (wins.length > 0
   ? '结论: 搜索层有效，有 ' + wins.length + ' 处改进。'
   : '结论: 搜索层在当前语料上未找到优于规则系统的配置。'));
+
+if (losses.length > 0 || equivalenceErrors.length > 0) process.exitCode = 1;

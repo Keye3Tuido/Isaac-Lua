@@ -107,16 +107,18 @@ const OUT = path.join(__dirname, '_snapshot.json');
 if(process.argv.includes('--check')){
   if(!fs.existsSync(OUT)){ console.error('No baseline snapshot to check against. Run without --check first.'); process.exit(2); }
   const base = JSON.parse(fs.readFileSync(OUT,'utf8'));
-  let regressions=0, improvements=0, changed=0, newOk=0, lostOk=0, total=0;
+  let regressions=0, improvements=0, changed=0, newOk=0, lostOk=0, sourceChanged=0, removed=0, total=0;
   const keys = new Set([...Object.keys(base), ...Object.keys(snap)]);
   const details=[];
   for(const k of keys){
     total++;
     const b=base[k], n=snap[k];
-    if(!b||!n) continue;
+    if(!b && n){ if(n.ok){ newOk++; details.push('NEW-OK    '+k+'  (new input -> '+n.outLen+')'); } continue; }
+    if(b && !n){ removed++; details.push('REMOVED   '+k); continue; }
     if(b.ok && !n.ok){ lostOk++; details.push('LOST-OK   '+k+'  ('+b.outLen+' -> THREW: '+(n.err||'')+')'); continue; }
     if(!b.ok && n.ok){ newOk++; details.push('NEW-OK    '+k+'  (was err -> '+n.outLen+')'); continue; }
     if(!b.ok && !n.ok) continue;
+    if(b.inputLen!==n.inputLen){ sourceChanged++; details.push('SOURCE    '+k+'  input '+b.inputLen+' -> '+n.inputLen+'; output '+b.outLen+' -> '+n.outLen); continue; }
     if(n.sha!==b.sha){
       changed++;
       if(n.outLen>b.outLen){ regressions++; details.push('REGRESS   '+k+'  '+b.outLen+' -> '+n.outLen+'  (+'+(n.outLen-b.outLen)+')'); }
@@ -126,7 +128,7 @@ if(process.argv.includes('--check')){
   }
   details.sort();
   details.forEach(d=>console.log(d));
-  console.log('\n=== CHECK: total '+total+' | changed '+changed+' | regress '+regressions+' | improve '+improvements+' | lost-ok '+lostOk+' | new-ok '+newOk+' ===');
+  console.log('\n=== CHECK: total '+total+' | changed '+changed+' | regress '+regressions+' | improve '+improvements+' | lost-ok '+lostOk+' | new-ok '+newOk+' | source-changed '+sourceChanged+' | removed '+removed+' ===');
   if(regressions>0 || lostOk>0){ console.log('RESULT: FAIL (compression got worse or a case stopped compiling)'); process.exit(1); }
   console.log('RESULT: OK (no regression; refactor preserved or improved all outputs)');
   process.exit(0);

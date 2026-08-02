@@ -3,7 +3,7 @@
   "suites": {
     "unit": {
       "ok": true,
-      "pass": 87,
+      "pass": 89,
       "fail": 0
     },
     "edge": {
@@ -13,8 +13,8 @@
     },
     "real": {
       "ok": true,
-      "totalSegments": 259,
-      "passSegments": 259,
+      "totalSegments": 261,
+      "passSegments": 261,
       "failSegments": 0,
       "totalMerged": 39,
       "passMerged": 39,
@@ -68,9 +68,9 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 282850,
-      "searchBytes": 282836,
-      "savedBytes": 14
+      "ruleBytes": 284234,
+      "searchBytes": 284221,
+      "savedBytes": 13
     },
     "bulk": {
       "ok": true,
@@ -83,12 +83,14 @@
     },
     "snapshot": {
       "ok": true,
-      "total": 908,
-      "changed": 2,
+      "total": 460,
+      "changed": 0,
       "regress": 0,
-      "improve": 2,
+      "improve": 0,
       "lostOk": 0,
-      "newOk": 0
+      "newOk": 0,
+      "sourceChanged": 1,
+      "removed": 0
     },
     "performance": {
       "ok": true,

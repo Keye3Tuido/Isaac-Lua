@@ -1,10 +1,19 @@
 const luaparse = require('../node_modules/luaparse');
 const fengari = require('fengari');
+const fs = require('fs');
+const path = require('path');
 require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
 let pass=0, fail=0;
 function ok(name, cond, extra){ if(cond){pass++; /*console.log('  ok',name)*/} else {fail++; console.log('FAIL:',name, extra||'');} }
+// Browser entrypoint must still work when deployment-generated vendor copies are absent.
+(function(){
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  ok('browser-bootstrap/luaparse-fallback', html.includes('node_modules/luaparse/luaparse.js'));
+  ok('browser-bootstrap/fengari-fallback', html.includes('node_modules/fengari-web/dist/fengari-web.js'));
+})();
+
 
 // 去除注释的辅助函数
 function removeComments(src){

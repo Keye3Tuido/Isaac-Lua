@@ -38,6 +38,6 @@ l local A,B,C,E,F,G=Isaac.AddCallback,ModCallbacks,PickupVariant.PICKUP_COIN,Get
 l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_THROWABLEBOMB,0,t.Position,Vector.Zero,nil)end)
 
 --13. 游戏随机卡顿、删除角色眼泪、删除凋落物。
-l local A,B,Z=Isaac,EntityType Z=A.FindByType A.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(a,b)a=Random()%1e3 if a<8 then for _=1,1e5 do A.GetRoomEntities()end b={}for k,v in pairs{'HEART','COIN','KEY','BOMB','POOP','GRAB_BAG','PILL','LIL_BATTERY','TAROT_CARD','TRINKET',''}do a=Z(B.ENTITY_PICKUP,PickupVariant['PICKUP_'..v])table.move(a,1,#a,#b+1,b)end elseif a<24 then b=Z(B.ENTITY_TEAR)end for k,v in pairs(b or{})do if Random()%100<20 then v:Remove()end end end)
+l local c,d,A,B,Z=Random,pairs,Isaac,EntityType Z=A.FindByType A.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(a,b)a=c()%1e3 if a<8 then for _=1,1e5 do A.GetRoomEntities()end b={}for k,v in d{'HEART','COIN','KEY','BOMB','POOP','GRAB_BAG','PILL','LIL_BATTERY','TAROT_CARD','TRINKET',''}do a=Z(B.ENTITY_PICKUP,PickupVariant['PICKUP_'..v])table.move(a,1,#a,#b+1,b)end elseif a<24 then b=Z(B.ENTITY_TEAR)end for k,v in d(b or{})do if c()%100<20 then v:Remove()end end end)
 
 --.
