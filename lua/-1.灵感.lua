@@ -34,4 +34,7 @@ l local A,B,C,D,E,F,Z=Input,Isaac,ModCallbacks,{},{},{'A','D','W','S','<','>','^
 --11. 没捡到闪烁的硬币时，所有角色受伤一次，不忽略无敌帧。
 l local A,B,C,E,F=Isaac.AddCallback,ModCallbacks,PickupVariant.PICKUP_COIN,GetPtrHash,{}A({},B.MC_POST_PICKUP_UPDATE,function(h,p)h=E(p)if p.Timeout>=0 and not F[h]then F[h]=1 end end,C)A({},B.MC_PRE_PICKUP_COLLISION,function(_,p,c)if c:ToPlayer()then F[E(p)]=2 end end,C)A({},B.MC_POST_ENTITY_REMOVE,function(h,e)h=E(e)if 1==F[h]then for i=1,Game():GetNumPlayers()do Isaac.GetPlayer(i-1):TakeDamage(1,0,EntityRef(e),60)end end if F[h]then h,F[h]={}for k,v in pairs(F)do if v then h[k]=v end end F=h end end,EntityType.ENTITY_PICKUP)
 
+--12. 角色每次发射眼泪时，原地生成一个可拾取的炸弹。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_THROWABLEBOMB,0,t.Position,Vector.Zero,nil)end)
+
 --.
