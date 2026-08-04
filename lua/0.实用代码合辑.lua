@@ -166,4 +166,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()Game():GetLevel(
 --52. 达摩克里斯之剑立刻落下。
 l for _,v in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR,FamiliarVariant.DAMOCLES))do v:ToFamiliar().State=2 end
 
+--53. 立即结束本局游戏，并不影响连胜进度。
+l Game():FinishChallenge()Game():Fadeout(9,2)
+
 --.
