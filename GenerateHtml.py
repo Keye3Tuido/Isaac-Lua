@@ -125,7 +125,8 @@ html = f"""<!DOCTYPE html>
                 <div class="detail-paper"><h1 id="detailTitle"></h1></div>
             </header>
             <div class="button-group">
-                <button onclick="copyAll(event)" class="copy-btn">复制到剪贴板</button>
+                <button onclick="copyAllCode(event)" class="copy-btn">复制代码</button>
+                <button onclick="copyLink(event)" class="copy-btn">复制链接</button>
                 <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
                 <a href="#" onclick="goBackToList(event)" class="back-btn">返回挑战列表</a>
             </div>

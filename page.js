@@ -192,6 +192,7 @@ function buildCodeBox(codeLines) {
     box.className = 'code-box';
     const blockText = codeLines.map(it => it.text).join('\n');
     box.onclick = e => copyBlock(blockText, codeLines.length, e);
+    box.oncontextmenu = e => { e.preventDefault(); copyLink(e); };
     bindHover(box, blockText.length);
 
     codeLines.forEach(item => {
@@ -221,11 +222,17 @@ function copyBlock(text, count, e) {
         .catch(err => showToastAt('\u590d\u5236\u5931\u8d25: ' + err, e.clientX, e.clientY));
 }
 
-function copyAll(e) {
+function copyAllCode(e) {
     const f = ALL_FILES[currentFileId];
     if (!f) return;
     navigator.clipboard.writeText(f.raw)
         .then(() => showToastAt('\u5df2\u590d\u5236\u4ee3\u7801\u5230\u526a\u8d34\u677f', e.clientX, e.clientY))
+        .catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY));
+}
+
+function copyLink(e) {
+    navigator.clipboard.writeText(location.href)
+        .then(() => showToastAt('\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e.clientX, e.clientY))
         .catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY));
 }
 
@@ -299,7 +306,7 @@ function showToastAt(m, x, y) {
 
 function showHoverTip(x, y, charCount) {
     if (hoverTip.parentNode !== document.body) document.body.appendChild(hoverTip);
-    hoverTip.textContent = '\u70b9\u51fb\u4ee5\u590d\u5236\u8be5\u4ee3\u7801\u5757\uff08' + charCount + ' \u5b57\u7b26\uff09';
+    hoverTip.textContent = '\u5de6\u952e\u590d\u5236\u4ee3\u7801\uff0c\u53f3\u952e\u590d\u5236\u94fe\u63a5';
     hoverTip.style.display = 'block';
     hoverTip.style.visibility = 'hidden';
     const rect = hoverTip.getBoundingClientRect();
