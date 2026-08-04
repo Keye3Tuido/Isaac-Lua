@@ -192,7 +192,7 @@ function buildCodeBox(codeLines) {
     box.className = 'code-box';
     const blockText = codeLines.map(it => it.text).join('\n');
     box.onclick = e => copyBlock(blockText, codeLines.length, e);
-    box.oncontextmenu = e => { e.preventDefault(); copyLink(e); };
+    box.oncontextmenu = e => { e.preventDefault(); navigator.clipboard.writeText(location.href).then(() => showToastAt('\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e.clientX, e.clientY)).catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY)); };
     bindHover(box, blockText.length);
 
     codeLines.forEach(item => {
@@ -231,7 +231,8 @@ function copyAllCode(e) {
 }
 
 function copyLink(e) {
-    navigator.clipboard.writeText(location.href)
+    var url = location.origin + location.pathname + '#c' + currentFileId;
+    navigator.clipboard.writeText(url)
         .then(() => showToastAt('\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e.clientX, e.clientY))
         .catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY));
 }
