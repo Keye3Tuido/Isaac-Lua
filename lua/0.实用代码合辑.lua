@@ -169,4 +169,7 @@ l for _,v in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR,FamiliarVariant.D
 --53. 立即结束本局游戏，并不影响连胜进度。
 l Game():FinishChallenge()Game():Fadeout(9,2)
 
+--54. 游戏卡顿3秒。
+l local A,B=Isaac.GetTime B=A()repeat Game():GetLevel():UpdateVisibility()until A()-B>3e3
+
 --.
