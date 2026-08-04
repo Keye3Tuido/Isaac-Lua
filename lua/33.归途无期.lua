@@ -27,8 +27,8 @@ l function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x
 --1. 新游戏开始时，在初始房间生成铲柄，并直接传送到最后一个Boss房。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(l,c)if not c then Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_BROKEN_SHOVEL,550,Game():GetRoom():GetCenterPos(),Vector.Zero,nil)l=Game():GetLevel()l:ChangeRoom(l:GetRooms():Get(l:GetLastBossRoomListIndex()).SafeGridIndex)end end)
 
---2. 不可拾取非任务道具。
-l local A,B,C,D,X,Y,Z=Isaac,ModCallbacks,function(c)return c and not c:HasTags(ItemConfig.TAG_QUEST)end,'Collectible'Z=A.AddCallback Y=A.GetItemConfig()X='Get'..D Z({},B.MC_POST_PLAYER_UPDATE,function(i,p,c)i=Y[X..'s'](Y).Size repeat i=i-1 c=Y[X](Y,i)if c and C(c)then for j=1,p[X..'Num'](p,i,true)do p['Remove'..D](p,i)end end until not c and i<0 end)Z({},B.MC_POST_PICKUP_UPDATE,function(_,e)if C(Y[X](Y,e.SubType))then e.Touched=true end end,PickupVariant.PICKUP_COLLECTIBLE)
+--2. 不可拾取非任务道具和错误道具。
+l local A,B,C,D,X,Y,Z=Isaac,ModCallbacks,function(c)return c and(c.ID<0 or not c:HasTags(ItemConfig.TAG_QUEST))end,'Collectible'Z=A.AddCallback Y=A.GetItemConfig()X='Get'..D Z({},B.MC_POST_PLAYER_UPDATE,function(i,p,c)i=Y[X..'s'](Y).Size repeat i=i-1 c=Y[X](Y,i)if C(c)then while p['Has'..D](p,i,true)do p['Remove'..D](p,i)end end until not c and i<0 end)Z({},B.MC_POST_PICKUP_UPDATE,function(_,e)if C(Y[X](Y,e.SubType))then e.Touched=true end end,PickupVariant.PICKUP_COLLECTIBLE)
 
 --3. 献祭不再飞升。
 l local A,B,C,Z=Isaac,ModCallbacks,{}Z=A.AddCallback Z({},B.MC_POST_UPDATE,function(r,g,d,f)r=Game():GetRoom()if RoomType.ROOM_SACRIFICE==r:GetType()then for i=1,r:GetGridSize()do g=r:GetGridEntity(i-1)d='VarData'if g and g:ToSpikes()then f=g.Desc.SpawnSeed if C[f]then g[d]=0 elseif 10<g[d]then g[d]=0 C[f]=true end end end end end)Z({},B.MC_POST_NEW_LEVEL,function()C={}end)

@@ -13,7 +13,7 @@ l function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x
 
 --1. 从游戏中移除道具252(小药袋)、道具477(虚空)、道具523(搬家盒)、道具580(红钥匙)、道具675(碎裂的宝珠)和道具706(无底坑)。
 -- 特判：不阻止触发红钥匙效果
-l local I,C,Y,T,A=Isaac,{252,477,523,580,675,706},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v and c~=580 then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do for _=1,p:GetCollectibleNum(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+l local I,C,Y,T,A=Isaac,{252,477,523,580,675,706},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v and c~=580 then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
 --2. 从游戏中移除符文41(黑符文)、卡牌74(月亮?)和魂石83(该隐的魂石)。
 l local b,Y,F,G={41,74,83},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
