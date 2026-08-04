@@ -13,6 +13,7 @@
 l function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end end --[[ 清理匿名模组回调,预防代码污染 ]]CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then CLM()end return end end F=p end) --[[ 自动清理回调 ]] Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end) --[[ 游戏锁定成就 ]]
 
 --1. 玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数(参数：玩家实体)。
+--不兼容拉撒路的绷带、拉撒路的魂石
 l function OnHit(p)end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)A(T,M.MC_POST_NEW_ROOM,function(t)t={}for k,v in pairs(B)do if v then t[k]=v end B=t end end)
 
 --2. 有Fatal(默认50)%概率的房间，玩家受伤（无敌帧被重置）即死。这些房间内玩家攻击力翻倍。
