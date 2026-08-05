@@ -192,7 +192,7 @@ function buildCodeBox(codeLines) {
     box.className = 'code-box';
     const blockText = codeLines.map(it => it.text).join('\n');
     box.onclick = e => copyBlock(blockText, codeLines.length, e);
-    box.oncontextmenu = e => { e.preventDefault(); navigator.clipboard.writeText(location.href).then(() => showToastAt('\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e.clientX, e.clientY)).catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY)); };
+    box.oncontextmenu = e => { e.preventDefault(); copyTextWithToast(location.href, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e); };
     bindHover(box, blockText.length);
 
     codeLines.forEach(item => {
@@ -215,26 +215,85 @@ function bindHover(el, charCount) {
 }
 
 // ========== 复制 ==========
+function legacyCopyText(text) {
+    const textarea = document.createElement('textarea');
+    const previousFocus = document.activeElement;
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.setAttribute('aria-hidden', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '0';
+    textarea.style.top = '0';
+    textarea.style.width = '1px';
+    textarea.style.height = '1px';
+    textarea.style.padding = '0';
+    textarea.style.border = '0';
+    textarea.style.opacity = '0';
+    textarea.style.fontSize = '16px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+
+    let copied = false;
+    let error = null;
+    try {
+        copied = typeof document.execCommand === 'function' && document.execCommand('copy');
+    } catch (err) {
+        error = err;
+    } finally {
+        document.body.removeChild(textarea);
+        if (previousFocus && typeof previousFocus.focus === 'function') {
+            try { previousFocus.focus({ preventScroll: true }); } catch (_) { previousFocus.focus(); }
+        }
+    }
+
+    return copied
+        ? Promise.resolve()
+        : Promise.reject(error || new Error('Clipboard API unavailable'));
+}
+
+function writeClipboard(text) {
+    if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        return navigator.clipboard.writeText(text).catch(() => legacyCopyText(text));
+    }
+    return legacyCopyText(text);
+}
+
+function eventPoint(e) {
+    const touch = e && ((e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]));
+    let x = touch ? touch.clientX : e && e.clientX;
+    let y = touch ? touch.clientY : e && e.clientY;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) {
+        const target = e && e.currentTarget;
+        const rect = target && typeof target.getBoundingClientRect === 'function' ? target.getBoundingClientRect() : null;
+        x = rect ? rect.left + rect.width / 2 : innerWidth / 2;
+        y = rect ? rect.top + rect.height / 2 : innerHeight / 2;
+    }
+    return { x, y };
+}
+
+function copyTextWithToast(text, successMessage, e) {
+    const point = eventPoint(e);
+    return writeClipboard(text)
+        .then(() => showToastAt(successMessage, point.x, point.y))
+        .catch(err => showToastAt('\u590d\u5236\u5931\u8d25: ' + (err && err.message ? err.message : err), point.x, point.y));
+}
+
 function copyBlock(text, count, e) {
     if (!text) return;
-    navigator.clipboard.writeText(text)
-        .then(() => showToastAt('\u5df2\u590d\u5236\u8be5\u4ee3\u7801\u5757\uff08' + count + ' \u884c\uff0c' + text.length + ' \u5b57\u7b26\uff09', e.clientX, e.clientY))
-        .catch(err => showToastAt('\u590d\u5236\u5931\u8d25: ' + err, e.clientX, e.clientY));
+    return copyTextWithToast(text, '\u5df2\u590d\u5236\u8be5\u4ee3\u7801\u5757\uff08' + count + ' \u884c\uff0c' + text.length + ' \u5b57\u7b26\uff09', e);
 }
 
 function copyAllCode(e) {
     const f = ALL_FILES[currentFileId];
     if (!f) return;
-    navigator.clipboard.writeText(f.raw)
-        .then(() => showToastAt('\u5df2\u590d\u5236\u4ee3\u7801\u5230\u526a\u8d34\u677f', e.clientX, e.clientY))
-        .catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY));
+    return copyTextWithToast(f.raw, '\u5df2\u590d\u5236\u4ee3\u7801\u5230\u526a\u8d34\u677f', e);
 }
 
 function copyLink(e) {
-    var url = location.origin + location.pathname + '#c' + currentFileId;
-    navigator.clipboard.writeText(url)
-        .then(() => showToastAt('\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e.clientX, e.clientY))
-        .catch(() => showToastAt('\u590d\u5236\u5931\u8d25', e.clientX, e.clientY));
+    const url = location.origin + location.pathname + '#c' + currentFileId;
+    return copyTextWithToast(url, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e);
 }
 
 // ========== 下载 ZIP ==========
