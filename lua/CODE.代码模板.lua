@@ -24,4 +24,6 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.XXX,func,arg)
 --10<=回调数N | 总字数=65+5N
 l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,arg)
 
+--重开一局新游戏。
+l Isaac.ExecuteCommand'restart'
 --.

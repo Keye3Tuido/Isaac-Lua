@@ -1,5 +1,8 @@
 -- 实用代码合辑
 
+--0. 清理所有匿名模组回调。
+l local t,m for _,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end
+
 --1. 检测到控制台输入rewind后，执行OnRewind函数。
 l local function OnRewind()end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCallback,I.GetFrameCount;A({},M.MC_PRE_GAME_EXIT,function(_,s)E=s and T()end)A({},M.MC_POST_GAME_STARTED,function()if E==T()then OnRewind()end end)
 

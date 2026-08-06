@@ -22,4 +22,6 @@ l ITEMS={'c329'}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPla
 --3. 从游戏中移除可绕过眼泪输出的道具(除去了329)
 l local I,C,Y,T,A=Isaac,{52,68,114,118,152,168,244,399,579,640,643,678,696},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
+--重开一局新游戏。
+l Isaac.ExecuteCommand'restart'
 --.

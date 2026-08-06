@@ -42,4 +42,6 @@ l local A,M,V,T,E=Isaac.AddCallback,ModCallbacks,{['MoveSpeed']={min=nil,max=nil
 --9. 玩家的泪弹强制变为橡皮擦
 l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_UPDATE,function(v,t)v=TearVariant.ERASER if t.Variant~=v and t.SpawnerType==EntityType.ENTITY_PLAYER then t:ChangeVariant(v)end end)
 
+--重开一局新游戏。
+l Isaac.ExecuteCommand'restart'
 --.

@@ -17,4 +17,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function()local R,T,l,m,t,s
 --2. 免疫失忆症、免疫迷途诅咒。
 l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(4)end,25)F({},12,function(_,c)return~4&c end)
 
+--重开一局新游戏。
+l Isaac.ExecuteCommand'restart'
 --.
