@@ -66,6 +66,9 @@ l local G,F,b=32768,Isaac.AddCallback,{138}F({},31,function(_,p)for _,i in pairs
 --13. 一分钟内未击败首层boss自动重开。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l)l=Game():GetLevel()if not l:IsAscent()and 3>l:GetStageType()and LevelStage.STAGE1_1==l:GetStage()and 1800<Game():GetFrameCount()and not l:GetRooms():Get(l:GetLastBossRoomListIndex()).Clear then Isaac.ExecuteCommand'restart'end end)
 
+--14. 每局新游戏开始时，所有玩家失去一个炸弹。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(_,c)if not c then Isaac.GetPlayer():AddBombs(-Game():GetNumPlayers())end end)
+
 --重开一局新游戏。
 l Isaac.ExecuteCommand'restart'
 --.
