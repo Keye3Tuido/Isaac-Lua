@@ -24,8 +24,8 @@
 --提供接口: CLM()删除匿名回调。
 l function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end end --[[ 清理匿名模组回调,预防代码污染 ]]CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then CLM()end return end end F=p end) --[[ 自动清理回调 ]] Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end) --[[ 游戏锁定成就 ]]
 
---1. 新游戏开始时，在初始房间生成铲柄，并直接传送到最后一个Boss房。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(l,c)if not c then Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_BROKEN_SHOVEL,550,Game():GetRoom():GetCenterPos(),Vector.Zero,nil)l=Game():GetLevel()l:ChangeRoom(l:GetRooms():Get(l:GetLastBossRoomListIndex()).SafeGridIndex)end end)
+--1. 新游戏开始时，在初始房间生成铲柄、将计时器调整到10秒，并直接传送到最后一个Boss房。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(l,c)if not c then repeat Game():Update()until 300<=Game():GetFrameCount()Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_BROKEN_SHOVEL,550,Game():GetRoom():GetCenterPos(),Vector.Zero,nil)l=Game():GetLevel()l:ChangeRoom(l:GetRooms():Get(l:GetLastBossRoomListIndex()).SafeGridIndex)end end)
 
 --2. 不可拾取非任务道具和错误道具。
 l local A,B,C,D,X,Y,Z=Isaac,ModCallbacks,function(c)return c and(c.ID<0 or not c:HasTags(ItemConfig.TAG_QUEST))end,'Collectible'Z=A.AddCallback Y=A.GetItemConfig()X='Get'..D Z({},B.MC_POST_PLAYER_UPDATE,function(i,p,c)i=Y[X..'s'](Y).Size repeat i=i-1 c=Y[X](Y,i)if C(c)then while p['Has'..D](p,i,true)do p['Remove'..D](p,i)end end until not c and i<0 end)Z({},B.MC_POST_PICKUP_UPDATE,function(_,e)if C(Y[X](Y,e.SubType))then e.Touched=true end end,PickupVariant.PICKUP_COLLECTIBLE)
@@ -66,8 +66,8 @@ l local G,F,b=32768,Isaac.AddCallback,{138}F({},31,function(_,p)for _,i in pairs
 --13. 一分钟内未击败首层boss自动重开。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l)l=Game():GetLevel()if not l:IsAscent()and 3>l:GetStageType()and LevelStage.STAGE1_1==l:GetStage()and 1800<Game():GetFrameCount()and not l:GetRooms():Get(l:GetLastBossRoomListIndex()).Clear then Isaac.ExecuteCommand'restart'end end)
 
---14. 每局新游戏开始时，所有玩家失去一个炸弹；并将计时器设置到10秒。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(_,c)if not c then Isaac.GetPlayer():AddBombs(-Game():GetNumPlayers())Game().TimeCounter=300 end end)
+--14. 每局新游戏开始时，所有玩家失去一个炸弹。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(_,c)if not c then Isaac.GetPlayer():AddBombs(-Game():GetNumPlayers())end end)
 
 --重开一局新游戏。
 l Isaac.ExecuteCommand'restart'
