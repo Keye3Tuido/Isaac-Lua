@@ -2,9 +2,7 @@
 # Node 依赖（本地开发/测试需要）
 compressor/node_modules/
 
-# Vendored 库文件（由 GitHub Actions 从 node_modules 复制，不入库）
-compressor/fengari-web.js
-compressor/luaparse.js
+# Vendored 库文件已恢复入库（EdgeOne Pages 等直接同步仓库的部署需要）
 
 # ==================== 构建产物 ====================
 # 由 GitHub Actions 用 GenerateHtml.py 生成，不入库
