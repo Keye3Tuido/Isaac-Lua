@@ -178,4 +178,7 @@ l local A,B=Isaac.GetTime B=A()repeat Game():GetLevel():UpdateVisibility()until 
 --55. 代码状态机,每秒30帧。初态为state=0,map中的key为状态值(非nil、非false);value是一个函数,表示当前状态下执行的行为。返回值为下一个状态值,若返回nil或false则保持当前状态不变。
 l local M={state=0,map={[0]=function()end}}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()M.state=M.map[M.state]()or M.state end)
 
+--56. 连胜次数增加1000次。
+l for _=1,1e3 do Game():End(0)end
+
 --.
