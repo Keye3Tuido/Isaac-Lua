@@ -32,6 +32,7 @@ window.addEventListener('hashchange', route);
 window.addEventListener('DOMContentLoaded', function() {
     buildListUI();
     route();
+    prewarmShortProbe();
 });
 
 // ========== 列表视图 ==========
@@ -192,7 +193,7 @@ function buildCodeBox(codeLines) {
     box.className = 'code-box';
     const blockText = codeLines.map(it => it.text).join('\n');
     box.onclick = e => copyBlock(blockText, codeLines.length, e);
-    box.oncontextmenu = e => { e.preventDefault(); copyTextWithToast(location.href, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e); };
+    box.oncontextmenu = e => { e.preventDefault(); copyShareLink(e); };
     bindHover(box, blockText.length);
 
     codeLines.forEach(item => {
@@ -212,6 +213,60 @@ function bindHover(el, charCount) {
     el.onmouseenter = e => showHoverTip(e.clientX, e.clientY, charCount);
     el.onmousemove = e => showHoverTip(e.clientX, e.clientY, charCount);
     el.onmouseleave = hideHoverTip;
+}
+
+// ========== 分享链接（短链探测） ==========
+const SHORT_LINK_BASES = {
+    'isaac.keye3tuido.site': 'https://k3t.site/isaac',
+    'isaaclua.keye3tuido.site': 'https://k3t.site/isaaclua',
+    'rep.keye3tuido.site': 'https://k3t.site/rep'
+};
+
+const shortProbeCache = {}; // baseUrl -> 探测中的 Promise 或已确定的布尔值
+
+function shareHash() {
+    const h = location.hash;
+    if (h && h.indexOf('#c') === 0) return h;
+    return currentFileId ? '#c' + currentFileId : '';
+}
+
+function actualShareUrl() {
+    return location.origin + location.pathname + location.search + shareHash();
+}
+
+function shortShareBase() {
+    return SHORT_LINK_BASES[location.hostname] || null;
+}
+
+// 探测短链接可达性（HEAD，不下载页面内容）：先标准跨域请求看状态码（能识别 404/500）；被 CORS 拦截时退回 no-cors 探测
+function probeShortBase(baseUrl) {
+    if (shortProbeCache[baseUrl] !== undefined) return Promise.resolve(shortProbeCache[baseUrl]);
+    if (typeof fetch !== 'function') { shortProbeCache[baseUrl] = false; return Promise.resolve(false); }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3500);
+    const head = { method: 'HEAD', cache: 'no-store', redirect: 'follow', signal: ctrl.signal };
+    const done = fetch(baseUrl, head)
+        .then(res => res.ok || res.status < 400, () =>
+            fetch(baseUrl, Object.assign({ mode: 'no-cors' }, head)).then(() => true, () => false))
+        .then(ok => { clearTimeout(timer); shortProbeCache[baseUrl] = ok; return ok; });
+    shortProbeCache[baseUrl] = done; // 探测进行中先缓存 Promise，避免重复探测
+    return done;
+}
+
+// 页面打开时预热探测，点击复制时直接复用缓存结果
+function prewarmShortProbe() {
+    const base = shortShareBase();
+    if (base) probeShortBase(base);
+}
+
+// 分享链接：短链可 fetch 则用短链，否则回退当前实际链接
+function copyShareLink(e) {
+    const actual = actualShareUrl();
+    const base = shortShareBase();
+    if (!base) return copyTextWithToast(actual, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e);
+    return probeShortBase(base).then(ok =>
+        copyTextWithToast(ok ? base + shareHash() : actual, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e)
+    );
 }
 
 // ========== 复制 ==========
@@ -292,8 +347,7 @@ function copyAllCode(e) {
 }
 
 function copyLink(e) {
-    const url = location.origin + location.pathname + '#c' + currentFileId;
-    return copyTextWithToast(url, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e);
+    return copyShareLink(e);
 }
 
 // ========== 下载 ZIP ==========
