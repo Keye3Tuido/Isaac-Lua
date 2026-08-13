@@ -40,4 +40,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)Isaac.Spawn(E
 --13. 游戏随机卡顿、删除角色眼泪、删除凋落物。
 l local c,d,A,B,Z=Random,pairs,Isaac,EntityType Z=A.FindByType A.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(a,b)a=c()%1e3 if a<8 then for _=1,1e5 do A.GetRoomEntities()end b={}for _,v in d{'HEART','COIN','KEY','BOMB','POOP','GRAB_BAG','PILL','LIL_BATTERY','TAROTCARD','TRINKET'}do a=Z(B.ENTITY_PICKUP,PickupVariant['PICKUP_'..v])table.move(a,1,#a,#b+1,b)end elseif a<24 then b=Z(B.ENTITY_TEAR)end for _,v in d(b or{})do if c()%100<20 then v:Remove()end end end)
 
+--14. 敌人的碰撞箱大小和贴图大小随血量变化。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_NPC_RENDER,function(s,n,o,d,v,e,f)d=n:GetData()v='Visible'e='InitSeed'f=n[e]if n:IsVulnerableEnemy()and n:IsActiveEnemy(false)and not d[f]then s=(1.9*n.HitPoints/n.MaxHitPoints+.1)*Vector.One n.SpriteScale,n.SizeMulti=s,s n[v]=true d[f]=s n:Render(o)n[v],d[f]=false end end)
+
 --.
