@@ -114,7 +114,7 @@ html = f"""<!DOCTYPE html>
             </div>
             <div id="noResult" class="no-result" style="display:none">没有匹配的文件</div>
         </div>
-        <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
+        <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a><br><a href="https://space.bilibili.com/336467623">Bilibili主页</a></div>
     </div>
 
     <!-- ====== 详情视图 ====== -->
@@ -136,7 +136,7 @@ html = f"""<!DOCTYPE html>
             <div id="toast"></div>
             <div id="hoverTip" class="tooltip"></div>
         </div>
-        <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a></div>
+        <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a><br><a href="https://space.bilibili.com/336467623">Bilibili主页</a></div>
     </div>
 
     <script>

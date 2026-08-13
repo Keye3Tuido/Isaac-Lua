@@ -56,7 +56,7 @@ body.challenge-page::before {
 .file-title { position:relative; padding:9px 4px; color:#dfcfb4; text-decoration:none; font:400 .98rem/1.28 var(--display); }
 .file-title::after { content:''; position:absolute; inset:0 -4px; }.file-row:nth-child(odd) .file-title{color:#ead8bc}.file-row:hover .file-title { color:#fff0d2; transform:translateX(3px); }.file-row:hover .file-num{color:#bd4b5e}
 .no-result { padding:28px; color:#d4c2a6; text-align:center; font:400 1rem/1.3 var(--display); }
-.contact { position:relative; z-index:1; margin-top:15px; color:#9d8874; text-align:center; font:700 .74rem/1.3 var(--hud); text-shadow:0 2px 2px #000; }.contact a{margin-left:7px;color:#d2b77d;text-decoration:none}.contact a:hover{color:#e17a78}.challenge-page .contact{text-shadow:none;color:#7d696d}.challenge-page .contact a{color:#704c54}
+.contact { position:relative; z-index:1; margin-top:15px; color:#9d8874; text-align:center; font:700 .74rem/1.3 var(--hud); text-shadow:0 2px 2px #000; }.contact a{margin-left:7px;color:#d2b77d;text-decoration:none}.contact br+a{margin-left:0}.contact a:hover{color:#e17a78}.challenge-page .contact{text-shadow:none;color:#7d696d}.challenge-page .contact a{color:#704c54}
 .challenge-sheet {
   position:relative; min-height:680px; padding:44px 48px 38px; border:42px solid transparent;
   border-image:url('__ASSET__/challenge-sheet.webp') 86 58 110 58 fill stretch;
