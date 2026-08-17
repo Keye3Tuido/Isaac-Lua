@@ -67,6 +67,21 @@ for e in lua_entries:
 all_files_json = json.dumps(all_files, ensure_ascii=False)
 js = PAGE_JS.replace("__ALL_FILES__", all_files_json)
 
+# 输出知识库 JSON（供 APIK 模组作为「代码知识库」接入；站点同目录发布 kb.json 即可被下载）
+kb_entries = []
+for e in lua_entries:
+    kb_entries.append({
+        "id": e["id"],
+        "title": e["title"],
+        "tags": ["代码挑战"],
+        "text": e["cleaned"],
+        "code": e["raw"],
+        "source": "isaac_code",
+    })
+with open("kb.json", "w", encoding="utf-8") as _f:
+    json.dump(kb_entries, _f, ensure_ascii=False, indent=1)
+print(f"已生成 kb.json（{len(kb_entries)} 条代码知识库）")
+
 # ========== 统计 ==========
 challenge_count = sum(1 for e in lua_entries if e["isChallenge"])
 other_count = len(lua_entries) - challenge_count

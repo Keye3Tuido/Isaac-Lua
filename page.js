@@ -16,6 +16,7 @@ let currentFileId = null;
 // ========== 路由 ==========
 function route() {
     const hash = location.hash;
+    if (hash === '#kb') { downloadKb(); return; }   // #kb → 下载知识库 kb.json
     if (!hash || hash === '#') { showListView(); return; }
     const m = hash.match(/^#c(.+?)(?:s(\d+))?$/);
     if (!m || !ALL_FILES[m[1]]) { showListView(); return; }
@@ -26,6 +27,17 @@ function route() {
     } else {
         showDetailView(fileId, entryId);
     }
+}
+
+// #kb → 下载知识库 kb.json（供 APIK 模组等接入）
+function downloadKb() {
+    const a = document.createElement('a');
+    a.href = 'kb.json';
+    a.download = 'kb.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showListView();
 }
 
 window.addEventListener('hashchange', route);
