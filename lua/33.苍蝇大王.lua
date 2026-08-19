@@ -25,9 +25,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 --4. 玩家的伤害值最终倍率减半。
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.Damage=p.Damage/2 end,CacheFlag.CACHE_DAMAGE)
 
---5. 清理完房间后回复一颗腐心。
-l Isaac.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function()for i=1,Game():GetNumPlayers()do Isaac.GetPlayer(i-1):AddRottenHearts(2)end end)
-
 --重开一局新游戏。
 l Isaac.ExecuteCommand'restart'
 --.
