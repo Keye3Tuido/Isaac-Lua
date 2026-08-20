@@ -1,5 +1,5 @@
 --或许他真的能躲过那把达摩克里斯之剑
---限定角色：堕化犹大
+--推荐角色：堕化犹大
 --输入下面的代码后，重新开始一局新游戏
 
 
@@ -21,9 +21,6 @@ l ITEMS={'c656'}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPla
 
 --3. 随机3~10分钟内，达摩克里斯之剑会落下。
 l local A,B,C,D,W,X,Y,Z=Isaac,ModCallbacks,'GetFrameCount',{}Z=A.AddCallback Y=function()W=Game()W=W[C](W)X=W+math.random(5400,18e3)end Z(D,B.MC_POST_UPDATE,function()if not X then Y()end end)Z(D,B.MC_POST_GAME_STARTED,function(_,c)if not c then Y()end end)Z(D,B.MC_FAMILIAR_UPDATE,function(g,e,s)g=Game()s='State'g=g[C](g)if X then if g<X then if g-W>16 then e[s]=1 end else e[s]=2 Y()end end end,FamiliarVariant.DAMOCLES)
-
---4. 强制角色为堕化犹大。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_JUDAS_B if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
 
 --重开一局新游戏。
 l Isaac.ExecuteCommand'restart'
