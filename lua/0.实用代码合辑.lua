@@ -173,7 +173,7 @@ l for _,v in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR,FamiliarVariant.D
 l Game():FinishChallenge()Game():Fadeout(9,2)
 
 --54. 游戏卡顿3秒。
-l local A,B=Isaac.GetTime B=A()repeat Game():GetLevel():UpdateVisibility()until A()-B>3e3
+l local A,B=Isaac.GetTime B=A()repeat until A()-B>3e3
 
 --55. 代码状态机,每秒30帧。初态为state=0,map中的key为状态值(非nil、非false);value是一个函数,表示当前状态下执行的行为。返回值为下一个状态值,若返回nil或false则保持当前状态不变。
 l local M={state=0,map={[0]=function()end}}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()M.state=M.map[M.state]()or M.state end)
