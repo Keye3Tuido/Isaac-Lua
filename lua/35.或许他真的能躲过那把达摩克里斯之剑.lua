@@ -20,7 +20,7 @@ l ITEMS={'c656'}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPla
 
 --3. 随机3~10分钟内，达摩克里斯之剑会落下。
 -- 落下前会提前0.5秒播放警示音效、掉落动画开始播放0.5秒后剑头落地。
-l local A,B,C,D,V,W,X,Y,Z=Isaac,ModCallbacks,'GetFrameCount',{}Z=A.AddCallback Y=function()W=Game()W=W[C](W)X,V=W+math.random(5400,18e3)end Z(D,B.MC_POST_UPDATE,function()if not X then Y()end end)Z(D,B.MC_POST_GAME_STARTED,function(_,c)if not c then Y()end end)Z(D,B.MC_FAMILIAR_UPDATE,function(g,e,s)g=Game()s='State'g=g[C](g)if X then if g<X then if g-W>16 then e[s]=1 end else e[s]=2 Y()end if X-g<16 and not V then V=X SFXManager():Play(SoundEffect.SOUND_BERSERK_END)end end end,FamiliarVariant.DAMOCLES)
+l local A,B,C,D,V,W,X,Y,Z=Isaac,ModCallbacks,'GetFrameCount',{}Z=A.AddCallback Y=function()W=Game()W=W[C](W)X,V=W+math.random(5400,18e3)end Z(D,B.MC_POST_UPDATE,function()if not X then Y()end end)Z(D,B.MC_POST_GAME_STARTED,function(_,c)if not c then Y()end end)Z(D,B.MC_FAMILIAR_UPDATE,function(g,e,s)g=Game()s='State'g=g[C](g)if X then if g<X then if g-W>16 then e[s]=1 end else e[s]=2 Y()end if X-g<16 and not V then V=X SFXManager():Play(SoundEffect.SOUND_BERSERK_END,3)end end end,FamiliarVariant.DAMOCLES)
 
 --4. 从游戏中移除道具81(嗝屁猫)和210(狸猫树叶)
 l local I,C,Y,T,A=Isaac,{81,210},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
