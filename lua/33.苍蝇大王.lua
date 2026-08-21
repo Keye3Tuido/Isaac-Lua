@@ -24,5 +24,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.Damage=p.Damage/2 end,CacheFlag.CACHE_DAMAGE)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart '..PlayerType.PLAYER_APOLLYON_B
+l Isaac.ExecuteCommand('restart '..PlayerType.PLAYER_APOLLYON_B)
 --.

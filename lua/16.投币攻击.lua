@@ -41,5 +41,5 @@ l local I,M,C,A=Isaac,ModCallbacks,{36,74,667}A=I.AddCallback;A({},M.MC_POST_PIC
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,0.3,c.RO,c.GO,c.BO)end end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart '..PlayerType.PLAYER_KEEPER_B
+l Isaac.ExecuteCommand('restart '..PlayerType.PLAYER_KEEPER_B)
 --.

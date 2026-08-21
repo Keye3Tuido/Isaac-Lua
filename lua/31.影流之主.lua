@@ -34,5 +34,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)p.CanFly=true e=CollectibleType.COLLECTIBLE_BIBLE p=p:GetEffects()if not p:HasCollectibleEffect(e)then p:AddCollectibleEffect(e)end end,CacheFlag.CACHE_FLYING)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart '..PlayerType.PLAYER_JUDAS_B
+l Isaac.ExecuteCommand('restart '..PlayerType.PLAYER_JUDAS_B)
 --.
