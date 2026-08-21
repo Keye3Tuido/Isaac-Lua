@@ -2,7 +2,7 @@
 --角色限定：堕化店主
 
 
----- 代码效果(不用管中文，全选复制即可) ----
+---- 代码效果 ----
 
 --0. 前置功能性代码：避免代码污染和重复输入问题;
 --默认锁定游戏成就;
@@ -41,5 +41,5 @@ l local I,M,C,A=Isaac,ModCallbacks,{36,74,667}A=I.AddCallback;A({},M.MC_POST_PIC
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,0.3,c.RO,c.GO,c.BO)end end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l Isaac.ExecuteCommand'restart '..PlayerType.PLAYER_KEEPER_B
 --.

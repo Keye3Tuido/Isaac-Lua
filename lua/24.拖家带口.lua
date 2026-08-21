@@ -1,9 +1,8 @@
 --拖家带口
 --限定角色: 游魂
---输入下面的代码后，重新开始一局新游戏
 
 
----- 代码效果(不用管中文，全选复制即可) ----
+---- 代码效果 ----
 
 --0. 前置功能性代码：避免代码污染和重复输入问题;
 --默认锁定游戏成就;
@@ -42,5 +41,5 @@ l local b,Y,F,G={87},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i i
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p)if not p:IsItemQueueEmpty()and p.QueuedItem.Item.Type==ItemType.ITEM_FAMILIAR then p:FlushQueueItem()end end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l Isaac.ExecuteCommand'restart '..PlayerType.PLAYER_THELOST
 --.

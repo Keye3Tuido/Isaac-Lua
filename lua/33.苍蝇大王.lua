@@ -1,9 +1,7 @@
 --苍蝇大王
 --限定角色：堕化亚玻伦
---输入下面的代码后，重新开始一局新游戏
 
-
----- 代码效果(不用管中文，全选复制即可) ----
+---- 代码效果 ----
 
 --0. 前置功能性代码：避免代码污染和重复输入问题;
 --默认锁定游戏成就;
@@ -26,5 +24,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.Damage=p.Damage/2 end,CacheFlag.CACHE_DAMAGE)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l Isaac.ExecuteCommand'restart '..PlayerType.PLAYER_APOLLYON_B
 --.
