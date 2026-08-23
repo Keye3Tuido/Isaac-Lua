@@ -32,5 +32,5 @@ l Isaac.AddCallback({},15,function(_,c)if not c then for i=1,Game():GetNumPlayer
 l Isaac.AddCallback({},2,function(p)if not Options.MouseControl then p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.

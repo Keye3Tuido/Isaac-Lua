@@ -18,5 +18,5 @@ l local I,F,G,Z,M,N=Isaac,Isaac.AddCallback,GetPtrHash,Vector.Zero,{}F({},31,fun
 l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.

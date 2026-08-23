@@ -31,5 +31,5 @@ l local I,C,Y,T,A=Isaac,{81,210},true,{}A=I.AddCallback A(T,23,function(_,c)for 
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if PlayerType.PLAYER_LAZARUS==p:GetPlayerType()then p:ChangePlayerType(PlayerType.PLAYER_LAZARUS2)end end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.

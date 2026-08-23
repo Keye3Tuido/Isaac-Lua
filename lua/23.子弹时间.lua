@@ -43,5 +43,5 @@ l local A,M,V,T,E=Isaac.AddCallback,ModCallbacks,{['MoveSpeed']={min=nil,max=nil
 l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_UPDATE,function(v,t)v=TearVariant.ERASER if t.Variant~=v and t.SpawnerType==EntityType.ENTITY_PLAYER then t:ChangeVariant(v)end end)
 
 --重开一局新游戏。
-l Isaac.ExecuteCommand'restart'
+l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.
