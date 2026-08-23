@@ -18,14 +18,14 @@ function route() {
     const hash = location.hash;
     if (hash === '#kb') { downloadKb(); return; }   // #kb → 下载知识库 kb.json
     if (!hash || hash === '#') { showListView(); return; }
-    const m = hash.match(/^#c(.+?)(?:s(\d+))?$/);
+    const m = hash.match(/^#c(.+?)(s\d+|l\d+)?$/);
     if (!m || !ALL_FILES[m[1]]) { showListView(); return; }
-    const fileId = m[1], entryId = m[2] || null;
+    const fileId = m[1], secId = m[2] || null;
     // 同文件只滚动，不同文件完整渲染
     if (fileId === currentFileId) {
-        if (entryId) scrollToSection(entryId);
+        if (secId) scrollToSection(secId);
     } else {
-        showDetailView(fileId, entryId);
+        showDetailView(fileId, secId);
     }
 }
 
@@ -98,7 +98,7 @@ function showListView() {
 }
 
 // ========== 详情视图 ==========
-function showDetailView(fileId, entryId) {
+function showDetailView(fileId, secId) {
     listView.style.display = 'none';
     detailView.style.display = '';
     document.body.className = 'challenge-page';
@@ -110,13 +110,13 @@ function showDetailView(fileId, entryId) {
     document.title = f.title + ' - 以撒代码挑战';
 
     renderSections(f);
-    if (entryId) scrollToSection(entryId);
+    if (secId) scrollToSection(secId);
     else window.scrollTo(0, 0);
 }
 
 // 在当前页面内滚动到指定条目（不重建 DOM）
-function scrollToSection(entryId) {
-    const target = document.getElementById('s' + entryId);
+function scrollToSection(secId) {
+    const target = document.getElementById(secId);
     if (!target) return;
     target.classList.remove('collapsed');
     requestAnimationFrame(() => {
@@ -128,12 +128,14 @@ function renderSections(f) {
     codeArea.innerHTML = '';
     const lines = f.raw.split('\n');
     const n = lines.length;
-    let i = 0, secIdx = 0;
+    const seen = new Set();  // 已用的条目编号，避免重复 id
+    let i = 0;
 
     while (i < n) {
         while (i < n && isBlank(lines[i])) i++;
         if (i >= n) break;
 
+        const startLine = i + 1;   // 条目首行注释的 1-based 行号
         const header = [];
         while (i < n && isComment(lines[i])) { header.push(lines[i]); i++; }
 
@@ -143,16 +145,24 @@ function renderSections(f) {
             i++;
         }
 
-        secIdx++;
-        const section = document.createElement('div');
-        section.className = 'section';
-
         let entryNum = null;
         if (header.length) {
             const m = header[0].match(/^--(\d+)\./);
             if (m) entryNum = m[1];
         }
-        section.id = 's' + (entryNum || secIdx);
+        // 编号条目用 s<N>；未编号/重复编号的用首行注释行号 l<行号>，
+        // 行号天然唯一且可从源码直接推算，不依赖前面条目的数量
+        let secId;
+        if (entryNum && !seen.has(entryNum)) {
+            secId = 's' + entryNum;
+            seen.add(entryNum);
+        } else {
+            secId = 'l' + startLine;
+        }
+
+        const section = document.createElement('div');
+        section.className = 'section';
+        section.id = secId;
 
         const head = document.createElement('div');
         head.className = 'section-header';
@@ -174,7 +184,7 @@ function renderSections(f) {
                 if (k < header.length - 1) text.appendChild(document.createTextNode('\n'));
             });
         } else {
-            text.textContent = '\u4ee3\u7801';
+            text.textContent = '代码';
         }
         head.appendChild(text);
         section.appendChild(head);
@@ -183,9 +193,9 @@ function renderSections(f) {
             section.classList.add('collapsed');
             head.onclick = () => {
                 section.classList.toggle('collapsed');
-                history.replaceState(null, null, '#c' + currentFileId + 's' + (entryNum || secIdx));
+                history.replaceState(null, null, '#c' + currentFileId + secId);
             };
-            section.appendChild(buildCodeBox(codeLines));
+            section.appendChild(buildCodeBox(codeLines, secId));
         } else {
             head.classList.add('no-code');
         }
@@ -200,12 +210,12 @@ function isComment(l) {
 }
 function isBlank(l) { return l.trim() === ''; }
 
-function buildCodeBox(codeLines) {
+function buildCodeBox(codeLines, secId) {
     const box = document.createElement('div');
     box.className = 'code-box';
     const blockText = codeLines.map(it => it.text).join('\n');
     box.onclick = e => copyBlock(blockText, codeLines.length, e);
-    box.oncontextmenu = e => { e.preventDefault(); copyShareLink(e); };
+    box.oncontextmenu = e => { e.preventDefault(); copyShareLink(e, '#c' + currentFileId + secId); };
     bindHover(box, blockText.length);
 
     codeLines.forEach(item => {
@@ -242,10 +252,6 @@ function shareHash() {
     return currentFileId ? '#c' + currentFileId : '';
 }
 
-function actualShareUrl() {
-    return location.origin + location.pathname + location.search + shareHash();
-}
-
 function shortShareBase() {
     return SHORT_LINK_BASES[location.hostname] || null;
 }
@@ -271,13 +277,14 @@ function prewarmShortProbe() {
     if (base) probeShortBase(base);
 }
 
-// 分享链接：短链可 fetch 则用短链，否则回退当前实际链接
-function copyShareLink(e) {
-    const actual = actualShareUrl();
+// 分享链接：短链可 fetch 则用短链，否则回退当前实际链接；hashOverride 用于指定分享的条目 hash
+function copyShareLink(e, hashOverride) {
+    const hash = hashOverride !== undefined ? hashOverride : shareHash();
+    const actual = location.origin + location.pathname + location.search + hash;
     const base = shortShareBase();
-    if (!base) return copyTextWithToast(actual, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e);
+    if (!base) return copyTextWithToast(actual, '已复制链接到剪贴板', e);
     return probeShortBase(base).then(ok =>
-        copyTextWithToast(ok ? base + shareHash() : actual, '\u5df2\u590d\u5236\u94fe\u63a5\u5230\u526a\u8d34\u677f', e)
+        copyTextWithToast(ok ? base + hash : actual, '已复制链接到剪贴板', e)
     );
 }
 
@@ -344,22 +351,23 @@ function copyTextWithToast(text, successMessage, e) {
     const point = eventPoint(e);
     return writeClipboard(text)
         .then(() => showToastAt(successMessage, point.x, point.y))
-        .catch(err => showToastAt('\u590d\u5236\u5931\u8d25: ' + (err && err.message ? err.message : err), point.x, point.y));
+        .catch(err => showToastAt('复制失败: ' + (err && err.message ? err.message : err), point.x, point.y));
 }
 
 function copyBlock(text, count, e) {
     if (!text) return;
-    return copyTextWithToast(text, '\u5df2\u590d\u5236\u8be5\u4ee3\u7801\u5757\uff08' + count + ' \u884c\uff0c' + text.length + ' \u5b57\u7b26\uff09', e);
+    return copyTextWithToast(text, '已复制该代码块（' + count + ' 行，' + text.length + ' 字符）', e);
 }
 
 function copyAllCode(e) {
     const f = ALL_FILES[currentFileId];
     if (!f) return;
-    return copyTextWithToast(f.raw, '\u5df2\u590d\u5236\u4ee3\u7801\u5230\u526a\u8d34\u677f', e);
+    return copyTextWithToast(f.raw, '已复制代码到剪贴板', e);
 }
 
 function copyLink(e) {
-    return copyShareLink(e);
+    // 按钮始终复制文件级链接 #cN，不依赖地址栏 hash（多条展开时 hash 可能指向最后点击的条目）
+    return copyShareLink(e, '#c' + currentFileId);
 }
 
 // ========== 下载 ZIP ==========
@@ -401,9 +409,9 @@ async function downloadZip(e) {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(a.href);
-        showToastAt('\u5df2\u4e0b\u8f7d\u6a21\u7ec4\u6587\u4ef6; \u5c06\u6587\u4ef6\u89e3\u538b\u81f3\u6e38\u620fmods\u76ee\u5f55\u4e0b\u5373\u53ef\u8fdb\u884c\u6e38\u620f', e.clientX, e.clientY);
+        showToastAt('已下载模组文件; 将文件解压至游戏mods目录下即可进行游戏', e.clientX, e.clientY);
     } catch (err) {
-        showToastAt('\u4e0b\u8f7d\u5931\u8d25: ' + err, e.clientX, e.clientY);
+        showToastAt('下载失败: ' + err, e.clientX, e.clientY);
     }
 }
 
@@ -432,7 +440,7 @@ function showToastAt(m, x, y) {
 
 function showHoverTip(x, y, charCount) {
     if (hoverTip.parentNode !== document.body) document.body.appendChild(hoverTip);
-    hoverTip.textContent = '\u5de6\u952e\u590d\u5236\u4ee3\u7801\uff0c\u53f3\u952e\u590d\u5236\u94fe\u63a5';
+    hoverTip.textContent = '左键复制代码，右键复制链接';
     hoverTip.style.display = 'block';
     hoverTip.style.visibility = 'hidden';
     const rect = hoverTip.getBoundingClientRect();

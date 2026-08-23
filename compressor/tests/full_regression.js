@@ -79,8 +79,8 @@ function metricsFor(run) {
     case 'remote':
       parsed = numbers(o, /远程测试:\s*(\d+)\s*通过,\s*(\d+)\s*失败\s*\(共\s*(\d+)\)/, ['pass', 'fail', 'total']); break;
     case 'bulk': {
-      const repos = numbers(o, /\u4ed3\u5e93:\s*(\d+)\s*\u53ef\u7528,\s*(\d+)\s*\u7f3a\u5931/, ['availableRepos', 'missingRepos']);
-      const total = numbers(o, /\u603b\u8ba1:\s*(\d+)\s*\u6587\u4ef6,\s*(\d+)\s*bytes/, ['totalFiles', 'totalBytes']);
+      const repos = numbers(o, /仓库:\s*(\d+)\s*可用,\s*(\d+)\s*缺失/, ['availableRepos', 'missingRepos']);
+      const total = numbers(o, /总计:\s*(\d+)\s*文件,\s*(\d+)\s*bytes/, ['totalFiles', 'totalBytes']);
       const counts = numbers(o, /(\d+)\s*pass,\s*(\d+)\s*fail/i, ['pass', 'fail']);
       parsed = Object.assign({}, repos || {}, total || {}, counts || {}); break;
     }
