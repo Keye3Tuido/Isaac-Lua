@@ -23,6 +23,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 --4. 玩家的伤害值最终倍率减半。
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.Damage=p.Damage/2 end,CacheFlag.CACHE_DAMAGE)
 
---重开一局新游戏。
+--以堕化亚玻伦重开一局新游戏。
 l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..PlayerType.PLAYER_APOLLYON_B)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.
