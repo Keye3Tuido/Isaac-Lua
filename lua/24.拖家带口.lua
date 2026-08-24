@@ -40,6 +40,9 @@ l local b,Y,F,G={87},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i i
 --9. 角色拾取跟班类道具时，立刻将道具加入道具列表。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p)if not p:IsItemQueueEmpty()and p.QueuedItem.Item.Type==ItemType.ITEM_FAMILIAR then p:FlushQueueItem()end end)
 
+--10. 从游戏中移除饰品75(错误)和饰品180(复得游魂)。
+l local G,F,b=32768,Isaac.AddCallback,{75,180}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
+
 --以游魂重开一局新游戏。
 l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..PlayerType.PLAYER_THELOST)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.
