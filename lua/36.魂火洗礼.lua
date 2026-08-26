@@ -13,8 +13,8 @@ l function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x
 --1. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
 
---2. 初始给予玩家道具640(灵魂之瓮)。
-l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs{640}do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})for _=1,n do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
+--2. 强制角色为伯大尼。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_BETHANY if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
 
 --3. 强制给予玩家：道具223(纵火狂)、道具640(灵魂之瓮)
 -- 主动道具数量不够时，强制锁门，房间内生成对应道具
@@ -29,10 +29,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_INIT,function(_,t)Isaac.Spawn(E
 
 --6. 在炼狱恶鬼被移除的位置，触发爆炸效果。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_ENTITY_REMOVE,function(p,e)p=e.Variant==EffectVariant.PURGATORY and e.SubType==1 and e.SpawnerEntity p=p and p:ToPlayer()if p then e=p:FireTear(e.Position,e.Velocity,false,true):ToTear()e:AddTearFlags(TearFlags.TEAR_EXPLOSIVE)e:Die()end end,EntityType.ENTITY_EFFECT)
-
---7. 强制角色为伯大尼。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_BETHANY if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
-
 --以伯大尼重开一局新游戏。
 l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..PlayerType.PLAYER_BETHANY)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.
