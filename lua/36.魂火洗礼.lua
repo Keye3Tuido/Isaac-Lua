@@ -30,7 +30,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_INIT,function(_,t)Isaac.Spawn(E
 --6. 在炼狱恶鬼被移除的位置，触发爆炸效果。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_ENTITY_REMOVE,function(p,e)p=e.Variant==EffectVariant.PURGATORY and e.SubType==1 and e.SpawnerEntity p=p and p:ToPlayer()if p then e=p:FireTear(e.Position,e.Velocity,false,true):ToTear()e:AddTearFlags(TearFlags.TEAR_EXPLOSIVE)e:Die()end end,EntityType.ENTITY_EFFECT)
 
---7. 强制角色为游伯大尼。
+--7. 强制角色为伯大尼。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_BETHANY if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
 
 --以伯大尼重开一局新游戏。
