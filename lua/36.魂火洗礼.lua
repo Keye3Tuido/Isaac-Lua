@@ -29,6 +29,10 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_INIT,function(_,t)Isaac.Spawn(E
 
 --6. 在炼狱恶鬼被移除的位置，触发爆炸效果。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_ENTITY_REMOVE,function(p,e)p=e.Variant==EffectVariant.PURGATORY and e.SubType==1 and e.SpawnerEntity p=p and p:ToPlayer()if p then e=p:FireTear(e.Position,e.Velocity,false,true):ToTear()e:AddTearFlags(TearFlags.TEAR_EXPLOSIVE)e:Die()end end,EntityType.ENTITY_EFFECT)
+
+--7. 音效182、477的音量调整至30%。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()for _,v in pairs{182,477}do SFXManager():AdjustVolume(v,.3)end end)
+
 --以伯大尼重开一局新游戏。
 l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..PlayerType.PLAYER_BETHANY)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
 --.
