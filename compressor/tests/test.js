@@ -114,9 +114,9 @@ Object.keys(cases).forEach(k=>tryCompress(k, cases[k]));
 // ---- 前缀处理 ----
 (function(){
   const r=tryCompress('prefix-l', "l local x = 1\nl return x");
-  if(r) ok('prefix-l/stripped', r.output==='l local x=1 return x', JSON.stringify(r.output));
+  if(r) ok('prefix-l/stripped', r.output==='l return 1', JSON.stringify(r.output));
   const r2=tryCompress('prefix-lua', "lua local y = 2\nlua return y");
-  if(r2) ok('prefix-lua/stripped', /^l local y=2 return y$/.test(r2.output), r2.output);
+  if(r2) ok('prefix-lua/stripped', r2.output==='l return 2', r2.output);
 })();
 
 // ---- 全局保护：局部不应被改名为某个被引用的全局名 ----

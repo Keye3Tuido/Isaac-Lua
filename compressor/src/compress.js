@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc;
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
@@ -46,7 +46,9 @@
           rec('预处理(剥 l/lua 前缀, 合并单段)', input.length, state.code.length, '去掉每行控制台前缀');
           state.ast0=assertParses(state.code, '输入校验', steps);
           report.original=state.code;
+          report.rawInput=input;
           state.current=state.code;
+          report.stages.push({name:'0-准备(剥 l/lua 前缀)', code:state.code, len:state.code.length});
         });
 
         addStage('缩短命名', doRename, function(){
@@ -78,6 +80,42 @@
           state.current=afterRename;
           report.stages.push({name:'1.1-结构性(重命名+全局折叠)', code:afterRename, len:afterRename.length});
           report.aliasMapInfo = aliasMap;
+        });
+
+        addStage('括号转点', doRename, function(){
+          var bdRes = foldBracketDot(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(bdRes) state.current = bdRes.code;
+          report.stages.push({name:'1.1b-括号转点', code:state.current, len:state.current.length});
+        });
+
+        addStage('只读内联', doRename, function(){
+          var riRes = foldReadonlyInline(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(riRes) state.current = riRes.code;
+          report.stages.push({name:'1.1c-只读内联', code:state.current, len:state.current.length});
+        });
+
+        addStage('常量折叠', doRename, function(){
+          var cfRes = foldConstant(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(cfRes) state.current = cfRes.code;
+          report.stages.push({name:'1.1d-常量折叠', code:state.current, len:state.current.length});
+        });
+
+        addStage('布尔别名', doRename, function(){
+          var bnRes = foldBoolNil(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(bnRes) state.current = bnRes.code;
+          report.stages.push({name:'1.1e-布尔别名', code:state.current, len:state.current.length});
+        });
+
+        addStage('数字归一', doRename, function(){
+          var nmRes = foldNumbers(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(nmRes) state.current = nmRes.code;
+          report.stages.push({name:'1.1f-数字归一', code:state.current, len:state.current.length});
+        });
+
+        addStage('括号消除', doRename, function(){
+          var prRes = foldParens(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(prRes) state.current = prRes.code;
+          report.stages.push({name:'1.1h-括号消除', code:state.current, len:state.current.length});
         });
 
         addStage('精简方法调用', doMethod, function(){
@@ -120,6 +158,12 @@
           var localRes = foldLocals(state.current, state.activeAliasMap, steps, rec, state.code);
           if(localRes) state.current = localRes.code;
           report.stages.push({name:'1.5-local合并', code:state.current, len:state.current.length});
+        });
+
+        addStage('local function 合并', doRename, function(){
+          var lfRes = foldLocalFunc(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(lfRes) state.current = lfRes.code;
+          report.stages.push({name:'1.5b-local function 合并', code:state.current, len:state.current.length});
         });
 
         addStage('拆分赋值', doRename, function(){
@@ -188,6 +232,23 @@
           rec('间隔符最小化+单行', beforeMin, afterMinimize.length, '词法重排，仅在真·Lua 需要处保留空格');
           state.current=afterMinimize;
           report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
+        });
+
+        // 比较重排（后置）：代数恒等式 a OP b ≡ b FLIP(OP) a，无需求值验证；
+        // 重排本身等长，靠紧接着的空格消除兑现"贴关键字省 1 字"。
+        addStage('比较重排', doRename, function(){
+          var crRes = foldCompareReorder(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(crRes) state.current = crRes.code;
+          report.stages.push({name:'1.10-比较重排', code:state.current, len:state.current.length});
+        });
+
+        addStage('删除多余空格(二次)', doEncode, function(){
+          var afterMin2=minimizeSpacing(state.current);
+          assertParses(afterMin2, '阶段1.10/语法', steps);
+          if(state.activeAliasMap) assertEquivalentAlias(state.code, afterMin2, state.activeAliasMap, '阶段1.10/等价', steps);
+          else assertEquivalent(state.code, afterMin2, '阶段1.10/等价', steps);
+          state.current=afterMin2;
+          report.stages.push({name:'1.10-间隔符最小化(二次)', code:afterMin2, len:afterMin2.length});
         });
 
         function finish(){

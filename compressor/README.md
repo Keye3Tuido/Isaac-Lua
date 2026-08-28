@@ -21,7 +21,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - ✓ 纯静态，`file://` 直接运行，无需服务器/构建/联网
 - ✓ 每个优化阶段后都做语法+语义等价校验，**不等价则拒绝输出**
 - ✓ 支持多段输入（每行可带 `l`/`lua` 前缀），自动合并为单段
-- ✓ 测试覆盖：基础 87 + 边界 40 + 流水线一致性 26 项；仓库 39 个 Lua 文件 / 259 个 `l` 段；bulktest 已执行文件 152/152 通过
+- ✓ 测试覆盖：基础 89 + 边界 40 + 流水线一致性 26 项；仓库 43 个 Lua 文件 / 335 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
 
 ---
 
@@ -63,14 +63,21 @@ console.log(result.output);  // l <压缩后的单行代码>
 【阶段 1：结构优化】
 1.1  统一规划：局部重命名 + 全局/成员折叠 + 仿射因子 + 透明别名消解
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
+1.1b 括号转点（obj["Field"] → obj.Field，关键词字段除外）
+1.1c 只读内联（只读字面量/常量别名 copy-propagation + 死纯局部消除）
+1.1d 常量折叠（整数 ±、字符串 ..、not 布尔）
+1.1e 布尔别名（true/false 提取别名）
+1.1f 数字归一（0.X → .X）
+1.1h 括号消除（冗余圆括号移除，保留 load-bearing 的 `;(`）
 1.2  :method 折叠（base 为简单变量；只缩短才提交）
 1.3  字段前缀折叠（obj.PREFIX_X 系列提取公共前缀因子）
 1.4  Safe call sugar: `f("x")` -> `f"x"`, `f({})` -> `f{}`
 1.4b 字符串字面量内联（重复标识符样字面量提取别名）
 1.5  local 合并（相邻 body local 并一条）
+1.5b local function 合并（并入前条声明；函数体引用被并变量时退化为「先声明、后赋值」）
 1.6  多重赋值拆分（非 local 多赋值 → 单赋值序列；编码层兑现节省）
 1.6b if-not 二择（if not C then A else B → if C then B else A，省 not）
-1.7  变量复用（活跃区间不交 → 共享名 + 省 local；SSA 等价校验）
+1.7  变量复用（活跃区间不交 → 共享名 + 省 local；含循环内丢弃变量 `_`；SSA 等价校验）
 1.7b 声明上提（顶层局部上提到别名头作前向 nil 占位 + 降级 local）
 1.7c prefix 合并（声明上提完成后，别名头与紧邻 body local 合并省 local 关键字）
    ↓
@@ -79,6 +86,7 @@ console.log(result.output);  // l <压缩后的单行代码>
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.9  间隔符最小化 + 单行化
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
+1.10 比较重排（a OP b ≡ b FLIP(OP) a，兑现贴关键字省 1 字）+ 间隔符最小化(二次)
 Safety: text-based duplicate `local` deletion is disabled because syntax validity alone cannot prove equivalent scope or evaluation timing.
 Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limit candidates are rejected without aborting the pipeline.
    ↓
@@ -108,18 +116,27 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 - **仿射因子分解** — 折叠字符串别名值共享前缀/后缀（`ROOMSHAPE_*`）提取因子 `p='ROOMSHAPE_'`，其余写 `p..'1x1'`；迭代提取多因子
 - **统一频次竞争** — 局部、全局、成员三类符号在同一频次表竞争最短名
 
-**增量优化**（阶段 1.2~1.7b）：
+**局部规范化**（阶段 1.1b~1.1h）：
+- **括号转点** — `obj["Field"]` → `obj.Field`（关键词字段如 `t["end"]` 除外，避免非法语法）
+- **只读内联** — 只读字面量/常量别名 copy-propagation（`local t=1000000` 读处还原为字面量）+ 死纯局部消除
+- **常量折叠** — 整数 `±`、字符串 `..`、`not` 布尔；折叠后必须更短才提交
+- **布尔别名** — `true`/`false` 提取别名
+- **数字归一** — `0.X` → `.X` 等前导零消除
+- **括号消除** — 冗余圆括号移除，保留 load-bearing 的 `;(`
+
+**增量优化**（阶段 1.2~1.7c）：
 - **`:method` 折叠** — `obj:M(args)` → `obj[s](obj,args)` + `s='M'`（仅 base 为简单标识符；只缩短才提交）
 - **字段前缀折叠** — `obj.PREFIX_X` 系列提取公共前缀因子 `U`，改写为 `obj[U..'rest']`；可注入现有 batched local 尾部
 - **字符串字面量内联** — 标识符样字面量（`≥3` 字、`≥2` 次）提取别名 `u='X'` 注入 batched local，替换每处 `'X'` 为 `u`
 - **`local` 合并** — 相邻 `local A=x local B=y` → `local A,B=x,y`，省 `local ` 关键字；声明上提后额外一轮将别名头与紧邻 body local 合并（阶段 1.7c）
+- **local function 合并** — 统一识别 `local function f()…end` 与 `local f=function()…end` 两种等价形态，按语义与长度选最短：函数体不引用被并变量时直接合并 `local a,f=1,function()…end`；**引用被并变量时**（如 `f` 读 `a`）退化为「先声明、后赋值」`local a,f=1 f=function()…end`（Lua 里 `local a,f=1,function()return a end` 的闭包读到的是外层 `a`=nil，语义会变；先声明后赋值则正确捕获新 `a`）。无前条 local 可并时保持原形态不强行拆成 `local f f=function()`（那样反而多出变量名与逗号）
 - **多重赋值拆分** — 非 local 多重赋值安全条件下拆为单赋值序列；编码层每个非末值符号收尾兑现 1 字节省
 - **if-not 二择** — `if not C then A else B end` → `if C then B else A end`，省 `not`（约 4 字）；`canonical` 内置归一验证
-- **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；SSA 等价校验
+- **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；支持循环体内复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`）；SSA 等价校验
 - **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证
 - **重复声明删除（禁用）** — 文本相同不能证明求值时机和副作用相同；安全模式保留重复 `local` 声明
 
-**编码优化**（阶段 1.8~1.9）：
+**编码优化**（阶段 1.8~1.10）：
 - **去注释** — 在所有重命名完成后删除全部注释
 - **间隔符最小化 + 单行化** — 遵循真·Lua 5.3 词法，符号收尾处贴紧（`)then`/`}local`），数字/关键字边界保留空格（`168 do`/`1 and`）
 
@@ -137,7 +154,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 2. **luaparse 复核** — 再建一次 AST，确认可解析
 3. **AST 语义等价（SSA 版本化归一）** — "局部变量被赋值后视作新逻辑变量"做 alpha 归一深比较，使变量复用、透明别名消解、死前向声明消除等优化可严格验证。归一覆盖：
    - `obj.F` ≡ `obj["F"]`、`obj:M()` ≡ `obj[m](obj)`
-   - `local a,b=...` ≡ 连续 `local`、`'X'` ≡ `"X"`
+   - `local a,b=...` ≡ 连续 `local`、`local function f` ≡ `local f=function`、`'X'` ≡ `"X"`
    - `obj[U..'X']` ≡ `obj.<P+X>`（因子还原）、`obj[u]` ≡ `obj.X`（字符串别名还原）
    - 安全多重赋值 ≡ 单赋值序列
    - **透明别名读 ≡ 源全局读**（copy-propagation 标准形，并删除别名声明）
@@ -156,20 +173,23 @@ npm run test:local                       # 本地快速回归（完整提交前�
 npm run test:baseline                    # 仅在明确接受新基线时重建“重构前基线”
 node tests/test.js                      # 基础：作用域/遮蔽/全局保护/拒绝边界
 node tests/edge.js                      # 边界：数字-关键字-运算符、goto、varargs、:method
-node tests/realtest.js                  # 真实：递归扫描仓库 39 个 .lua 的全部 l 段（逐段+合并）
+node tests/realtest.js                  # 真实：递归扫描仓库 .lua 的全部 l 段，每条单独压缩（去注释后）
 node tests/remotetest.js                # 远程：4 个真实模组 main.lua（首次联网缓存）
 node tests/bulktest.js                  # 批量：19 个开源 Lua 项目（>150 文件）
 node tests/test_incremental.js          # 增量压缩（单条vs合并）
+node tests/test_idempotency.js          # 幂等（逆向回代）：压缩结果再回代必须不变 + 等价
 node tests/test_pipeline_parity.js      # 同步/异步流水线输出、报告、错误回调一致性
 node tests/test_validation_cache.js      # canonical 缓存隔离、命中与语义一致性
-node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度
+node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度（逐段、去注释）
 node tests/test_transparent_elision.js  # 透明别名消解专项
 node tests/test_canonical_fwdnil.js     # 死前向声明归一专项
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 89/89、边界 40/40、仓库真实语料 261/261 段与 39/39 合并文件、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料 parse 次数从基线 378 降至 275，输出保持 46968 字节。
+**当前状态**：基础 89/89、边界 40/40、仓库真实语料 335/335 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 9/9、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 301，输出 13959 字节。
+
+**语料测试口径**：仓库真实代码按「每条 `l` 段单独压缩」进行——不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐条测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 
 **注**：测试结果默认只输出到控制台；仓库仅保留快照、重构前基线和上一次通过结果这三类回归所需数据。
 
@@ -180,7 +200,7 @@ node tests/snapshot.js --check          # 全语料字节级回归比对（改�
 **具体限制**：
 - **声明上提** — 仅顶层块内、别名头之后、未被闭包捕获、不在循环体的局部；死前向声明归一验证。不做**索引/调用表达式冗余存储消除**（如重复 `A=a[c]`），因重新求值可能触发 `__index` 副作用
 - **透明别名消解** — 仅"只读、从不被赋值、init 溯源到全局"的局部；同名 binding 全部满足 + 单声明单别名才消解。`canonical` copy-propagation 双侧归一验证
-- **变量复用** — 仅 SSA 版本化等价能确认时应用；跨复杂控制流保守判负则回退
+- **变量复用** — 仅 SSA 版本化等价能确认时应用；循环体内可复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`，其活跃区间在循环头结束）；跨复杂控制流保守判负则回退
 - **多重赋值拆分** — 仅非 local 多重赋值；目标含索引/成员或目标耦合（`a,b=b,a`）时跳过
 - **全局/成员折叠** — 仅从不被赋值的全局 / base 为简单标识符的方法调用
 - **字段前缀/字面量内联** — 跳过 `function obj.PREFIX_X()` 名字链（语法必须保持 `name(.name)*(:name)?` 形态）

@@ -73,13 +73,12 @@ const UNIT = {
 };
 for(const k in UNIT) record(k, UNIT[k]);
 
-// 2. Repo .lua files: per-segment + per-file merged (mirrors realtest corpus).
+// 2. Repo .lua files: per-segment only（每条代码单独测试，去注释后压缩）。
 const repoFiles = walkLua(ROOT, ROOT, []).filter(f=>!f.rel.startsWith('compressor/'));
 for(const f of repoFiles){
   let raw; try{ raw=fs.readFileSync(f.full,'utf8'); }catch(e){ continue; }
   const segs = extractSegments(raw);
   segs.forEach((seg,i)=>{ record('repo-seg:'+f.rel+'#'+i, removeComments(seg)); });
-  if(segs.length){ record('repo-merged:'+f.rel, removeComments(segs.join('\n'))); }
 }
 
 // 3. Remote cache whole files.

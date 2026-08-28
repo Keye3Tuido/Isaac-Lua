@@ -72,14 +72,14 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 <script src="fengari-web.js?v=3303327"></script>
 <script>if(!window.fengari)document.write('<script src="node_modules/fengari-web/dist/fengari-web.js"><\/script>')</script>
 <!-- LuaMin 核心：先加载各 src/ 模块（自注册到 window.__LuaMinParts），再加载 core.js 工厂 -->
-<script src="src/analyze.js"></script>
-<script src="src/plan.js"></script>
-<script src="src/encode.js"></script>
-<script src="src/canonical.js"></script>
-<script src="src/folds.js"></script>
-<script src="src/compress.js"></script>
-<script src="src/search.js"></script>
-<script src="core.js"></script>
+<script src="src/analyze.js?v=2"></script>
+<script src="src/plan.js?v=2"></script>
+<script src="src/encode.js?v=2"></script>
+<script src="src/canonical.js?v=2"></script>
+<script src="src/folds.js?v=2"></script>
+<script src="src/compress.js?v=2"></script>
+<script src="src/search.js?v=2"></script>
+<script src="core.js?v=2"></script>
 <script>
 (function(){
   var lp = window.luaparse;
@@ -215,7 +215,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
       if(rep.stages && rep.stages.length){
         $stagesCard.style.display='block';
         var prevLen=rep.originalLength;
-        var prevCode=rep.original!=null ? rep.original : input;
+        var prevCode=rep.rawInput!=null ? rep.rawInput : (rep.original!=null ? rep.original : $in.value);
         rep.stages.forEach(function(stage){
           var delta=prevLen-stage.len;
           var deltaText=delta>0? '-'+delta : delta<0? '+'+Math.abs(delta) : '±0';

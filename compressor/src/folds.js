@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'folds', install:function(C){
-    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart;
+    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, fengari=C.fengari;
 
     function canCommit(originalCode, candidate, aliasMap){
       if(luaValidate && luaValidate(candidate)) return false;
@@ -832,7 +832,7 @@
         var pool=[];
         arr.forEach(function(b){
           var d=declStart(b);
-          if(d<protectEnd || inLoop(d)){ return; }
+          if(d<protectEnd){ return; }
           var meta=stmtOfDecl.get(b.decls[0]);
           var pick=-1;
           for(var i=0;i<pool.length;i++){ if(pool[i].freeAt < d){ pick=i; break; } }
@@ -1037,6 +1037,426 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot;
+    // ---------- obj["Field"] → obj.Field（括号访问转点访问） ----------
+    // 仅当 index 是【无转义的标识符样字符串字面量】时改写，每处省 3 字。
+    // 字段名位置允许关键字（obj.end ≡ obj["end"]），故无需排除关键字。
+    function foldBracketDot(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='IndexExpression' && n.index && n.index.type==='StringLiteral'
+           && n.base && n.base.range && n.range){
+          var m=/^(['"])([A-Za-z_][A-Za-z0-9_]*)\1$/.exec(n.index.raw||'');
+          // 关键字不能作点访问字段名（obj.end 是语法错误），必须保留括号形式
+          if(m && !KEYWORDS[m[2]]) edits.push({start:n.base.range[1], end:n.range[1], name:'.'+m[2]});
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'bracket-dot/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'bracket-dot/等价', steps);
+      if(rec) rec('括号转点(提交)', src.length, candidate.length, '改写 '+edits.length+' 处 obj["Field"]→obj.Field');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 只读局部内联（逆别名 / 反向纠错） ----------
+    // 对"单声明、从不被赋值、init 为字面量"的局部，若内联回字面量比保留别名+声明更短，
+    // 则内联并删除声明。这是字符串/数字/布尔别名技巧的反向纠错：手写的负优化别名会被拆回。
+    function foldReadonlyInline(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+      var assignedB=new Set();
+      (function collect(node){
+        if(!node||typeof node!=='object')return;
+        if(Array.isArray(node)){for(var i=0;i<node.length;i++)collect(node[i]);return;}
+        if(node.type==='AssignmentStatement'&&node.variables){
+          for(var i=0;i<node.variables.length;i++){
+            var t=node.variables[i];
+            if(t&&t.type==='Identifier'){var bb=info.varOf.get(t);if(bb)assignedB.add(bb);}
+          }
+        }
+        for(var k in node){if(k==='range'||k==='loc'||k==='parent'||k==='scope')continue;if(Object.prototype.hasOwnProperty.call(node,k))collect(node[k]);}
+      })(ast.body);
+      function isPureExpr(node){
+        if(!node||typeof node!=='object') return false;
+        switch(node.type){
+          case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral': case 'NilLiteral': return true;
+          case 'TableConstructorExpression':
+            for(var i=0;i<node.fields.length;i++){
+              var f=node.fields[i];
+              if(f.type==='TableKey'){ if(!isPureExpr(f.key)||!isPureExpr(f.value)) return false; }
+              else if(f.type==='TableKeyString'||f.type==='TableValue'){ if(!isPureExpr(f.value)) return false; }
+            }
+            return true;
+          default: return false;
+        }
+      }
+      var edits=[];
+      (function walk(stmts){
+        for(var si=0;si<stmts.length;si++){
+          var st=stmts[si];
+          if(st.type!=='LocalStatement'||!st.variables||!st.init) continue;
+          if(st.variables.length!==1||st.init.length!==1) continue;
+          var v=st.variables[0], ie=st.init[0];
+          if(v.type!=='Identifier'||!ie||!ie.range) continue;
+          var b=info.varOf.get(v);
+          if(!b||b.decls.length!==1||assignedB.has(b)||b.captured) continue;
+          var T=ie.type;
+          var isLiteral=(T==='NumericLiteral'||T==='StringLiteral'||T==='BooleanLiteral');
+          var isPure=isLiteral || isPureExpr(ie);
+          if(!isPure) continue;
+          var lit=src.slice(ie.range[0],ie.range[1]);
+          var uses=b.uses.length, litLen=lit.length;
+          if(uses===0){ edits.push({start:st.range[0],end:st.range[1],name:''}); continue; }
+          if(!isLiteral) continue; // 纯但非字面量：仅删不用，不内联
+          // 内联当 uses*(litLen-1) < litLen+9（单变量声明成本≈litLen+9，名字已重命名为单字母）
+          if(uses*(litLen-1) >= litLen+9) continue;
+          edits.push({start:st.range[0],end:st.range[1],name:''});
+          b.uses.forEach(function(u){
+            var nx=(u.range[1]<src.length)?src[u.range[1]]:undefined;
+            var last=lit[lit.length-1];
+            var spacer=(nx!==undefined&&(isNamePart(nx)||(nx==='.'&&last>='0'&&last<='9')))?' ':'';
+            edits.push({start:u.range[0],end:u.range[1],name:lit+spacer});
+          });
+        }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'readonly-inline/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'readonly-inline/等价', steps);
+      if(rec) rec('只读内联(提交)', src.length, candidate.length, '内联并删除 '+edits.length+' 处负优化别名');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 常量折叠（整数算术 / 字符串拼接 / not 布尔） ----------
+    // canonical 已内置 constFold 常量归一（1+2 ≡ 3），等价校验走 canCommit，无需 fengari 逐处求值。
+    function foldConstant(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      function intVal(n){
+        if(!n||n.type!=='NumericLiteral') return null;
+        var raw=n.raw||'';
+        if(/^[+-]?\d+$/.test(raw)) return parseInt(raw,10);
+        if(/^0[xX][0-9a-fA-F]+$/.test(raw)) return parseInt(raw,16);
+        return null;
+      }
+      function strVal(n){
+        if(!n||n.type!=='StringLiteral') return null;
+        var raw=n.raw||'';
+        if(raw.length>=2&&raw[0]==="'"&&raw[raw.length-1]==="'") return raw.slice(1,-1);
+        return null;
+      }
+      function fmtInt(v){ return String(v); }
+      function fmtStr(s){
+        if(s.indexOf("'")>=0||s.indexOf('\\')>=0||s.indexOf('\n')>=0||s.indexOf('\r')>=0) return null;
+        return "'"+s+"'";
+      }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='BinaryExpression'&&n.range){
+          var rep=null;
+          if(n.operator==='..'){
+            var ls=strVal(n.left), rs=strVal(n.right);
+            if(ls!==null&&rs!==null) rep=fmtStr(ls+rs);
+          }else if(n.operator==='+'||n.operator==='-'||n.operator==='*'){
+            var li=intVal(n.left), ri=intVal(n.right);
+            if(li!==null&&ri!==null){
+              var a=li,b=ri,r;
+              if(n.operator==='+')r=a+b; else if(n.operator==='-')r=a-b; else r=a*b;
+              if(Number.isInteger(r)&&Math.abs(r)<=9007199254740991) rep=fmtInt(r);
+            }
+          }
+          if(rep!==null && rep.length<n.range[1]-n.range[0]){
+            edits.push({start:n.range[0],end:n.range[1],name:rep});
+          }
+        }else if(n.type==='UnaryExpression'&&n.operator==='not'&&n.range&&n.argument&&n.argument.type==='BooleanLiteral'){
+          var rep=String(!n.argument.value);
+          if(rep.length<n.range[1]-n.range[0]){
+            edits.push({start:n.range[0],end:n.range[1],name:rep});
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'const-fold/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'const-fold/等价', steps);
+      if(rec) rec('常量折叠(提交)', src.length, candidate.length, '折叠 '+edits.length+' 处常量表达式');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- true/false 布尔常量别名 ----------
+    // true(4)/false(5) 出现多次时提取 local Y=true 别名。反向纠错由 foldReadonlyInline 承担。
+    // canonical 的 detectLit 会把 local Y=true 归一为字面量 true，等价校验自然通过。
+    function foldBoolNil(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var priorDrop=(priorAlias && priorAlias.dropLeading)||0;
+      var headerRanges=[];
+      for(var hi=0; hi<priorDrop && hi<ast.body.length; hi++){ if(ast.body[hi]&&ast.body[hi].range) headerRanges.push(ast.body[hi].range); }
+      function inHeader(node){ if(!node||!node.range) return false; for(var i=0;i<headerRanges.length;i++){ if(node.range[0]>=headerRanges[i][0]&&node.range[1]<=headerRanges[i][1]) return true; } return false; }
+      var sites=Object.create(null);
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='BooleanLiteral' && !inHeader(n) && n.range){
+          var key=String(n.value);
+          (sites[key]=sites[key]||[]).push({start:n.range[0], end:n.range[1]});
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
+      (function cn(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){n.forEach(cn);return;}
+        if(n.type==='Identifier'&&n.name) taken.add(n.name);
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) cn(n[k]); }
+      })(ast.body);
+      var POOL=candidateGenerator();
+      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var chosen=[];
+      ['false','true'].forEach(function(v){
+        var group=sites[v];
+        if(!group||group.length<3) return;
+        var alias=nextName();
+        if(!alias) return;
+        var wordLen=v.length;
+        var declCost=8+wordLen; // local A=v 约 (6+1+1+wordLen)，留 1 分隔空格
+        var gain=group.length*(wordLen-1)-declCost;
+        if(gain<=0) return;
+        chosen.push({v:v, alias:alias, sites:group});
+      });
+      if(!chosen.length) return null;
+      var edits=[];
+      chosen.forEach(function(c){ c.sites.forEach(function(s){ edits.push({start:s.start, end:s.end, name:c.alias}); }); });
+      var newBody=applyEdits(src, edits);
+      var declNames=chosen.map(function(c){return c.alias;}).join(',');
+      var declVals=chosen.map(function(c){return c.v;}).join(',');
+      var candidate='local '+declNames+'='+declVals+' '+newBody;
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'bool-alias/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'bool-alias/等价', steps);
+      if(rec) rec('布尔别名(提交)', src.length, candidate.length, '提取 '+chosen.length+' 个布尔别名');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 数字字面量最小化：0.X → .X ----------
+    // 前导 0 去除（浮点→浮点）。仅当前一字符不是 '.'（避免 1..0.5 → 1...5）且不是名字字符（避免合并）。
+    function foldNumbers(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='NumericLiteral' && n.raw && /^0\.\d+$/.test(n.raw) && n.range){
+          var prev=(n.range[0]>0)?src[n.range[0]-1]:'';
+          if(prev!=='.' && !isNamePart(prev)){
+            edits.push({start:n.range[0], end:n.range[0]+1, name:''});
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'number-min/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'number-min/等价', steps);
+      if(rec) rec('数字归一(提交)', src.length, candidate.length, '删除 '+edits.length+' 处前导 0');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 冗余括号消除 ----------
+    // 仅删除"围绕主表达式"的括号（字面量/标识符/成员/调用/索引/表/函数），这些括号不承载优先级。
+    // 关键排除：调用实参的括号是调用语法的一部分（f(x) 的 ( )），绝不可删——通过 inArgs 标记跳过。
+    // canonical 用 luaparse（忽略括号），故 (x) 与 x 天然等价，等价校验自动通过。
+    function foldParens(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var PRIMARY={Identifier:1,NumericLiteral:1,StringLiteral:1,BooleanLiteral:1,NilLiteral:1,VarargLiteral:1,
+                   MemberExpression:1,IndexExpression:1,CallExpression:1,StringCallExpression:1,TableCallExpression:1,
+                   TableConstructorExpression:1,FunctionDeclaration:1};
+      var edits=[];
+      (function walk(n, inArgs){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i], inArgs); return; }
+        if(PRIMARY[n.type] && n.range && !inArgs){
+          var before=(n.range[0]>0)?src[n.range[0]-1]:'';
+          var after=(n.range[1]<src.length)?src[n.range[1]]:'';
+          // 载荷分号：x;(h)(x) 里的 (h) 若去括号，; 会从"后跟 ("变成"后跟名字"而被分号消除误删，改变语义
+          var beforeParen=(n.range[0]>=2)?src[n.range[0]-2]:'';
+          if(before==='(' && after===')' && beforeParen!==';'){
+            edits.push({start:n.range[0]-1, end:n.range[0], name:''});
+            edits.push({start:n.range[1], end:n.range[1]+1, name:''});
+          }
+        }
+        for(var k in n){
+          if(k==='range'||k==='loc') continue;
+          if(!Object.prototype.hasOwnProperty.call(n,k)) continue;
+          var ci=inArgs;
+          if(n.type==='CallExpression' && k==='arguments') ci=true;      // 实参括号
+          else if(n.type==='CallExpression' && k==='base') ci=false;      // 被调者括号可删
+          walk(n[k], ci);
+        }
+      })(ast.body, false);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'paren-removal/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'paren-removal/等价', steps);
+      if(rec) rec('括号消除(提交)', src.length, candidate.length, '删除 '+(edits.length/2)+' 对冗余括号');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 比较重排：a()>b then → b<a() then ----------
+    // 比较运算是代数恒等式：a OP b ≡ b FLIP(OP) a（==/~= 对称、< > <= >= 翻转）。因此无需求值验证，
+    // 唯一风险是两侧都有副作用时求值顺序改变——用"至多一侧含调用/索引"约束排除。
+    // 本 pass 自身不缩短（重排等长），作用是让 ) 收尾的操作数贴紧后续关键字，由后置 minimizeSpacing 兑现省 1 字。
+    function foldCompareReorder(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var FLIP={'<':'>','>':'<','<=':'>=','>=':'<='};
+      var edits=[];
+      function hasSideEffect(node){
+        var found=false;
+        (function w(n){ if(found||!n||typeof n!=='object')return; if(Array.isArray(n)){for(var i=0;i<n.length;i++)w(n[i]);return;}
+          if(n.type==='CallExpression'||n.type==='IndexExpression'){found=true;return;}
+          for(var k in n){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(n,k))w(n[k]);} })(node);
+        return found;
+      }
+      function symEnd(t){ var c=t[t.length-1]; return c===')'||c===']'||c==="'"||c==='"'; }
+      function nameEnd(t){ var c=t[t.length-1]; return isNamePart(c); }
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='BinaryExpression' && n.range && n.left && n.right && n.left.range && n.right.range){
+          var op=n.operator;
+          if(op==='<'||op==='>'||op==='<='||op==='>='||op==='=='||op==='~='){
+            var lc=hasSideEffect(n.left), rc=hasSideEffect(n.right);
+            if(!(lc&&rc)){
+              var lt=src.slice(n.left.range[0],n.left.range[1]);
+              var rt=src.slice(n.right.range[0],n.right.range[1]);
+              if(symEnd(lt) && nameEnd(rt)){
+                var rebuilt=(op==='=='||op==='~=')?(rt+op+lt):(rt+FLIP[op]+lt);
+                edits.push({start:n.range[0],end:n.range[1],name:rebuilt});
+              }
+            }
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>src.length) return null;   // 等长允许（靠后置空格消除兑现收益）
+      if(luaValidate && luaValidate(candidate)) return null;
+      assertParses(candidate, 'compare-reorder/syntax', steps);
+      if(rec) rec('比较重排(提交)', src.length, candidate.length, '重排 '+edits.length+' 处比较');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- local function 并入前置 local 声明 ----------
+    // local a=1 local function f()end → local a,f=1,function()end（省一个 "local "）。
+    // 仅当前置 local #init==#vars 且末值不是多返回值表达式（追加值会改变截断）。
+    function foldLocalFunc(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info; try{ info=analyze(ast); }catch(e){ return null; }
+      var varOf=info.varOf;
+      var edits=[];
+      function processBlock(stmts){
+        for(var si=1; si<stmts.length; si++){
+          var st=stmts[si], prev=stmts[si-1];
+          // 统一识别两种等价形态：
+          //   (A) local function f()BODY end  → FunctionDeclaration(isLocal)
+          //   (B) local f=function()BODY end   → LocalStatement + 匿名 FunctionDeclaration init
+          // 两者压成同一结果：直接合并 `local a,f=1,function()BODY`，或先声明后赋值 `local a,f=1 f=function()BODY`。
+          var fn=null; // {name, value, body, declStart, declEnd, replaceWith}
+          if(st.type==='FunctionDeclaration' && st.isLocal && st.identifier && st.identifier.type==='Identifier' && st.range && st.identifier.range){
+            var full=src.slice(st.range[0], st.range[1]);
+            var m=/^local\s+function\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(full);
+            if(m){
+              fn={
+                name:m[1],
+                value:'function'+full.slice(m[0].length),
+                body:st.body,
+                declStart:st.range[0],
+                declEnd:st.range[0]+m[0].length,
+                replaceWith:m[1]+'=function'
+              };
+            }
+          } else if(st.type==='LocalStatement' && st.variables && st.variables.length===1 && st.init && st.init.length===1
+                     && st.init[0].type==='FunctionDeclaration' && !st.init[0].isLocal
+                     && st.range && st.variables[0].range && st.init[0].range){
+            fn={
+              name:st.variables[0].name,
+              value:src.slice(st.init[0].range[0], st.init[0].range[1]),
+              body:st.init[0].body,
+              declStart:st.range[0],
+              declEnd:st.init[0].range[0],
+              replaceWith:st.variables[0].name+'='
+            };
+          }
+          if(!fn) continue;
+          if(!(prev.type==='LocalStatement' && prev.variables && prev.init && prev.variables.length===prev.init.length && prev.variables.length>0)) continue;
+          var lastInit=prev.init[prev.init.length-1];
+          if(lastInit && (lastInit.type==='CallExpression'||lastInit.type==='StringCallExpression'||lastInit.type==='TableCallExpression'||lastInit.type==='VarargLiteral')) continue;
+          // 健全性：函数体不得引用被合并的 prev 变量。否则合并成 `local a,b=...,function` 后，
+          // 闭包里读到的 a 是外层同名变量（nil），而分离写法读到的是本语句刚声明的 a，语义不同。
+          var prevBindings=new Set(); var refsPrev=false;
+          for(var pv=0;pv<prev.variables.length;pv++){
+            var pvn=prev.variables[pv];
+            if(pvn.type==='Identifier' && varOf.has(pvn)) prevBindings.add(varOf.get(pvn));
+          }
+          if(prevBindings.size){
+            (function chk(n){ if(refsPrev||!n||typeof n!=='object')return; if(Array.isArray(n)){for(var ci=0;ci<n.length;ci++)chk(n[ci]);return;}
+              if(n.type==='Identifier'){ var b=varOf.get(n); if(b&&prevBindings.has(b)){refsPrev=true;return;} }
+              for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) chk(n[k]); } })(fn.body);
+          }
+          var lastVar=prev.variables[prev.variables.length-1];
+          if(refsPrev){
+            // 健全的「先声明、后赋值」退化：
+            //   local a=1 local function f()BODY  →  local a,f=1 f=function()BODY
+            edits.push({start:lastVar.range[1], end:lastVar.range[1], name:','+fn.name});
+            edits.push({start:fn.declStart, end:fn.declEnd, name:fn.replaceWith});
+          }else{
+            var lastInitNode=prev.init[prev.init.length-1];
+            edits.push({start:lastVar.range[1], end:lastVar.range[1], name:','+fn.name});
+            edits.push({start:lastInitNode.range[1], end:lastInitNode.range[1], name:','+fn.value});
+            edits.push({start:st.range[0], end:st.range[1], name:''});
+          }
+        }
+        for(var i=0;i<stmts.length;i++) descend(stmts[i]);
+      }
+      function descend(st){
+        switch(st.type){
+          case 'IfStatement': st.clauses.forEach(function(c){processBlock(c.body||[]);}); break;
+          case 'WhileStatement': case 'DoStatement': case 'ForNumericStatement':
+          case 'ForGenericStatement': case 'RepeatStatement': processBlock(st.body||[]); break;
+          default:
+            (function w(n){ if(!n||typeof n!=='object')return; if(Array.isArray(n)){n.forEach(w);return;}
+              if(n.type==='FunctionDeclaration'){ processBlock(n.body||[]); return; }
+              for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); } })(st);
+        }
+      }
+      processBlock(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'local-func/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'local-func/等价', steps);
+      if(rec) rec('local function 合并(提交)', src.length, candidate.length, '合并 '+Math.floor(edits.length/3)+' 处 local function');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

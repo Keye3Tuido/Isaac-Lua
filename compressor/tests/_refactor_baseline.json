@@ -3,7 +3,7 @@
   "suites": {
     "unit": {
       "ok": true,
-      "pass": 87,
+      "pass": 89,
       "fail": 0
     },
     "edge": {
@@ -13,16 +13,18 @@
     },
     "real": {
       "ok": true,
-      "totalSegments": 259,
-      "passSegments": 259,
-      "failSegments": 0,
-      "totalMerged": 39,
-      "passMerged": 39,
-      "failMerged": 0
+      "totalSegments": 335,
+      "passSegments": 335,
+      "failSegments": 0
     },
     "pipelineParity": {
       "ok": true,
       "pass": 26,
+      "fail": 0
+    },
+    "validationCache": {
+      "ok": true,
+      "pass": 5,
       "fail": 0
     },
     "semicolon": {
@@ -55,6 +57,11 @@
       "pass": 3,
       "fail": 0
     },
+    "idempotency": {
+      "ok": true,
+      "pass": 9,
+      "fail": 0
+    },
     "remote": {
       "ok": true,
       "pass": 4,
@@ -63,9 +70,9 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 282854,
-      "searchBytes": 282840,
-      "savedBytes": 14
+      "ruleBytes": 206934,
+      "searchBytes": 206929,
+      "savedBytes": 5
     },
     "bulk": {
       "ok": true,
@@ -78,19 +85,21 @@
     },
     "snapshot": {
       "ok": true,
-      "total": 908,
+      "total": 495,
       "changed": 0,
       "regress": 0,
       "improve": 0,
       "lostOk": 0,
-      "newOk": 0
+      "newOk": 0,
+      "sourceChanged": 0,
+      "removed": 0
     },
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 378,
-      "inputBytes": 52958,
-      "outputBytes": 46972
+      "parseCount": 301,
+      "inputBytes": 14336,
+      "outputBytes": 13959
     }
   }
 }

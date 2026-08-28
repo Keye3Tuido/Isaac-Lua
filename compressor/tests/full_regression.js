@@ -22,6 +22,7 @@ const specs = [
   ['ifNot', 'test_canonical_ifnot.js', []],
   ['relocation', 'test_canonical_relocpull.js', []],
   ['incremental', 'test_incremental.js', []],
+  ['idempotency', 'test_idempotency.js', []],
   ['remote', 'remotetest.js', []],
   ['search', 'test_search_compare.js', []],
   ['bulk', 'bulktest.js', ['--offline']],
@@ -71,10 +72,10 @@ function metricsFor(run) {
       parsed = numbers(o, /:\s*(\d+)\s*pass,\s*(\d+)\s*fail\s*===/i, ['pass', 'fail']); break;
     case 'incremental':
       parsed = numbers(o, /总结:\s*(\d+)\s*通过,\s*(\d+)\s*失败/, ['pass', 'fail']); break;
+    case 'idempotency':
+      parsed = numbers(o, /幂等\(逆向回代\)测试:\s*(\d+)\s*pass,\s*(\d+)\s*fail/, ['pass', 'fail']); break;
     case 'real': {
-      const segments = numbers(o, /l 段总数:\s*(\d+)\s+成功:\s*(\d+)\s+失败\/拒绝:\s*(\d+)/, ['totalSegments', 'passSegments', 'failSegments']);
-      const merged = numbers(o, /有 l 段的文件数:\s*(\d+)\s+成功:\s*(\d+)\s+失败\/拒绝:\s*(\d+)/, ['totalMerged', 'passMerged', 'failMerged']);
-      parsed = Object.assign({}, segments || {}, merged || {}); break;
+      parsed = numbers(o, /l 段总数:\s*(\d+)\s+成功:\s*(\d+)\s+失败\/拒绝:\s*(\d+)/, ['totalSegments', 'passSegments', 'failSegments']); break;
     }
     case 'remote':
       parsed = numbers(o, /远程测试:\s*(\d+)\s*通过,\s*(\d+)\s*失败\s*\(共\s*(\d+)\)/, ['pass', 'fail', 'total']); break;

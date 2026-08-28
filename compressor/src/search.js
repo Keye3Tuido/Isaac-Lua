@@ -678,7 +678,7 @@
       }
 
       var startTime = Date.now();
-      var deadline = startTime + budget;
+      var deadline = (opts._deadline != null) ? opts._deadline : (startTime + budget);
 
       // 原始预处理代码 — canonical 等价基准
       var origPre;
@@ -748,6 +748,22 @@
       var saved = origBest.bodyLength - best.bodyLength;
       log('done: ' + elapsed + 'ms, ' + count.v + ' trials, ' + rounds +
         ' rounds, saved ' + saved + ' chars (' + origBest.bodyLength + ' → ' + best.bodyLength + ')');
+
+      // 统一 originalLength/original 为顶层输入（固定点递归/变换会让 originalLength 变成中间长度）
+      best.originalLength = input.length;
+      if (origPre != null) best.original = origPre;
+
+      // 幂等固定点：只要输出正文与输入不同，就在结果上继续搜，直到正文不变（严格收敛到最短）。
+      // 共享 deadline 只是兜底防意外，不限制迭代轮数。
+      if (Date.now() < deadline && bodyOf(best) !== origPre) {
+        var deeperOpts = Object.assign({}, opts, {_deadline: deadline});
+        var deeper = searchOptimize(bodyOf(best), deeperOpts);
+        if (deeper && deeper.ok && deeper.bodyLength < best.bodyLength) {
+          deeper.originalLength = input.length;
+          if (origPre != null) deeper.original = origPre;
+          return deeper;
+        }
+      }
 
       return best;
     }
@@ -874,6 +890,23 @@
 
       function runStep(){
         if(stepIdx >= steps.length){
+          // 幂等固定点：在结果上继续搜（同步版，共享 deadline），直到无改善
+          // 统一 originalLength/original 为顶层输入
+          best.originalLength = input.length;
+          if (origPre != null) best.original = origPre;
+
+          if (Date.now() < deadline && bodyOf(best) !== origPre) {
+            var deeperOpts = Object.assign({}, opts);
+            delete deeperOpts.onProgress;
+            deeperOpts._deadline = deadline;
+            var deeper = searchOptimize(bodyOf(best), deeperOpts);
+            if (deeper && deeper.ok && deeper.bodyLength < best.bodyLength) {
+              deeper.originalLength = input.length;
+              if (origPre != null) deeper.original = origPre;
+              opts._done(deeper);
+              return;
+            }
+          }
           opts._done(best);
           return;
         }

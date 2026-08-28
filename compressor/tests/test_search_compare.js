@@ -1,5 +1,5 @@
 // Phase 0: 前置验证 — 搜索优化器 vs 规则系统 全量对比
-// 对仓库所有 l 段 + 合并文件逐一跑 compress 和 searchOptimize，报告差值。
+// 对仓库所有 l 段【逐段】跑 compress 和 searchOptimize（去注释后压缩），报告差值。
 
 const fs = require('fs'), path = require('path');
 const luaparse = require('../node_modules/luaparse');
@@ -31,7 +31,7 @@ const files = listRepoLuaFiles();
 
 let baselineTotal = 0, searchTotal = 0;
 let wins = [], losses = [], equivalenceErrors = [];
-let segCount = 0, mergeCount = 0;
+let segCount = 0;
 
 for (const file of files) {
   const f = file.rel;
@@ -70,39 +70,12 @@ for (const file of files) {
       losses.push({ file: f, line: li, baseline: baseline.bodyLength, search: search.bodyLength });
     }
   }
-
-  if (segs.length < 2) continue;
-  mergeCount++;
-  const merged = segs.join('\n');
-  const cleaned = removeComments(merged);
-  let baseline, search;
-
-  try { baseline = LuaMin.compress(cleaned); } catch (e) { continue; }
-  if (!baseline || !baseline.ok) continue;
-
-  try { search = LuaMin.searchOptimize(cleaned, { budget: 800, maxIters: 80 }); } catch (e) { search = null; }
-  if (!search || !search.ok) { baselineTotal += baseline.bodyLength; searchTotal += baseline.bodyLength; continue; }
-
-  baselineTotal += baseline.bodyLength;
-  searchTotal += search.bodyLength;
-
-  if (search.bodyLength < baseline.bodyLength) {
-    const body = search.output.replace(/^l /, '');
-    const orig = LuaMin._preprocess(cleaned);
-    if (!canonicalEq(orig, body, search.aliasMapInfo)) {
-      equivalenceErrors.push({ file: f, type: 'merged', msg: '等价验证失败' });
-      continue;
-    }
-    wins.push({ file: f, type: 'merged', inputLen: baseline.originalLength, baseline: baseline.bodyLength, search: search.bodyLength });
-  } else if (search.bodyLength > baseline.bodyLength) {
-    losses.push({ file: f, type: 'merged', baseline: baseline.bodyLength, search: search.bodyLength });
-  }
 }
 
 console.log('==========================================');
 console.log('Phase 0: 搜索优化器 vs 规则系统 — 全量对比');
 console.log('==========================================\n');
-console.log('测试范围: ' + files.length + ' 文件, ' + segCount + ' 段, ' + mergeCount + ' 合并\n');
+console.log('测试范围: ' + files.length + ' 文件, ' + segCount + ' 段\n');
 
 const diff = baselineTotal - searchTotal;
 const pct = baselineTotal > 0 ? (diff / baselineTotal * 100).toFixed(2) : '0.00';

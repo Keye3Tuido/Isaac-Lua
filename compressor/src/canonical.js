@@ -138,6 +138,138 @@
       })();
       function autoTAGlobal(b){ return autoTAByBinding.has(b) ? autoTAByBinding.get(b) : null; }
 
+      // ---- 只读字面量别名归一（literal copy-propagation 标准形）----
+      // 形态：local t=1000000 / local u='X' / local f=false（单声明、从不被赋值、init 为字面量），
+      // 读 t ≡ 读 1000000（两侧一致施加）。这是"只读局部内联（逆别名）"得以被严格验证的基础：
+      // `local t=1000000 ...=t...` 与 `...=1000000...` 归一收敛同形。
+      var autoLitByBinding=new Map(); // binding -> 归一化字面量节点
+      (function detectLit(){
+        var assignedB=new Set();
+        (function collect(node){
+          if(!node||typeof node!=='object')return;
+          if(Array.isArray(node)){for(var i=0;i<node.length;i++)collect(node[i]);return;}
+          if(node.type==='AssignmentStatement'&&node.variables){
+            for(var i=0;i<node.variables.length;i++){
+              var t=node.variables[i];
+              if(t&&t.type==='Identifier'){var bb=varOf.get(t);if(bb)assignedB.add(bb);}
+            }
+          }
+          for(var k in node){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(node,k))collect(node[k]);}
+        })(ast.body);
+        (function walk(stmts){
+          for(var si=0;si<stmts.length;si++){
+            var st=stmts[si];
+            if(st.type==='LocalStatement'&&st.variables&&st.init){
+              for(var vi=0;vi<st.variables.length;vi++){
+                var v=st.variables[vi], ie=st.init[vi];
+                if(!v||v.type!=='Identifier'||!ie)continue;
+                var b=varOf.get(v);
+                if(!b||b.decls.length!==1||assignedB.has(b))continue;
+                var T=ie.type;
+                if(T==='NumericLiteral'||T==='StringLiteral'||T==='BooleanLiteral'){
+                  autoLitByBinding.set(b, normExpr(ie));
+                }else{
+                  // 常量表达式 init（如 local x=1+2）也按常量别名归一，保证与折叠后 local x=3 同形
+                  var cf=constFold(ie);
+                  if(cf!==null) autoLitByBinding.set(b, cf);
+                }
+              }
+            }
+          }
+        })(ast.body);
+      })();
+
+      // ---- forward-nil 字面量归一（让 local v=lit 与 local v=nil v=lit 两种写法收敛同形）----
+      (function detectFwdLit(){
+        var assignCount=new Map();
+        (function collect(node){
+          if(!node||typeof node!=='object')return;
+          if(Array.isArray(node)){for(var i=0;i<node.length;i++)collect(node[i]);return;}
+          if(node.type==='AssignmentStatement'&&node.variables){
+            for(var i=0;i<node.variables.length;i++){
+              var t=node.variables[i];
+              if(t&&t.type==='Identifier'){var bb=varOf.get(t);if(bb)assignCount.set(bb,(assignCount.get(bb)||0)+1);}
+            }
+          }
+          for(var k in node){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(node,k))collect(node[k]);}
+        })(ast.body);
+        function refIn(node,b){
+          var c=0;
+          (function w(n){if(!n||typeof n!=='object')return;if(Array.isArray(n)){n.forEach(w);return;}if(n.type==='Identifier'&&varOf.get(n)===b){c++;}for(var k in n){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(n,k))w(n[k]);}})(node);
+          return c;
+        }
+        (function walk(stmts){
+          for(var si=0;si<stmts.length;si++){
+            var st=stmts[si];
+            if(st.type!=='LocalStatement'||!st.variables)continue;
+            for(var vi=0;vi<st.variables.length;vi++){
+              var vnode=st.variables[vi];
+              if(vnode.type!=='Identifier')continue;
+              var b=varOf.get(vnode);
+              if(!b||b.decls.length!==1||autoLitByBinding.has(b))continue;
+              if((assignCount.get(b)||0)!==1)continue;  // 恰好赋值一次（首次赋值即"声明"）
+              var ie=(st.init&&st.init[vi])?st.init[vi]:null;
+              if(ie && ie.type!=='NilLiteral')continue;  // 声明必须是 nil/缺省
+              var firstInit=null;
+              for(var j=si+1;j<stmts.length;j++){
+                var s2=stmts[j];
+                var hit=-1;
+                if(s2.type==='AssignmentStatement'&&s2.variables&&s2.init){
+                  for(var t=0;t<s2.variables.length;t++){
+                    if(s2.variables[t].type==='Identifier'&&varOf.get(s2.variables[t])===b){hit=t;break;}
+                  }
+                }
+                if(hit>=0){ firstInit=s2.init[hit]; break; }
+                if(refIn(s2,b)>0) break;  // 赋值前读到 b → 保守放弃
+              }
+              if(!firstInit)continue;
+              var T=firstInit.type;
+              if(T==='NumericLiteral'||T==='StringLiteral'||T==='BooleanLiteral'){
+                autoLitByBinding.set(b, normExpr(firstInit));
+              }else{
+                var cf=constFold(firstInit);
+                if(cf!==null) autoLitByBinding.set(b, cf);
+              }
+            }
+          }
+        })(ast.body);
+      })();
+
+      // ---- 未使用纯局部归一（dead-pure-local elimination，标准形）----
+      // 单声明、从不被读写、init 无副作用（字面量/标识符/纯表构造）的局部，其声明可整体删除：
+      // `local x={} ...(不用x)...` ≡ `...(不用x)...`。两侧一致施加，使局部死代码消除可被严格验证。
+      var deadPureBindings=new Set();
+      (function detectDeadPure(){
+        function isPureExpr(node){
+          if(!node||typeof node!=='object') return false;
+          switch(node.type){
+            case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral': case 'NilLiteral': return true;
+            case 'TableConstructorExpression':
+              for(var i=0;i<node.fields.length;i++){
+                var f=node.fields[i];
+                if(f.type==='TableKey'){ if(!isPureExpr(f.key)||!isPureExpr(f.value)) return false; }
+                else if(f.type==='TableKeyString'||f.type==='TableValue'){ if(!isPureExpr(f.value)) return false; }
+              }
+              return true;
+            default: return false;
+          }
+        }
+        (function walk(stmts){
+          for(var si=0;si<stmts.length;si++){
+            var st=stmts[si];
+            if(st.type==='LocalStatement'&&st.variables&&st.init){
+              for(var vi=0;vi<st.variables.length;vi++){
+                var v=st.variables[vi], ie=st.init[vi];
+                if(!v||v.type!=='Identifier'||!ie)continue;
+                var b=varOf.get(v);
+                if(!b||b.decls.length!==1||b.uses.length!==0)continue;
+                if(isPureExpr(ie)) deadPureBindings.add(b);
+              }
+            }
+          }
+        })(ast.body);
+      })();
+
       // ---- 死前向声明归一（forward-nil elimination，标准形）----
       // 形态：`local v=nil`（或 `local v` 缺省 init）后，v 在到达其【同块内首次赋值】之前
       // 从不被读到（包括嵌套函数捕获、嵌套块读取），则该 nil 声明与"把首次赋值当作声明"
@@ -267,6 +399,71 @@
         return {type:'Access', base:normExpr(base), key:{expr:normExpr(keyExprNode)}};
       }
 
+      // ---- 常量折叠归一（constant-folding 标准形）----
+      // 1+2 ≡ 3、'a'..'b' ≡ 'ab'、not true ≡ false。两侧一致施加，使 foldConstant 折叠后可被严格验证。
+      function litConst(node){
+        if(!node||typeof node!=='object') return null;
+        if(node.type==='NumericLiteral'){
+          var raw=node.raw||'';
+          if(/^[+-]?\d+$/.test(raw)) return {kind:'int', v:parseInt(raw,10)};
+          if(/^0[xX][0-9a-fA-F]+$/.test(raw)) return {kind:'int', v:parseInt(raw,16)};
+          return null; // 浮点/科学计数不折叠（避免 int/float 混淆）
+        }
+        if(node.type==='StringLiteral'){
+          var sc=stringContent(node);
+          if(sc===null||sc.indexOf('\\')>=0) return null; // 长字符串或含转义不折叠
+          return {kind:'str', v:sc};
+        }
+        if(node.type==='BooleanLiteral') return {kind:'bool', v:!!node.value};
+        return null;
+      }
+      function numNode(r){
+        if(r<0) return {type:'UnaryExpression', operator:'-', argument:{type:'NumericLiteral', value:-r, isInt:true}};
+        return {type:'NumericLiteral', value:r, isInt:true};
+      }
+      function constValue(node){
+        var lit=litConst(node);
+        if(lit) return lit;
+        if(node.type==='BinaryExpression'){
+          var L=constValue(node.left), R=constValue(node.right);
+          if(L&&R){
+            if(node.operator==='..'&&L.kind==='str'&&R.kind==='str') return {kind:'str', v:L.v+R.v};
+            if(L.kind==='int'&&R.kind==='int'){
+              var r;
+              if(node.operator==='+')r=L.v+R.v;
+              else if(node.operator==='-')r=L.v-R.v;
+              else if(node.operator==='*')r=L.v*R.v;
+              else return null;
+              if(Number.isInteger(r)&&Math.abs(r)<=9007199254740991) return {kind:'int', v:r};
+            }
+          }
+          return null;
+        }
+        if(node.type==='UnaryExpression'&&node.operator==='not'){
+          var A=constValue(node.argument);
+          if(A&&A.kind==='bool') return {kind:'bool', v:!A.v};
+          return null;
+        }
+        return null;
+      }
+      function constFold(node){
+        var cv=constValue(node);
+        if(cv===null) return null;
+        if(cv.kind==='int') return numNode(cv.v);
+        if(cv.kind==='str'){ if(cv.v.indexOf('\\')<0&&cv.v.indexOf("'")<0) return {type:'StringLiteral', content:cv.v}; return null; }
+        if(cv.kind==='bool') return {type:'BooleanLiteral', value:cv.v, raw:cv.v?'true':'false'};
+        return null;
+      }
+
+      function hasSideEffectNode(node){
+        var found=false;
+        (function w(n){ if(found||!n||typeof n!=='object')return; if(Array.isArray(n)){for(var i=0;i<n.length;i++)w(n[i]);return;}
+          if(n.type==='CallExpression'||n.type==='StringCallExpression'||n.type==='TableCallExpression'){found=true;return;}
+          // IndexExpression(obj[k]) 本身不是副作用：只有 base/index 里嵌套的调用才是。递归探查。
+          for(var k in n){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(n,k))w(n[k]);} })(node);
+        return found;
+      }
+
       // 归一一个【读取语境】的表达式
       function normExpr(node){
         if(node===null||typeof node!=='object') return node;
@@ -287,6 +484,8 @@
             // （内容用 X，与 normExpr 在 StringLiteral 自然路径上的产出一致）。
             if(aliasLocalNames.has(b.name) && stringOfAlias.hasOwnProperty(b.name))
               return {type:'StringLiteral', content:stringOfAlias[b.name]};
+            // 只读字面量别名：读 t ≡ 读其字面量（反向纠错验证基础）
+            if(autoLitByBinding.has(b)) return autoLitByBinding.get(b);
             return {type:'Identifier', kind:'local', n: idFor(b, curVersion(b))};
           }
           return {type:'Identifier', kind:'global', name:node.name};
@@ -296,6 +495,11 @@
         if(node.type==='StringLiteral'){
           var sc=stringContent(node);
           return {type:'StringLiteral', content: sc!==null ? sc : node.raw};
+        }
+        if(node.type==='NumericLiteral'){
+          var raw=node.raw||'';
+          var isInt=/^[+-]?\d+$/.test(raw)||/^0[xX][0-9a-fA-F]+$/.test(raw);
+          return {type:'NumericLiteral', value:node.value, isInt:isInt};
         }
         if(node.type==='MemberExpression' && node.indexer==='.')
           return normAccess(node.base, node.identifier.name, null);
@@ -317,6 +521,11 @@
             if(ib && fieldOfAlias.hasOwnProperty(ib.name)) return normAccess(node.base, fieldOfAlias[ib.name], null);
             // 字符串字面量别名：obj[u] 与 obj['X'] 等价 → obj.X
             if(ib && stringOfAlias.hasOwnProperty(ib.name)) return normAccess(node.base, stringOfAlias[ib.name], null);
+            // 只读字面量别名用作索引：obj[e]（e='X'）≡ obj['X'] ≡ obj.X，与点访问统一标准形
+            if(ib && autoLitByBinding.has(ib)){
+              var lit=autoLitByBinding.get(ib);
+              if(lit && lit.type==='StringLiteral') return normAccess(node.base, lit.content, null);
+            }
           }
           // 前缀因子拼接：obj[U..'rest']  其中 U 是已登记的前缀因子局部 → 还原为 obj.<prefix+rest>
           //   也支持 obj['lit'..U]（虽然当前只用前缀拼接，对称处理使后续后缀因子也能用同一机制）
@@ -349,6 +558,23 @@
         }
         if(node.type==='FunctionDeclaration')
           return normFunction(node);
+        // 常量折叠归一
+        var cf=constFold(node);
+        if(cf!==null) return cf;
+        // 比较运算归一：a OP b ≡ b FLIP(OP) a（操作数字典序），仅当至多一侧有副作用
+        if(node.type==='BinaryExpression'){
+          var op2=node.operator;
+          if(op2==='<'||op2==='>'||op2==='<='||op2==='>='||op2==='=='||op2==='~='){
+            var lse=hasSideEffectNode(node.left), rse=hasSideEffectNode(node.right);
+            if(!(lse&&rse)){
+              var LA=normExpr(node.left), RA=normExpr(node.right);
+              var sa=JSON.stringify(LA), sb=JSON.stringify(RA);
+              if(sa<=sb) return {type:'BinaryExpression', operator:op2, left:LA, right:RA};
+              var flip2={'<':'>','>':'<','<=':'>=','>=':'<='}[op2];
+              return {type:'BinaryExpression', operator:(flip2||op2), left:RA, right:LA};
+            }
+          }
+        }
         // 其它表达式：递归 normExpr
         var out={};
         for(var k in node){
@@ -384,7 +610,7 @@
             for(var ki=0;ki<st.variables.length;ki++){
               var kv=st.variables[ki];
               var kb=(kv.type==='Identifier' && varOf.has(kv)) ? varOf.get(kv) : null;
-              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb));
+              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb));
               if(!drop) keepIdx.push(ki);
             }
             if(keepIdx.length===0) return {type:'__DROP__'};
@@ -401,19 +627,26 @@
             return {type:'LocalDecl', vars:vars, init:inits};
           }
           case 'AssignmentStatement': {
-            var rhs=(st.init||[]).map(normExpr);              // 先求值 RHS
-            var tgts=st.variables.map(function(v){
-              // 对"局部变量名"作为赋值目标 → 视作新版本定义（用户点2）
+            // 先过滤被"别名归一/死纯归一/透明别名"删除的赋值目标（其"赋值即声明"应被删除）
+            var keepRawVars=[], keepRawInits=[];
+            for(var ai=0; ai<st.variables.length; ai++){
+              var rawV=st.variables[ai];
+              var kb=(rawV.type==='Identifier' && varOf.has(rawV) && varOf.get(rawV)) ? varOf.get(rawV) : null;
+              if(kb && (autoTAByBinding.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb))) continue;
+              keepRawVars.push(rawV);
+              keepRawInits.push(st.init ? st.init[ai] : undefined);
+            }
+            if(keepRawVars.length===0) return {type:'__DROP__'};
+            var rhs=keepRawInits.map(function(e){ return e ? normExpr(e) : {type:'NilLiteral'}; });  // 先求值 RHS
+            var tgts=keepRawVars.map(function(v){
               if(v.type==='Identifier' && varOf.has(v) && varOf.get(v)){
                 var b=varOf.get(v);
                 if(aliasLocalNames.has(b.name)) return normExpr(v);
                 var nv=bumpDef(b); return {type:'Identifier',kind:'local',n:idFor(b,nv)};
               }
-              return normExpr(v); // 全局/成员赋值目标：按普通表达式（含字段归一）
+              return normExpr(v);
             });
-            // 关键：把 LocalDecl 与"对局部的简单赋值"归一成同一种节点 'Def'，
-            // 从而 `local b=e` ≡ 复用产生的 `a=e`（a 为局部）结构一致。
-            var allLocalTargets = st.variables.every(function(v){ return v.type==='Identifier' && varOf.has(v) && varOf.get(v) && !aliasLocalNames.has(varOf.get(v).name); });
+            var allLocalTargets = keepRawVars.every(function(v){ return v.type==='Identifier' && varOf.has(v) && varOf.get(v) && !aliasLocalNames.has(varOf.get(v).name); });
             if(allLocalTargets) return {type:'LocalDecl', vars:tgts, init:rhs};
             return {type:'Assign', targets:tgts, init:rhs};
           }
@@ -500,7 +733,8 @@
           case 'FunctionDeclaration': {
             if(st.isLocal && st.identifier && st.identifier.type==='Identifier' && varOf.has(st.identifier)){
               var b=varOf.get(st.identifier); var nv=bumpDef(b);
-              return {type:'LocalFunc', name:{type:'Identifier',kind:'local',n:idFor(b,nv)}, fn:normFunction(st)};
+              // local function f() end ≡ local f=function() end：归一为 LocalDecl，与合并后的 local a,f=... 同形
+              return {type:'LocalDecl', vars:[{type:'Identifier',kind:'local',n:idFor(b,nv)}], init:[normFunction(st)]};
             }
             return {type:'GlobalFunc', name:normExpr(st.identifier), fn:normFunction(st)};
           }
