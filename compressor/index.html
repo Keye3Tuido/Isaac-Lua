@@ -315,24 +315,12 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
         }
       });
     } else {
-      // 普通模式：带进度回调的异步压缩
-      $bar.style.width='0%'; $bar.textContent='';
-      $plabel.textContent='压缩中…';
-      $progress.classList.add('active');
-      engine.compress(input, {
-        onProgress: function(p){
-          var pct=Math.round(p.current/p.total*100);
-          $bar.style.width=pct+'%';
-          $bar.textContent=pct+'%';
-        },
-        stageCallback: function(name){
-          $plabel.textContent='压缩中 · '+name;
-        },
-        _error: doError,
-        _done: function(rep){
-          showResult(rep, null);
-        }
-      });
+      // 普通模式（无搜索）：同步压缩，亚秒级，无需进度条
+      try {
+        showResult(engine.compress(input), null);
+      } catch (e) {
+        doError(e);
+      }
     }
   };
 

@@ -214,7 +214,6 @@
           })(ast.body);
         }
       })();
-      function autoTAGlobal(b){ return autoTAByBinding.has(b) ? autoTAByBinding.get(b) : null; }
 
       // ---- 只读字面量别名归一（literal copy-propagation 标准形）----
       // 形态：local t=1000000 / local u='X' / local f=false（单声明、从不被赋值、init 为字面量），

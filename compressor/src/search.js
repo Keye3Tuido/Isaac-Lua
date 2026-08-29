@@ -1,21 +1,15 @@
-/* LuaMin part: search — 搜索优化器 v2
+/* LuaMin part: search — 搜索优化器（beam search）
  *
  * 规则系统做的是"可静态证明安全"的贪心优化。
- * 搜索层在规则系统输出之上尝试候选变换，用 canonical 严格验证等价。
+ * 搜索层在其输出之上做 beam search：维护一个候选束（宽 K），每轮从最短的
+ * K 个候选出发，套用 MOVES 里所有"变换"，并对一级变换结果再做一层不同变换
+ * （两两穿插组合），随后重跑规则系统让后续 pass 在新结构上生效。
+ * 所有候选必须通过 canonical(原始) == canonical(候选)，同一等价类只保留最短者。
  *
- * 变换 1：表达式提取
- *   规则系统不提取带函数调用/索引链的重复子表达式（害怕 __index 副作用、
- *   函数调用重复求值）。搜索层尝试提取并用 canonical 验证。
- *
- * 变换 2：激进变量复用
- *   规则系统的 foldReuse 对 SSA 保守判负时回退。搜索层放宽门槛，
- *   用 canonical 做最终裁定。
- *
- * 变换 3：迭代重压缩
- *   每次变换后重新跑规则系统管道，让后续优化（local 合并、多赋值拆分等）
- *   在新结构上生效。
- *
- * 安全兜底：所有候选必须通过 canonical(原始) == canonical(候选) 等价验证。
+ * move 集合（unsafe-but-verifiable：规则系统因保守而不敢做的变换）：
+ *   - 表达式提取：带调用/索引链的重复子表达式
+ *   - 激进变量复用 / 跨作用域复用：放宽规则系统的复用门槛
+ * 阶段2/3 从语料挖掘出的新变换追加进 MOVES 即可参与穿插。
  */
 (function(root){
   'use strict';
@@ -139,10 +133,10 @@
 
       // 收集重复出现的表达式（规则系统不处理的大块重复）
       var exprs = [];
-      (function walk(node, inCall) {
+      (function walk(node) {
         if (!node || typeof node !== 'object') return;
         if (Array.isArray(node)) {
-          for (var i = 0; i < node.length; i++) walk(node[i], inCall);
+          for (var i = 0; i < node.length; i++) walk(node[i]);
           return;
         }
 
@@ -167,9 +161,9 @@
 
         for (var k in node) {
           if (k === 'range' || k === 'loc' || k === 'parent' || k === 'scope') continue;
-          if (Object.prototype.hasOwnProperty.call(node, k)) walk(node[k], inCall);
+          if (Object.prototype.hasOwnProperty.call(node, k)) walk(node[k]);
         }
-      })(origAst.body, false);
+      })(origAst.body);
 
       if (exprs.length < 2) return null;
 
@@ -432,6 +426,24 @@
     }
 
     // ================================================================
+    //  变换（move）注册表 + 基线配置
+    // ================================================================
+
+    // 每个 move：把一个候选正文（未重压缩）展开成若干候选正文。
+    // cand = 该 move 单次展开最多产出的候选数（一级）；二级穿插固定取 1 个最优。
+    var MOVES = [
+      { name: 'exprExtract',     cand: 3, apply: function(body, origPre, maxCand){ return genExprExtract(body, origPre, maxCand); } },
+      { name: 'aggressiveReuse', cand: 3, apply: function(body, origPre, maxCand){ return genAggressiveReuse(body, origPre, maxCand); } },
+      { name: 'crossScopeReuse', cand: 3, apply: function(body, origPre, maxCand){ return genCrossScopeReuse(body, origPre, maxCand); } }
+    ];
+
+    // 基线配置：多个互异起点（不同压缩参数），beam 从中分叉。追加配置即可拓宽搜索起点。
+    var BASELINE_CONFIGS = [
+      { blockMaxLen: 8 },
+      { blockMaxLen: 0 }
+    ];
+
+    // ================================================================
     //  入口
     // ================================================================
 
@@ -483,11 +495,10 @@
         beam.push({ body: body, result: result });
       }
 
-      // 基线：块包装开/关两种策略 + 原始端表达式提取
-      var blockMaxLens = [8, 0];
-      for (var bmi = 0; bmi < blockMaxLens.length; bmi++) {
+      // 基线：多个互异起点 + 原始端表达式提取
+      for (var bci = 0; bci < BASELINE_CONFIGS.length; bci++) {
         if (Date.now() >= deadline) break;
-        try { addCandidate(compress(input, Object.assign({}, cOpts, { blockMaxLen: blockMaxLens[bmi] }))); } catch (e) {}
+        try { addCandidate(compress(input, Object.assign({}, cOpts, BASELINE_CONFIGS[bci]))); } catch (e) {}
       }
       if (!beam.length) return compress(input, opts);
       try {
@@ -499,24 +510,35 @@
       best = beam[0].result;
       log('baseline: ' + best.bodyLength + ' chars');
 
-      // ---- Beam search：从当前最短 K 个分支，应用变换 → 重压缩 → 去重 → 再分支 ----
+      // ---- Beam search：从当前最短 K 个候选出发，套用全部 move（含两两穿插）→ 重压缩 → 去重 → 再分支 ----
       var K = beamWidth;
-      var maxRounds = 6;   // 无时间限制时的轮次上限；正常靠"连续两轮无改善"收敛
+      var maxRounds = 6;   // 轮次上限；正常靠"连续两轮无改善"收敛
       var rounds = 0;
       var noImprove = 0;
       while (rounds < maxRounds && Date.now() < deadline) {
         rounds++;
         var prevBestLen = best.bodyLength;
-        var cur = beam.slice(0, K);
-        for (var bi = 0; bi < cur.length; bi++) {
-          var cand = cur[bi];
-          var mods = [];
-          mods = mods.concat(genExprExtract(cand.body, origPre, 3));
-          mods = mods.concat(genAggressiveReuse(cand.body, origPre, 3));
-          mods = mods.concat(genCrossScopeReuse(cand.body, origPre, 3));
-          for (var mi = 0; mi < mods.length; mi++) {
-            if (Date.now() >= deadline) break;
-            try { addCandidate(compress(mods[mi], fastOpts)); } catch (e) {}
+        var frontier = beam.slice(0, K);   // K 控制每轮扩展多少个候选（束宽）
+        for (var bi = 0; bi < frontier.length; bi++) {
+          var cand = frontier[bi];
+          for (var mi = 0; mi < MOVES.length; mi++) {
+            var move = MOVES[mi];
+            var mods;
+            try { mods = move.apply(cand.body, origPre, move.cand); } catch (e) { mods = []; }
+            for (var xi = 0; xi < mods.length; xi++) {
+              if (Date.now() >= deadline) break;
+              try { addCandidate(compress(mods[xi], fastOpts)); } catch (e) {}
+              // 穿插：对一级变换结果再套一层不同 move（组合变换，深度 2）
+              for (var m2 = 0; m2 < MOVES.length; m2++) {
+                if (m2 === mi) continue;
+                var composed;
+                try { composed = MOVES[m2].apply(mods[xi], origPre, 1); } catch (e) { composed = []; }
+                for (var ci = 0; ci < composed.length; ci++) {
+                  if (Date.now() >= deadline) break;
+                  try { addCandidate(compress(composed[ci], fastOpts)); } catch (e) {}
+                }
+              }
+            }
           }
         }
         beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
@@ -527,10 +549,12 @@
       }
 
       var elapsed = Date.now() - startTime;
-      var origBest = compress(input, opts);
-      var saved = origBest.bodyLength - best.bodyLength;
-      log('done: ' + elapsed + 'ms, ' + beam.length + ' candidates, ' + rounds +
-        ' rounds, saved ' + saved + ' chars (' + origBest.bodyLength + ' → ' + best.bodyLength + ')');
+      if (verbose) {
+        var origBest = compress(input, opts);
+        var saved = origBest.bodyLength - best.bodyLength;
+        log('done: ' + elapsed + 'ms, ' + beam.length + ' candidates, ' + rounds +
+          ' rounds, saved ' + saved + ' chars (' + origBest.bodyLength + ' → ' + best.bodyLength + ')');
+      }
 
       // 统一 originalLength/original 为顶层输入
       best.originalLength = input.length;

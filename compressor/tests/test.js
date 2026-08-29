@@ -146,7 +146,7 @@ Object.keys(cases).forEach(k=>tryCompress(k, cases[k]));
 (function(){
   const src='local a=f()\nprint(a)\ndo local b=g()print(b)end';
   const base=LuaMin.compress(src);
-  const deep=LuaMin.searchOptimize(src,{budget:1000,maxIters:50});
+  const deep=LuaMin.searchOptimize(src,{budget:1000});
   ok('search-cross-scope/shorter', deep.bodyLength<base.bodyLength, base.bodyLength+' -> '+deep.bodyLength);
   ok('search-cross-scope/equiv', semEq(LuaMin._preprocess(src),deep.output.replace(/^l /,''),deep.aliasMapInfo)===true, deep.output);
 })();
