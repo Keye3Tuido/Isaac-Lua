@@ -465,10 +465,22 @@
       { name: 'declHoist',       cand: 1, apply: wrapFold(foldDeclHoist) }
     ];
 
-    // 基线配置：多个互异起点（不同压缩参数），beam 从中分叉。追加配置即可拓宽搜索起点。
+    // 基线配置：多个互异起点（不同压缩参数 + 不同 fold 顺序），beam 从中分叉。
+    // fold 顺序预设：把最"顺序敏感"的抽取类 fold 前移，探索"先A后B vs 先B后A"。
+    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','constant','constCondition','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist'];
+    function reorderFold(moveKey, beforeKey){
+      var o = DEFAULT_FOLD_ORDER.slice();
+      var mi = o.indexOf(moveKey);
+      if(mi>=0){ o.splice(mi,1); var bi=o.indexOf(beforeKey); if(bi>=0) o.splice(bi,0,moveKey); else o.push(moveKey); }
+      return o;
+    }
     var BASELINE_CONFIGS = [
       { blockMaxLen: 8 },
-      { blockMaxLen: 0 }
+      { blockMaxLen: 0 },
+      { blockMaxLen: 8, foldOrder: reorderFold('blockWrapper','callSugar') },
+      { blockMaxLen: 8, foldOrder: reorderFold('stringFactors','stringLiterals') },
+      { blockMaxLen: 8, foldOrder: reorderFold('blockWrapper','methods') },
+      { blockMaxLen: 8, foldOrder: reorderFold('reuse','locals') }
     ];
 
     // ================================================================
