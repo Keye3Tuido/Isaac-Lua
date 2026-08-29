@@ -1677,6 +1677,45 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
+    // ---------- 常量循环折叠（while/repeat 恒真/恒假条件 → 删除或归一） ----------
+    //   while false do A end      → 空（体绝不执行）
+    //   repeat A until true       → do A end（体恰执行一次，保留作用域；A 空则删）
+    //   repeat A until false      → while true do A end（等价无限循环，归一更短）
+    // canonical 的 While/Repeat 常量归一与 flattenEmptyDo 两侧一致施加，等价校验自然通过。
+    function foldConstLoop(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='WhileStatement' && n.condition && n.condition.type==='BooleanLiteral' && !n.condition.value && n.range){
+          edits.push({start:n.range[0], end:n.range[1], name:''});   // while false do ... end → 删除
+          return;
+        }
+        if(n.type==='RepeatStatement' && n.condition && n.condition.type==='BooleanLiteral' && n.range){
+          var body=n.body||[];
+          var inner = body.length ? src.slice(body[0].range[0], body[body.length-1].range[1]) : '';
+          var name;
+          if(n.condition.value){
+            name = body.length ? ('do '+inner+' end') : '';          // repeat A until true → do A end
+          } else {
+            name = 'while true do '+inner+' end';                    // repeat A until false → while true do A end
+          }
+          edits.push({start:n.range[0], end:n.range[1], name:name});
+          return;
+        }
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'const-loop/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'const-loop/等价', steps);
+      if(rec) rec('常量循环折叠(提交)', src.length, candidate.length, '折叠 '+edits.length+' 处常量循环');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
     // ---------- 表字段赋值 → 表构造器（local M={} M.X=v M.Y=w → local M={X=v,Y=w}） ----------
     // 仅合并紧邻声明的点访问赋值；字段值不得引用 M（否则构造器里对 M 的读会指到外层 M，语义不同）。
     // canonical 的 mergeTableFields 归一保证两侧等价；"M 不再被读"的退化情形由 canCommit 拒绝。
@@ -1999,6 +2038,6 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

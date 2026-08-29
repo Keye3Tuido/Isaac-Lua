@@ -827,6 +827,9 @@
             return {type:'If', clauses:clauses};
           }
           case 'WhileStatement': {
+            // 常量条件归一：while false do A end ≡ 空（体绝不执行）
+            var wc = constValue(st.condition);
+            if(wc && wc.kind==='bool' && !wc.v) return {type:'__DROP__'};
             var cond=normExpr(st.condition);
             var snap=new Map(curVer);
             var body=normBlock(st.body||[]);
@@ -836,11 +839,17 @@
             return {type:'While', cond:cond, body:body};
           }
           case 'RepeatStatement': {
+            // 常量条件归一：repeat A until true ≡ do A end（恰执行一次）；until false ≡ while true do A end
+            var rc = constValue(st.condition);
             var snap2=new Map(curVer);
             var body2=normBlock(st.body||[]);
-            var cond2=normExpr(st.condition);
             var t2=new Set(); curVer.forEach(function(ver,b){ if(snap2.get(b)!==ver) t2.add(b); });
             curVer=new Map(snap2); t2.forEach(function(b){bumpDef(b);});
+            if(rc && rc.kind==='bool'){
+              if(!rc.v) return {type:'While', cond:{type:'BooleanLiteral', value:true, raw:'true'}, body:body2};
+              return {type:'Do', body:body2};
+            }
+            var cond2=normExpr(st.condition);
             return {type:'Repeat', cond:cond2, body:body2};
           }
           case 'DoStatement': return {type:'Do', body:normBlock(st.body||[])};

@@ -566,6 +566,7 @@
       while (rounds < maxRounds && Date.now() < deadline) {
         rounds++;
         var prevBestLen = best.bodyLength;
+        var prevBeamLen = beam.length;
         var frontier = beam.slice(0, K);   // K 控制每轮扩展多少个候选（束宽）
         for (var bi = 0; bi < frontier.length; bi++) {
           var cand = frontier[bi];
@@ -593,8 +594,12 @@
         }
         beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
         if (beam[0].result.bodyLength < best.bodyLength) best = beam[0].result;
-        if (best.bodyLength < prevBestLen) noImprove = 0;
+        var improved = best.bodyLength < prevBestLen;
+        var grew = beam.length > prevBeamLen;
+        if (improved) noImprove = 0;
         else noImprove++;
+        // 若一轮既没改善又没新增候选，则搜索已饱和（尤其当候选总数 < K 时），无需再多轮无用搜索。
+        if (!improved && !grew) break;
         if (noImprove >= 2) break;   // 连续两轮无改善即收敛
       }
 
