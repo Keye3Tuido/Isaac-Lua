@@ -25,3 +25,8 @@ compressor/tests/_bulk_test_repos/
 
 # GitHub Pages éƒ¨ç½²ç›®å½•ï¼ˆå·¥ä½œæµä¸´æ—¶ç»„è£…ï¼Œä¸å…¥åº“ï¼‰
 /_site/
+
+# darklua µÚÈı·½»ù×¼¹¤¾ß¶ş½øÖÆ£¨±¾µØÏÂÔØ£¬²»Èë¿â£©
+/darklua-windows-x86_64.zip
+/darklua_bin/
+
