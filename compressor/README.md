@@ -70,7 +70,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.1c 只读内联（只读字面量/常量别名 copy-propagation + 死纯局部消除）
 1.1d 常量折叠（整数 ±、字符串 ..、not 布尔；递归求值）
 1.1d2 常量条件折叠（`if true/false then A else B end` → `A`/`B`，含局部时才保留 `do..end`）
-1.1d2b 常量循环折叠（`while false do A end` → 删；`repeat A until true` → `do A end`；`repeat A until false` → `while true do A end`）
+1.1d2b 常量循环折叠（`while false do A end` → 删；`repeat A until true` → `A`（无局部）/`do A end`（有局部）；`repeat A until false` → `while 1 do A end`；条件位 `true` → `1`）
 1.1d3 表字段合并（`local M={} M.X=v M.Y=w` → `local M={X=v,Y=w}`；字段值不得引用 M）
 1.1e 布尔别名（true/false 提取别名）
 1.1f 数字归一（0.X → .X）

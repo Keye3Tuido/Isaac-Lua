@@ -1684,6 +1684,14 @@
     // canonical 的 While/Repeat 常量归一与 flattenEmptyDo 两侧一致施加，等价校验自然通过。
     function foldConstLoop(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
+      function bodyHasLocals(body){
+        for(var i=0;i<body.length;i++){
+          var t=body[i].type;
+          if(t==='LocalStatement'||t==='ForNumericStatement'||t==='ForGenericStatement') return true;
+          if(t==='FunctionDeclaration' && body[i].isLocal) return true;
+        }
+        return false;
+      }
       var edits=[];
       (function walk(n){
         if(!n||typeof n!=='object') return;
@@ -1692,14 +1700,21 @@
           edits.push({start:n.range[0], end:n.range[1], name:''});   // while false do ... end → 删除
           return;
         }
+        if(n.type==='WhileStatement' && n.condition && n.condition.type==='BooleanLiteral' && n.condition.value && n.condition.range){
+          edits.push({start:n.condition.range[0], end:n.condition.range[1], name:'1'});   // while true → while 1（条件位只看真值，省 3 字）
+          // 不 return，继续递归体里可能的嵌套循环
+        }
         if(n.type==='RepeatStatement' && n.condition && n.condition.type==='BooleanLiteral' && n.range){
           var body=n.body||[];
           var inner = body.length ? src.slice(body[0].range[0], body[body.length-1].range[1]) : '';
           var name;
           if(n.condition.value){
-            name = body.length ? ('do '+inner+' end') : '';          // repeat A until true → do A end
+            // repeat A until true → A（无局部）/ do A end（有局部）/ 空（A 空）
+            if(!body.length) name = '';
+            else if(bodyHasLocals(body)) name = 'do '+inner+' end';
+            else name = inner;
           } else {
-            name = 'while true do '+inner+' end';                    // repeat A until false → while true do A end
+            name = 'while 1 do '+inner+' end';                       // repeat A until false → while 1 do A end（恒真条件用 1 更短）
           }
           edits.push({start:n.range[0], end:n.range[1], name:name});
           return;

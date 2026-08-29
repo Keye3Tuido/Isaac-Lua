@@ -545,6 +545,16 @@
         if(cv.kind==='bool') return {type:'BooleanLiteral', value:cv.v, raw:cv.v?'true':'false'};
         return null;
       }
+      // 条件真值判定：返回 true（恒真）/ false（恒假）/ null（未知）。
+      // 用于循环/分支条件归一——在"条件位置"只看真值，`true`≡`1`≡`'x'`（恒真）、`false`≡`nil`（恒假）。
+      function condTruthy(node){
+        var cv=constValue(node);
+        if(cv===null) return null;
+        if(cv.kind==='bool') return cv.v;
+        if(cv.kind==='int') return cv.v!==0;
+        if(cv.kind==='str') return cv.v!=='';
+        return null;
+      }
 
       function hasSideEffectNode(node){
         var found=false;
@@ -780,11 +790,11 @@
           }
           case 'ReturnStatement': return {type:'Return', args:(st.arguments||[]).map(normExpr)};
           case 'IfStatement': {
-            // 常量条件折叠归一：if <bool常量> then A else B end ≡ do A end / do B end。
-            // 用 constValue 解析条件（含布尔别名 Y→true），纯布尔常量时归一为对应分支的 Do 块。
-            var cc0 = st.clauses && st.clauses[0] && st.clauses[0].condition ? constValue(st.clauses[0].condition) : null;
-            if(cc0 && cc0.kind === 'bool'){
-              var takenBody = cc0.v ? (st.clauses[0].body||[]) : (st.clauses[1] && st.clauses[1].body ? st.clauses[1].body : []);
+            // 常量条件折叠归一（真值语义）：if <常量> then A else B end ≡ do A end / do B end。
+            // 用 condTruthy 解析条件（含别名 Y→true/1/'x'），恒真/恒假时归一为对应分支的 Do 块。
+            var ct0 = st.clauses && st.clauses[0] && st.clauses[0].condition ? condTruthy(st.clauses[0].condition) : null;
+            if(ct0 !== null){
+              var takenBody = ct0 ? (st.clauses[0].body||[]) : (st.clauses[1] && st.clauses[1].body ? st.clauses[1].body : []);
               return {type:'Do', body: normBlock(takenBody)};
             }
             // if-not 二择归一：`if not C then A else B end` ≡ `if C then B else A end`。
@@ -827,10 +837,10 @@
             return {type:'If', clauses:clauses};
           }
           case 'WhileStatement': {
-            // 常量条件归一：while false do A end ≡ 空（体绝不执行）
-            var wc = constValue(st.condition);
-            if(wc && wc.kind==='bool' && !wc.v) return {type:'__DROP__'};
-            var cond=normExpr(st.condition);
+            // 常量条件归一（真值语义）：while false/nil ≡ 空（体绝不执行）；while true/1/'x' ≡ while true
+            var wt = condTruthy(st.condition);
+            if(wt === false) return {type:'__DROP__'};
+            var cond = (wt === true) ? {type:'BooleanLiteral', value:true, raw:'true'} : normExpr(st.condition);
             var snap=new Map(curVer);
             var body=normBlock(st.body||[]);
             // 循环体可能重定义 → 合并点提升
@@ -839,14 +849,14 @@
             return {type:'While', cond:cond, body:body};
           }
           case 'RepeatStatement': {
-            // 常量条件归一：repeat A until true ≡ do A end（恰执行一次）；until false ≡ while true do A end
-            var rc = constValue(st.condition);
+            // 常量条件归一（真值语义）：repeat A until true/1 ≡ do A end；until false/nil ≡ while true do A end
+            var rt = condTruthy(st.condition);
             var snap2=new Map(curVer);
             var body2=normBlock(st.body||[]);
             var t2=new Set(); curVer.forEach(function(ver,b){ if(snap2.get(b)!==ver) t2.add(b); });
             curVer=new Map(snap2); t2.forEach(function(b){bumpDef(b);});
-            if(rc && rc.kind==='bool'){
-              if(!rc.v) return {type:'While', cond:{type:'BooleanLiteral', value:true, raw:'true'}, body:body2};
+            if(rt !== null){
+              if(rt === false) return {type:'While', cond:{type:'BooleanLiteral', value:true, raw:'true'}, body:body2};
               return {type:'Do', body:body2};
             }
             var cond2=normExpr(st.condition);
