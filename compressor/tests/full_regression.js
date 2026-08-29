@@ -14,7 +14,6 @@ const specs = [
   ['unit', 'test.js', []],
   ['edge', 'edge.js', []],
   ['real', 'realtest.js', []],
-  ['pipelineParity', 'test_pipeline_parity.js', []],
   ['validationCache', 'test_validation_cache.js', []],
   ['semicolon', 'test_semicolon_elision.js', []],
   ['transparent', 'test_transparent_elision.js', []],

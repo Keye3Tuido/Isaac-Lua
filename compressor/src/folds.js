@@ -1745,22 +1745,24 @@
     //   canonical 的 normGuardedFunctionBody 归一两侧一致施加，等价校验自然通过。
     function foldEarlyReturn(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
-      function isGuard(st){
-        return st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
-          && st.clauses[0].type==='IfClause'
-          && st.clauses[0].body && st.clauses[0].body.length===1
-          && st.clauses[0].body[0].type==='ReturnStatement'
-          && (!st.clauses[0].body[0].arguments || st.clauses[0].body[0].arguments.length===0)
-          && st.clauses[0].condition && st.clauses[0].condition.range;
+      function isGuard(st, target){
+        if(!(st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
+           && st.clauses[0].type==='IfClause'
+           && st.clauses[0].body && st.clauses[0].body.length===1
+           && st.clauses[0].condition && st.clauses[0].condition.range)) return false;
+        var inner=st.clauses[0].body[0];
+        if(target==='return') return inner.type==='ReturnStatement' && (!inner.arguments || inner.arguments.length===0);
+        if(target==='break') return inner.type==='BreakStatement';
+        return false;
       }
       var edits=[];
-      function processBody(body){
+      function processBody(body, target){
         if(!body || body.length < 2) return;
         var i=0;
-        while(i<body.length && isGuard(body[i])) i++;
+        while(i<body.length && isGuard(body[i], target)) i++;
         if(i===0) return;
         var rest=body.slice(i);
-        if(!rest.length) return;   // 全是守卫无后续体：等价于空函数，但不比空更短，跳过
+        if(!rest.length) return;   // 全是守卫无后续体：等价于空块，但不比空更短，跳过
         var conds=[];
         for(var c=0;c<i;c++) conds.push(src.slice(body[c].clauses[0].condition.range[0], body[c].clauses[0].condition.range[1]));
         var inner=src.slice(rest[0].range[0], rest[rest.length-1].range[1]);
@@ -1770,7 +1772,10 @@
       (function walk(n){
         if(!n||typeof n!=='object') return;
         if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
-        if(n.type==='FunctionDeclaration'){ processBody(n.body); walk(n.body); return; }
+        if(n.type==='FunctionDeclaration'){ processBody(n.body, 'return'); walk(n.body); return; }
+        if(n.type==='WhileStatement'||n.type==='RepeatStatement'||n.type==='ForNumericStatement'||n.type==='ForGenericStatement'){
+          processBody(n.body, 'break'); walk(n.body); return;
+        }
         for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
       })(ast.body);
       if(!edits.length) return null;
@@ -1779,7 +1784,7 @@
       if(!canCommit(originalCode, candidate, priorAlias)) return null;
       assertParses(candidate, 'early-return/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, 'early-return/等价', steps);
-      if(rec) rec('早返回守卫折叠(提交)', src.length, candidate.length, '合并 '+edits.length+' 处早返回守卫');
+      if(rec) rec('早返回守卫折叠(提交)', src.length, candidate.length, '合并 '+edits.length+' 处早返回/早退出守卫');
       return {code:candidate, aliasMap:priorAlias};
     }
 

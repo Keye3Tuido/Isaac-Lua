@@ -503,11 +503,6 @@
       if (verbose) log = function(s) { console.log('[search]', s); };
       else log = function(){};
 
-      // 若提供了 onProgress 回调，使用异步分段执行
-      if (opts.onProgress){
-        return searchOptimizeAsync(input, opts);
-      }
-
       var startTime = Date.now();
       var deadline = (opts._deadline != null) ? opts._deadline
                    : ((budget != null && budget >= 0) ? (startTime + budget) : Infinity);
@@ -627,26 +622,6 @@
       }
 
       return best;
-    }
-
-    // 异步版搜索优化器：委托给同步 beam search（浏览器里用 setTimeout 让 UI 先刷一帧）。
-    function searchOptimizeAsync(input, opts){
-      var onProgress = opts.onProgress;
-      var syncOpts = Object.assign({}, opts);
-      delete syncOpts.onProgress;
-      delete syncOpts._error;
-      delete syncOpts._done;
-      if (onProgress) onProgress({phase:'search', round:0, step:'beam search', len:0});
-      setTimeout(function(){
-        var result;
-        try { result = searchOptimize(input, syncOpts); }
-        catch (e) {
-          if (opts._error) opts._error(e);
-          else if (opts._done) opts._done(null);
-          return;
-        }
-        if (opts._done) opts._done(result);
-      }, 30);
     }
 
     C.searchOptimize = searchOptimize;

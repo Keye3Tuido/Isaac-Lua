@@ -46,11 +46,11 @@ console.log(result.output);  // l <压缩后的单行代码>
 - `src/compress.js` — 单一阶段注册表 + 同步/异步执行器、多阈值策略、异步进度回调
 - `src/search.js` — 搜索优化器（**beam search**：表达式提取、激进/跨作用域变量复用、块包装策略分支；canonical 验证兜底）
 
-**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；同步与带进度的异步压缩共享同一阶段表，由 `tests/test_pipeline_parity.js` 校验报告和输出一致。
+**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；压缩全程同步（无进度条/无异步等待），阶段列表按实际执行顺序输出。
 
 **UI 特性**：
-- 压缩进度条：逐阶段实时更新，显示当前阶段名和百分比
 - 搜索优化级数下拉框：0=关闭（只用规则系统），1~32=beam search 束宽 K（越大搜得越深、越慢）
+- 压缩阶段列表：按实际执行顺序展示每个阶段，可点开查看相对上一阶段的 diff
 - 压缩期间按钮禁用防重复点击
 
 **搜索层做什么**：规则系统（`compress`）做的是「可静态证明安全」的贪心优化。搜索层（`searchOptimize`）用 **beam search** 在规则系统输出之上做第二轮搜索：维护一个候选束（默认宽 4），从当前最短的若干候选出发，套用 **move 集合**——既含规则系统因保守而不敢做的窄变换（提取带调用/索引链的重复子表达式、放宽变量复用门槛、跨作用域复用），也含把**抽取类折叠**（字面值内联/字符串因子/块包装/方法折叠/字段前缀/变量复用/声明上提）包装成的可组合 move（`aliasMap` 随候选线程化），并对一级结果再套一层不同 move（深度-2），从而探索"**先 A 后 B vs 先 B 后 A**"的不同操作顺序。此外 `compress` 的 fold 顺序本身已参数化（`opts.foldOrder`），搜索基线内置若干**顺序预设**（块包装提前、字符串因子提前、复用提前等）作为互异起点，让"折叠顺序"成为搜索维度而非事后补丁。每次变换后重跑规则系统让后续 pass 在新结构上生效，用 **canonical 等价去重**（同一等价类只保留最短者）+ 只缩短才提交兜底，连续两轮无改善即收敛，并迭代到幂等固定点。
@@ -71,7 +71,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.1d 常量折叠（整数 ±、字符串 ..、not 布尔；递归求值）
 1.1d2 常量条件折叠（`if true/false then A else B end` → `A`/`B`，含局部时才保留 `do..end`）
 1.1d2b 常量循环折叠（`while false do A end` → 删；`repeat A until true` → `A`（无局部）/`do A end`（有局部）；`repeat A until false` → `while 1 do A end`；条件位 `true` → `1`）
-1.1d2c 早返回守卫折叠（函数体开头连续 `if c then return end` 合并为 `if not(c1 or c2...) then <rest> end`，`or` 短路保持求值顺序）
+1.1d2c 早返回/早退出守卫折叠（函数体开头连续 `if c then return end` 或循环体开头连续 `if c then break end` 合并为 `if not(c1 or c2...) then <rest> end`，`or` 短路保持求值顺序）
 1.1d2d 德摩根折叠（`not X or not Y` → `not(X and Y)`；`not X and not Y` → `not(X or Y)`，求值顺序/次数保持）
 1.1d3 表字段合并（`local M={} M.X=v M.Y=w` → `local M={X=v,Y=w}`；字段值不得引用 M）
 1.1e 布尔别名（true/false 提取别名）

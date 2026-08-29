@@ -19,7 +19,7 @@
       // 仅当启用版真的触发了 elision 时才跑第二条，避免无谓的双倍开销。
       // threshold: 全局折叠预筛选阈值，默认 8。多阈值策略会尝试不同值取最短结果。
       // 构建一次压缩流水线。同步/异步执行器共享同一组阶段，避免两套实现漂移。
-      function createPipeline(allowElision, threshold, notifyOnRecord){
+      function createPipeline(allowElision, threshold){
         var report={ok:false, stages:[], steps:[], build:[], input:input};
         var steps=report.steps;
         var build=report.build;
@@ -36,8 +36,6 @@
 
         function rec(name, beforeLen, afterLen, detail){
           build.push({name:name, before:beforeLen, after:afterLen, delta:afterLen-beforeLen, detail:detail});
-          // 保持旧同步 API：直接传 stageCallback 时，回调实际发生的构建记录。
-          if(notifyOnRecord && opts.stageCallback) opts.stageCallback(name);
         }
         function addStage(name, enabled, run){
           if(enabled!==false) stages.push({name:name, run:run});
@@ -314,54 +312,14 @@
       }
 
       function runPipeline(allowElision, threshold){
-        var pipeline=createPipeline(allowElision, threshold, true);
+        var pipeline=createPipeline(allowElision, threshold);
         for(var i=0;i<pipeline.stages.length;i++) pipeline.stages[i].run();
         return pipeline.finish();
-      }
-
-      // 异步执行器只负责调度；阶段定义与同步执行器完全相同。
-      function runPipelineAsync(allowElision, threshold, onDone){
-        var pipeline=createPipeline(allowElision, threshold, false);
-        var idx=0;
-        var hasRAF = typeof requestAnimationFrame !== 'undefined';
-
-        function schedule(fn){
-          if(hasRAF){
-            requestAnimationFrame(function(){ requestAnimationFrame(fn); });
-          } else {
-            setTimeout(fn, 0);
-          }
-        }
-        function fail(error){
-          onDone(null, error);
-        }
-        function nextStep(){
-          if(idx>=pipeline.stages.length){
-            onDone(pipeline.finish(), null);
-            return;
-          }
-          var stage=pipeline.stages[idx++];
-          try {
-            stage.run();
-            if(opts.stageCallback) opts.stageCallback(stage.name);
-          } catch(e) {
-            fail(e);
-            return;
-          }
-          schedule(nextStep);
-        }
-
-        schedule(nextStep);
       }
       // 多阈值取短策略：尝试多个全局折叠预筛选阈值，选择最短结果。
       // 对每个阈值，先跑启用 elision 的流水线；若触发了消解，再跑禁用版对比。
       var thresholds = opts.thresholds || [2,8];
       var bestResult = null;
-
-      // 若提供了 onProgress 回调，使用异步分段执行（setTimeout 让浏览器刷新进度条）
-      if(opts.onProgress){
-        return compressWithProgress(input, opts, thresholds, runPipelineAsync, doRename);
-      }
 
       for(var ti=0; ti<thresholds.length; ti++){
         var T = thresholds[ti];
@@ -387,67 +345,6 @@
       return bestResult;
     }
 
-    // 带进度回调的异步压缩（setTimeout 分段执行，让浏览器刷新进度条）
-    function compressWithProgress(input, opts, thresholds, runPipelineAsync, doRename){
-      var onProgress = opts.onProgress;
-      var bestResult = null;
-      var lastError = null;
-      var ti = 0;
-      var total = thresholds.length;
-      var hasRAF = typeof requestAnimationFrame !== 'undefined';
-
-      function schedule(fn){
-        if(hasRAF){
-          requestAnimationFrame(function(){ requestAnimationFrame(fn); });
-        } else {
-          setTimeout(fn, 16);
-        }
-      }
-      function runOne(allowElision, T, cb){
-        runPipelineAsync(allowElision, T, function(report, error){
-          if(error) lastError=error;
-          cb(report, error);
-        });
-      }
-      function finishAll(){
-        if(!bestResult){
-          if(opts._error) opts._error(lastError || new Error('所有阈值配置均压缩失败'));
-          return;
-        }
-        if(opts._done) opts._done(bestResult);
-      }
-      function tryNext(){
-        if(ti >= total){
-          finishAll();
-          return;
-        }
-
-        var T = thresholds[ti];
-        runOne(true, T, function(repElide){
-          var candidate = repElide;
-          if(!repElide){ finishThreshold(T, null); return; }
-          if(doRename && repElide.elisionUsed){
-            runOne(false, T, function(repPlain){
-              if(repPlain && repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
-              finishThreshold(T, candidate);
-            });
-          } else {
-            finishThreshold(T, candidate);
-          }
-        });
-      }
-      function finishThreshold(T, candidate){
-        if(candidate && (!bestResult || candidate.bodyLength < bestResult.bodyLength)){
-          bestResult = candidate;
-        }
-        onProgress({current: ti+1, total: total, threshold: T, len: bestResult ? bestResult.bodyLength : 0});
-        ti++;
-        schedule(tryNext);
-      }
-
-      schedule(tryNext);
-      // 不返回结果；通过 opts._done 回调传递
-    }
     C.compress=compress;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

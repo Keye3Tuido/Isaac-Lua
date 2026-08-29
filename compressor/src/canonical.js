@@ -714,20 +714,22 @@
       // 函数体：进入新的"版本环境"（参数视为各自的 v0）。为简单与健全，函数内对外层局部的
       // 赋值/捕获较复杂——但我们的复用变换被限制在"未被闭包捕获"的变量上，且函数边界两侧
       // 版本独立推进。这里对函数体内部按相同规则递归 SSA 化。
-      // 早返回守卫检测：if c then return end（单 clause、无 else、体为单条空 return）
-      function isGuardStmt(st){
-        return st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
-          && st.clauses[0].type==='IfClause'
-          && st.clauses[0].body && st.clauses[0].body.length===1
-          && st.clauses[0].body[0].type==='ReturnStatement'
-          && (!st.clauses[0].body[0].arguments || st.clauses[0].body[0].arguments.length===0);
+      // 守卫检测：if c then return end / if c then break end（单 clause、无 else、体为单条 return/break）
+      function isGuardStmt(st, target){
+        if(!(st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
+           && st.clauses[0].type==='IfClause'
+           && st.clauses[0].body && st.clauses[0].body.length===1)) return false;
+        var inner=st.clauses[0].body[0];
+        if(target==='return') return inner.type==='ReturnStatement' && (!inner.arguments || inner.arguments.length===0);
+        if(target==='break') return inner.type==='BreakStatement';
+        return false;
       }
-      // 函数体开头的连续守卫归一：
-      //   if c1 then return end if c2 then return end rest  ≡  if not(c1 or c2) then rest end
-      // 两侧一致施加，"反条件省 return"（含多重 early return）得以被验证。
-      function normGuardedFunctionBody(rawBody){
+      // 块开头的连续守卫归一（target='return' 用于函数体；'break' 用于循环体）：
+      //   if c1 then <target> end if c2 then <target> end rest  ≡  if not(c1 or c2) then rest end
+      // 两侧一致施加，"反条件省 return/break"（含多重 early return/break）得以被验证。
+      function normGuardedBody(rawBody, target){
         var i=0, conds=[];
-        while(i<rawBody.length && isGuardStmt(rawBody[i])){
+        while(i<rawBody.length && isGuardStmt(rawBody[i], target)){
           conds.push(normExpr(rawBody[i].clauses[0].condition));
           i++;
         }
@@ -742,7 +744,7 @@
       function normFunction(node){
         // 参数 binding 取 v0（声明即定义）
         (node.parameters||[]).forEach(function(p){ if(p.type==='Identifier' && varOf.has(p)){ var b=varOf.get(p); bumpDef(b); } });
-        var body=normGuardedFunctionBody(node.body||[]);
+        var body=normGuardedBody(node.body||[], 'return');
         return {type:'Function', params:(node.parameters||[]).map(function(p){
                   if(p.type==='Identifier' && varOf.has(p)){ var b=varOf.get(p); return {type:'Identifier',kind:'local',n:idFor(b,curVersion(b))}; }
                   return {type:'Vararg'};
@@ -884,7 +886,7 @@
             if(wt === false) return {type:'__DROP__'};
             var cond = (wt === true) ? {type:'BooleanLiteral', value:true, raw:'true'} : normExpr(st.condition);
             var snap=new Map(curVer);
-            var body=normBlock(st.body||[]);
+            var body=normGuardedBody(st.body||[], 'break');
             // 循环体可能重定义 → 合并点提升
             var t=new Set(); curVer.forEach(function(ver,b){ if(snap.get(b)!==ver) t.add(b); });
             curVer=new Map(snap); t.forEach(function(b){bumpDef(b);});
@@ -894,7 +896,7 @@
             // 常量条件归一（真值语义）：repeat A until true/1 ≡ do A end；until false/nil ≡ while true do A end
             var rt = condTruthy(st.condition);
             var snap2=new Map(curVer);
-            var body2=normBlock(st.body||[]);
+            var body2=normGuardedBody(st.body||[], 'break');
             var t2=new Set(); curVer.forEach(function(ver,b){ if(snap2.get(b)!==ver) t2.add(b); });
             curVer=new Map(snap2); t2.forEach(function(b){bumpDef(b);});
             if(rt !== null){
@@ -910,7 +912,7 @@
             if(st.variable && varOf.has(st.variable)) bumpDef(varOf.get(st.variable));
             var v1=(st.variable&&varOf.has(st.variable))?{type:'Identifier',kind:'local',n:idFor(varOf.get(st.variable),curVersion(varOf.get(st.variable)))}:null;
             var snap3=new Map(curVer);
-            var body3=normBlock(st.body||[]);
+            var body3=normGuardedBody(st.body||[], 'break');
             var t3=new Set(); curVer.forEach(function(ver,b){ if(snap3.get(b)!==ver) t3.add(b); });
             curVer=new Map(snap3); t3.forEach(function(b){bumpDef(b);});
             return {type:'ForNum', var:v1, start:s1, end:e1, step:st1, body:body3};
@@ -920,7 +922,7 @@
             (st.variables||[]).forEach(function(v){ if(v.type==='Identifier'&&varOf.has(v)) bumpDef(varOf.get(v)); });
             var vs=(st.variables||[]).map(function(v){ return (v.type==='Identifier'&&varOf.has(v))?{type:'Identifier',kind:'local',n:idFor(varOf.get(v),curVersion(varOf.get(v)))}:normExpr(v); });
             var snap4=new Map(curVer);
-            var body4=normBlock(st.body||[]);
+            var body4=normGuardedBody(st.body||[], 'break');
             var t4=new Set(); curVer.forEach(function(ver,b){ if(snap4.get(b)!==ver) t4.add(b); });
             curVer=new Map(snap4); t4.forEach(function(b){bumpDef(b);});
             return {type:'ForGen', vars:vs, iters:its, body:body4};
