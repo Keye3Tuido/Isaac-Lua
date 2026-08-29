@@ -21,7 +21,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - ✓ 纯静态，`file://` 直接运行，无需服务器/构建/联网
 - ✓ 每个优化阶段后都做语法+语义等价校验，**不等价则拒绝输出**
 - ✓ 支持多段输入（每行可带 `l`/`lua` 前缀），自动合并为单段
-- ✓ 测试覆盖：基础 89 + 边界 40 + 流水线一致性 26 项；仓库 43 个 Lua 文件 / 335 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
+- ✓ 测试覆盖：基础 89 + 边界 40 + 幂等(逆向回代) 44 项；仓库 43 个 Lua 文件 / 335 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
 
 ---
 
@@ -44,14 +44,14 @@ console.log(result.output);  // l <压缩后的单行代码>
 - `src/canonical.js` — SSA 版本化归一 + 等价性验证；无别名 canonical 使用精确源码键控的有界 LRU 缓存
 - `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass
 - `src/compress.js` — 单一阶段注册表 + 同步/异步执行器、多阈值策略、异步进度回调
-- `src/search.js` — 搜索优化器（**beam search**：表达式提取、激进/跨作用域变量复用、块包装策略分支；canonical 验证兜底）
+- `src/search.js` — 搜索优化器（**beam search**：表达式提取、激进/跨作用域变量复用、块包装策略分支；canonical 验证兜底）。浏览器端走分片执行（每次 compress/move 后让步一帧 + 徽标进度），Node 端走同步路径，两者结果一致
 
-**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；压缩全程同步（无进度条/无异步等待），阶段列表按实际执行顺序输出。
+**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；`compress` 全程同步（无进度条/无异步等待），阶段列表按实际执行顺序输出；浏览器端 `searchOptimize` 分片让步（每次 compress/move 后让步一帧）以保持页面响应。
 
 **UI 特性**：
 - 搜索优化级数下拉框：0=关闭（只用规则系统），1~32=beam search 束宽 K（越大搜得越深、越慢）
-- 压缩阶段列表：按实际执行顺序展示每个阶段，可点开查看相对上一阶段的 diff
-- 压缩期间按钮禁用防重复点击
+- 压缩阶段列表：按实际执行顺序展示每个阶段，可点开查看相对上一阶段的 diff（相邻阶段公共前缀/后缀裁剪，超大改动显示"diff 过大"提示而非整段红绿）
+- 压缩期间徽标实时进度（"正在计算第 n/N 个候选 · 变换 M/10"，N=最多 6 轮 × K），按钮禁用防重复点击
 
 **搜索层做什么**：规则系统（`compress`）做的是「可静态证明安全」的贪心优化。搜索层（`searchOptimize`）用 **beam search** 在规则系统输出之上做第二轮搜索：维护一个候选束（默认宽 4），从当前最短的若干候选出发，套用 **move 集合**——既含规则系统因保守而不敢做的窄变换（提取带调用/索引链的重复子表达式、放宽变量复用门槛、跨作用域复用），也含把**抽取类折叠**（字面值内联/字符串因子/块包装/方法折叠/字段前缀/变量复用/声明上提）包装成的可组合 move（`aliasMap` 随候选线程化），并对一级结果再套一层不同 move（深度-2），从而探索"**先 A 后 B vs 先 B 后 A**"的不同操作顺序。此外 `compress` 的 fold 顺序本身已参数化（`opts.foldOrder`），搜索基线内置若干**顺序预设**（块包装提前、字符串因子提前、复用提前等）作为互异起点，让"折叠顺序"成为搜索维度而非事后补丁。每次变换后重跑规则系统让后续 pass 在新结构上生效，用 **canonical 等价去重**（同一等价类只保留最短者）+ 只缩短才提交兜底，连续两轮无改善即收敛，并迭代到幂等固定点。
 
@@ -195,7 +195,7 @@ node tests/remotetest.js                # 远程：4 个真实模组 main.lua（
 node tests/bulktest.js                  # 批量：19 个开源 Lua 项目（>150 文件）
 node tests/test_incremental.js          # 增量压缩（单条vs合并）
 node tests/test_idempotency.js          # 幂等（逆向回代）：压缩结果再回代必须不变 + 等价
-node tests/test_pipeline_parity.js      # 同步/异步流水线输出、报告、错误回调一致性
+node tests/test_chunked_search.js       # 分片搜索（浏览器 onStep 路径）与同步路径结果一致性
 node tests/test_validation_cache.js      # canonical 缓存隔离、命中与语义一致性
 node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度（逐段、去注释）
 node tests/test_transparent_elision.js  # 透明别名消解专项
@@ -204,7 +204,7 @@ node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 89/89、边界 40/40、仓库真实语料 335/335 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 36/36、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 353，输出 13957 字节。
+**当前状态**：基础 89/89、边界 40/40、仓库真实语料 335/335 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 44/44、分片搜索一致性 4/4、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 391，输出 13954 字节。
 
 **语料测试口径**：仓库真实代码按「每条 `l` 段单独压缩」进行——不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐条测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 

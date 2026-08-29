@@ -7,7 +7,7 @@
     "test": "node tests/full_regression.js",
     "test:search": "node tests/test_search_compare.js",
     "test:bulk": "node tests/bulktest.js",
-    "test:local": "node tests/test.js && node tests/edge.js && node tests/realtest.js && node tests/test_pipeline_parity.js && node tests/test_validation_cache.js && node tests/snapshot.js --check",
+    "test:local": "node tests/test.js && node tests/edge.js && node tests/realtest.js && node tests/test_validation_cache.js && node tests/snapshot.js --check",
     "test:baseline": "node tests/full_regression.js --record-baseline",
     "test:bulk:offline": "node tests/bulktest.js --offline"
   },
