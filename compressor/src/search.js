@@ -126,178 +126,11 @@
     }
 
     // ================================================================
-    //  变换 1：表达式提取
+    //  原始端表达式提取：在原始（未压缩）输入端提取重复表达式
+    //  （压缩前搜索，能发现更长的重复模式；提取后再跑完整规则系统）
     // ================================================================
 
-    function tryExprExtract(bestBody, origPre, best, deadline, maxIters, count, verbose) {
-      if (bestBody.length < 40) return null;
-
-      var ast;
-      try { ast = parse(bestBody); } catch (e) { return null; }
-
-      // 收集所有表达式节点，跳过太简单的
-      var exprs = [];
-
-      var trivialTypes = {
-        Identifier: 1, NumericLiteral: 1, StringLiteral: 1,
-        BooleanLiteral: 1, NilLiteral: 1, VarargLiteral: 1,
-        MemberExpression: 1
-      };
-
-      (function walk(node) {
-        if (!node || typeof node !== 'object') return;
-        if (Array.isArray(node)) {
-          for (var i = 0; i < node.length; i++) walk(node[i]);
-          return;
-        }
-
-        if (node.range && node.range.length === 2 && node.type) {
-          var isExpr = node.type.indexOf('Expression') >= 0;
-          if (isExpr && !trivialTypes[node.type]) {
-            var txt = bestBody.slice(node.range[0], node.range[1]);
-            if (txt.length >= 5 && /[a-zA-Z_\)]/.test(txt)) {
-              exprs.push({ range: node.range, text: txt });
-            }
-          }
-          if (node.type === 'CallExpression') {
-            var ct = bestBody.slice(node.range[0], node.range[1]);
-            if (ct.length >= 5) exprs.push({ range: node.range, text: ct });
-          }
-          // 收集 IndexExpression（obj[key]）- 规则系统不折叠
-          if (node.type === 'IndexExpression') {
-            var it = bestBody.slice(node.range[0], node.range[1]);
-            if (it.length >= 6) exprs.push({ range: node.range, text: it });
-          }
-        }
-
-        for (var k in node) {
-          if (k === 'range' || k === 'loc' || k === 'parent' || k === 'scope') continue;
-          if (Object.prototype.hasOwnProperty.call(node, k)) walk(node[k]);
-        }
-      })(ast.body);
-
-      if (exprs.length < 2) return null;
-
-      // 按文本分组
-      var byText = {};
-      exprs.forEach(function(e) {
-        (byText[e.text] = byText[e.text] || []).push(e);
-      });
-
-      // 去重：每个文本保留唯一的 range（避免 AST walk 重复收集）
-      var groups = [];
-      Object.keys(byText).forEach(function(k) {
-        var sites = byText[k];
-        var seen = {};
-        var unique = [];
-        sites.forEach(function(s) {
-          var key = s.range[0] + ':' + s.range[1];
-          if (!seen[key]) { seen[key] = true; unique.push(s); }
-        });
-        if (unique.length >= 2) groups.push({ text: k, sites: unique });
-      });
-
-      // 按潜在节省排序
-      groups.sort(function(a, b) {
-        return (a.text.length * a.sites.length) - (b.text.length * b.sites.length);
-      });
-      groups.reverse();
-
-      var takenNames = collectNames(bestBody);
-      var bestResult = null;
-
-      var maxGroups = Math.min(groups.length, 8); // 只试最优的 8 组
-      for (var gi = 0; gi < maxGroups; gi++) {
-        if (count.v >= maxIters || Date.now() >= deadline) break;
-
-        var g = groups[gi];
-        var sites = g.sites;
-
-        if (sites.length < 2) continue;
-
-        // 盈亏计算
-        var aliasLen = 1; // 假设单字母别名
-        var defCost = 8 + aliasLen + g.text.length; // 'local A=expr '
-        var perUse = g.text.length - aliasLen;
-        var saving = perUse * sites.length - defCost;
-        if (saving <= 0) continue;
-
-        // 分配名字
-        var alias = pickUnusedName(bestBody, takenNames);
-        if (!alias || alias.length > 1) {
-          // 双字母别名重新核算
-          if (alias) {
-            var cost2 = 8 + 2 + g.text.length;
-            var save2 = (g.text.length - 2) * sites.length - cost2;
-            if (save2 <= 0) { delete takenNames[alias]; continue; }
-          } else {
-            continue;
-          }
-        }
-
-        // 在第一个出现位置前插入声明
-        var firstSite = sites[0];
-        var decl = 'local ' + alias + '=' + g.text + ' ';
-
-        // 找到合适的插入位置
-        var insertInfo = insertDeclBeforeExpr(bestBody, firstSite.range[0], decl);
-        var modified = insertInfo.modified;
-        var shift = decl.length; // 后续位置需要偏移
-        var insertPos = insertInfo.insertPos;
-
-        // 替换所有出现（从后往前，避免位置偏移）
-        var edits = [];
-        for (var si = 0; si < sites.length; si++) {
-          var pos = sites[si].range[0];
-          var end = sites[si].range[1];
-          if (pos >= insertPos) pos += shift;
-          if (end >= insertPos) end += shift;
-
-          // 跳过第一个出现点里与声明重叠的部分
-          if (si === 0 && pos >= insertPos && pos < insertPos + decl.length) continue;
-
-          edits.push({ pos: pos, ins: alias, delLen: end - pos });
-        }
-
-        edits.sort(function(a, b) { return b.pos - a.pos; });
-
-        for (var ei = 0; ei < edits.length; ei++) {
-          var ed = edits[ei];
-          modified = modified.slice(0, ed.pos) + ed.ins + modified.slice(ed.pos + ed.delLen);
-        }
-
-        if (!isValid(modified)) { delete takenNames[alias]; continue; }
-        if (!canonicalEq(origPre, modified, null)) { delete takenNames[alias]; continue; }
-
-        count.v++;
-
-        // 重压缩
-        try {
-          var cand = compress(modified, SEARCH_COMPRESS_OPTS);
-          if (cand && cand.ok && cand.bodyLength < best.bodyLength) {
-            var candBody = bodyOf(cand);
-            if (canonicalEq(origPre, candBody, cand.aliasMapInfo)) {
-              if (verbose) log('expr: "' + g.text.slice(0, 30) + '" x' + sites.length +
-                ' saved=' + (best.bodyLength - cand.bodyLength) + ' (was ' + best.bodyLength + ' → ' + cand.bodyLength + ')');
-              bestResult = cand;
-              break; // 接受第一个成功的改进
-            }
-          }
-        } catch (e) {}
-
-        delete takenNames[alias];
-      }
-
-      return bestResult;
-    }
-
-    // ================================================================
-    //  变换 1b：在原始（未压缩）输入端提取重复表达式
-    //  相比变换 1（在已压缩输出端搜索），本变换在压缩前搜索，能发现更长的重复模式。
-    //  提取后再跑完整规则系统，让后续优化在新结构上生效。
-    // ================================================================
-
-    function tryRawExprExtract(origPre, best, deadline, maxIters, count, verbose) {
+    function tryRawExprExtract(origPre, best, deadline, verbose) {
       if (origPre.length < 80) return null; // 太短不值得
 
       // 在原始输入端解析
@@ -374,7 +207,7 @@
 
       var maxGroups = Math.min(groups.length, 5);
       for (var gi = 0; gi < maxGroups; gi++) {
-        if (count.v >= maxIters || Date.now() >= deadline) break;
+        if (Date.now() >= deadline) break;   // 仅当显式传了 budget 才受墙钟限制
         var g = groups[gi];
 
         var alias = pickUnusedName(origPre, takenNames);
@@ -410,8 +243,6 @@
         if (!isValid(modified)) { delete takenNames[alias]; continue; }
         if (!canonicalEq(origPre, modified, null)) { delete takenNames[alias]; continue; }
 
-        count.v++;
-
         // 跑完整规则系统
         try {
           var cand = compress(modified, SEARCH_COMPRESS_OPTS);
@@ -432,231 +263,172 @@
       return bestResult;
     }
 
+
     // ================================================================
-    //  变换 2：激进变量复用
+    //  生成器（供 beam search 分支）：返回"已应用变换、尚未重压缩"的候选正文列表
     // ================================================================
 
-    function tryAggressiveReuse(bestBody, origPre, best, deadline, maxIters, count, verbose) {
-      if (bestBody.length < 40) return null;
-
-      var ast;
-      try { ast = parse(bestBody); } catch (e) { return null; }
-      var info;
-      try { info = analyze(ast); } catch (e) { return null; }
-
-      // 收集局部变量（单声明、未被捕获 — 放宽了 foldReuse 的 singleVar 限制）
-      var locals = [];
-      info.bindings.forEach(function(b) {
-        if (b.decls.length !== 1) return; // 多声明跳过
-        if (b.pinned) return; // 隐式 self 跳过
-        if (!b.decls[0].range) return;
-        locals.push({ binding: b, name: b.name, declPos: b.decls[0].range[0], scopeId: b.scope.id, captured: b.captured });
-      });
-
-      if (locals.length < 2) return null;
-
-      // 计算每个变量的最后使用位置
-      function lastUsePos(b) {
-        var last = b.decls[0].range[0];
-        b.uses.forEach(function(u) { if (u.range[1] > last) last = u.range[1]; });
-        b.decls.forEach(function(d) { if (d.range[1] > last) last = d.range[1]; });
-        return last;
-      }
-
-      // 在相同作用域内，按声明位置排序
-      var byScope = {};
-      locals.forEach(function(loc) {
-        (byScope[loc.scopeId] = byScope[loc.scopeId] || []).push(loc);
-      });
-
-      var bestResult = null;
-
-      Object.keys(byScope).forEach(function(sid) {
-        if (bestResult || count.v >= maxIters || Date.now() >= deadline) return;
-        var arr = byScope[sid].slice().sort(function(a, b) { return a.declPos - b.declPos; });
-
-        for (var ai = 0; ai < arr.length; ai++) {
-          if (bestResult || count.v >= maxIters || Date.now() >= deadline) break;
-          var a = arr[ai];
-
-          for (var bi = ai + 1; bi < arr.length; bi++) {
-            if (bestResult || count.v >= maxIters || Date.now() >= deadline) break;
-            var b = arr[bi];
-
-            if (a.name === b.name) continue;
-
-            // 检查 a 的最后使用是否在 b 的声明之前（非重叠的活跃区间）
-            var aLastUse = lastUsePos(a.binding);
-            if (aLastUse > b.declPos) continue; // 区间重叠，不可合并
-
-            // 检查 b 的 init 是否引用了 a（如果是，a 活跃区间应延长）
-            // analyze 中已通过 varOf 关联，这里简化跳过
-
-            // 计算节省
-            // 原名长 → 单字母名：每处引用省 (原名长 - 1)
-            var useSaving = 0;
-            b.binding.decls.concat(b.binding.uses).forEach(function(u) {
-              useSaving += b.name.length - a.name.length;
-            });
-            // 省一个 local 声明
-            useSaving += 6; // 'local '
-
-            if (useSaving <= 0) continue;
-
-            // 构建修改：重命名 b 为 a，删除 b 的 'local '
-            var edits = [];
-
-            // 删除 b 声明开头的 'local '
-            var bStmt = null;
-            // 找到 b 的声明语句
-            (function findStmt(stmts) {
-              if (bStmt) return;
-              for (var i = 0; i < stmts.length; i++) {
-                var s = stmts[i];
-                if (!s.range) continue;
-                if (s.type === 'LocalStatement' && s.variables) {
-                  for (var v = 0; v < s.variables.length; v++) {
-                    if (s.variables[v] === b.binding.decls[0]) {
-                      bStmt = s.multiVar ? s : { type: 'LocalStatement', variables: s.variables, init: s.init, range: s.range, singleVar: s.variables.length === 1 };
-                      return;
-                    }
-                  }
-                }
-                findStmt(s.body || []);
-                if (s.clauses) {
-                  for (var c = 0; c < s.clauses.length; c++) findStmt(s.clauses[c].body || []);
-                }
-              }
-            })(ast.body);
-
-            if (!bStmt || !bStmt.range) continue;
-
-            var declStart = bStmt.range[0];
-            // 检查 'local ' 前缀
-            if (bestBody.slice(declStart, declStart + 6) === 'local ') {
-              edits.push({ start: declStart, end: declStart + 6, name: '' }); // 删除 'local '
-            } else {
-              continue; // 不是标准 local 声明格式
-            }
-
-            // 重命名所有 b 的出现
-            b.binding.decls.forEach(function(d) {
-              edits.push({ start: d.range[0], end: d.range[1], name: a.name });
-            });
-            b.binding.uses.forEach(function(u) {
-              edits.push({ start: u.range[0], end: u.range[1], name: a.name });
-            });
-
-            // 应用编辑
-            var candidate = bestBody;
-            edits.sort(function(x, y) { return y.start - x.start; });
-            for (var ei = 0; ei < edits.length; ei++) {
-              var ed = edits[ei];
-              candidate = candidate.slice(0, ed.start) + ed.name + candidate.slice(ed.end);
-            }
-
-            if (!isValid(candidate)) continue;
-            if (!canonicalEq(origPre, candidate, null)) continue;
-
-            count.v++;
-
-            // 重压缩
-            try {
-              var cand = compress(candidate, SEARCH_COMPRESS_OPTS);
-              if (cand && cand.ok && cand.bodyLength < best.bodyLength) {
-                var candBody = bodyOf(cand);
-                if (canonicalEq(origPre, candBody, cand.aliasMapInfo)) {
-                  if (verbose) log('reuse: ' + b.name + ' → ' + a.name +
-                    ' saved=' + (best.bodyLength - cand.bodyLength) + ' (was ' + best.bodyLength + ' → ' + cand.bodyLength + ')');
-                  bestResult = cand;
-                  break;
-                }
-              }
-            } catch (e) {}
+    function genExprExtract(bestBody, origPre, maxCand) {
+      if (bestBody.length < 40) return [];
+      var ast; try { ast = parse(bestBody); } catch (e) { return []; }
+      var exprs = [];
+      var trivialTypes = { Identifier:1, NumericLiteral:1, StringLiteral:1, BooleanLiteral:1, NilLiteral:1, VarargLiteral:1, MemberExpression:1 };
+      (function walk(node){
+        if(!node||typeof node!=='object') return;
+        if(Array.isArray(node)){ for(var i=0;i<node.length;i++) walk(node[i]); return; }
+        if(node.range && node.range.length===2 && node.type){
+          var isExpr = node.type.indexOf('Expression')>=0;
+          if(isExpr && !trivialTypes[node.type]){
+            var txt = bestBody.slice(node.range[0], node.range[1]);
+            if(txt.length>=5 && /[a-zA-Z_\)]/.test(txt)) exprs.push({range:node.range, text:txt});
           }
+          if(node.type==='CallExpression'){ var ct=bestBody.slice(node.range[0],node.range[1]); if(ct.length>=5) exprs.push({range:node.range,text:ct}); }
+          if(node.type==='IndexExpression'){ var it=bestBody.slice(node.range[0],node.range[1]); if(it.length>=6) exprs.push({range:node.range,text:it}); }
+        }
+        for(var k in node){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(node,k)) walk(node[k]); }
+      })(ast.body);
+      if(exprs.length<2) return [];
+      var byText={};
+      exprs.forEach(function(e){ (byText[e.text]=byText[e.text]||[]).push(e); });
+      var groups=[];
+      Object.keys(byText).forEach(function(k){
+        var sites=byText[k], seen={}, unique=[];
+        sites.forEach(function(s){ var key=s.range[0]+':'+s.range[1]; if(!seen[key]){ seen[key]=true; unique.push(s); } });
+        if(unique.length>=2){
+          var saving=(k.length-1)*unique.length-(8+1+k.length);
+          if(saving>0) groups.push({text:k, sites:unique});
         }
       });
-
-      return bestResult;
+      if(!groups.length) return [];
+      groups.sort(function(a,b){ return (b.text.length*b.sites.length)-(a.text.length*a.sites.length); });
+      var takenNames=collectNames(bestBody), results=[];
+      var maxGroups=Math.min(groups.length, 6);
+      for(var gi=0; gi<maxGroups && results.length<maxCand; gi++){
+        var g=groups[gi];
+        var alias=pickUnusedName(bestBody, takenNames);
+        if(!alias || alias.length>1){ if(alias) delete takenNames[alias]; continue; }
+        var firstSite=g.sites[0];
+        var decl='local '+alias+'='+g.text+' ';
+        var insertInfo=insertDeclBeforeExpr(bestBody, firstSite.range[0], decl);
+        var modified=insertInfo.modified, shift=decl.length, insertPos=insertInfo.insertPos;
+        var edits=[];
+        for(var si=0; si<g.sites.length; si++){
+          var pos=g.sites[si].range[0], end=g.sites[si].range[1];
+          if(pos>=insertPos) pos+=shift;
+          if(end>=insertPos) end+=shift;
+          if(si===0 && pos>=insertPos && pos<insertPos+decl.length) continue;
+          edits.push({pos:pos, ins:alias, delLen:end-pos});
+        }
+        edits.sort(function(a,b){ return b.pos-a.pos; });
+        for(var ei=0; ei<edits.length; ei++){ var ed=edits[ei]; modified=modified.slice(0,ed.pos)+ed.ins+modified.slice(ed.pos+ed.delLen); }
+        if(!isValid(modified)){ delete takenNames[alias]; continue; }
+        if(!canonicalEq(origPre, modified, null)){ delete takenNames[alias]; continue; }
+        results.push(modified);
+      }
+      return results;
     }
 
-    // ================================================================
-    //  变换 3：跨作用域变量复用（更深层的搜索）
-    // ================================================================
-
-    function tryCrossScopeReuse(bestBody, origPre, best, deadline, maxIters, count, verbose) {
-      var ast;
-      try { ast = parse(bestBody); } catch (e) { return null; }
-      var info;
-      try { info = analyze(ast); } catch (e) { return null; }
-
-      var stmtOfDecl = new Map();
-      (function collectStatements(node) {
-        if (!node || typeof node !== 'object') return;
-        if (Array.isArray(node)) { for (var i = 0; i < node.length; i++) collectStatements(node[i]); return; }
-        if (node.type === 'LocalStatement' && node.variables) {
-          for (var v = 0; v < node.variables.length; v++) stmtOfDecl.set(node.variables[v], node);
-        }
-        for (var k in node) {
-          if (k === 'range' || k === 'loc') continue;
-          if (Object.prototype.hasOwnProperty.call(node, k)) collectStatements(node[k]);
-        }
-      })(ast.body);
-
-      var topLocals = [], nestedLocals = [];
-      var topScopeId = info.topScope.id;
-      info.bindings.forEach(function(b) {
-        if (b.decls.length !== 1 || b.pinned || b.captured || b.scope.funcDepth !== 0) return;
-        if (!b.decls[0].range) return;
-        var stmt = stmtOfDecl.get(b.decls[0]);
-        var entry = { binding: b, name: b.name, declPos: b.decls[0].range[0], scopeId: b.scope.id, stmt: stmt };
-        if (b.scope.id === topScopeId) topLocals.push(entry);
-        else if (stmt && stmt.variables && stmt.variables.length === 1) nestedLocals.push(entry);
+    function genAggressiveReuse(bestBody, origPre, maxCand) {
+      if(bestBody.length<40) return [];
+      var ast; try{ ast=parse(bestBody); }catch(e){ return []; }
+      var info; try{ info=analyze(ast); }catch(e){ return []; }
+      var locals=[];
+      info.bindings.forEach(function(b){
+        if(b.decls.length!==1 || b.pinned || !b.decls[0].range) return;
+        locals.push({binding:b, name:b.name, declPos:b.decls[0].range[0], scopeId:b.scope.id});
       });
-      if (!topLocals.length || !nestedLocals.length) return null;
-
-      function lastUsePos(b) {
-        var last = b.decls[0].range[1];
-        b.uses.forEach(function(u) { if (u.range && u.range[1] > last) last = u.range[1]; });
+      if(locals.length<2) return [];
+      function lastUsePos(b){
+        var last=b.decls[0].range[0];
+        b.uses.forEach(function(u){ if(u.range && u.range[1]>last) last=u.range[1]; });
+        b.decls.forEach(function(d){ if(d.range && d.range[1]>last) last=d.range[1]; });
         return last;
       }
-
-      var bestResult = null;
-      for (var ni = 0; ni < nestedLocals.length; ni++) {
-        if (bestResult || count.v >= maxIters || Date.now() >= deadline) break;
-        var nl = nestedLocals[ni];
-        for (var ti = 0; ti < topLocals.length; ti++) {
-          if (bestResult || count.v >= maxIters || Date.now() >= deadline) break;
-          var tl = topLocals[ti];
-          if (nl.name === tl.name || lastUsePos(tl.binding) >= nl.declPos) continue;
-          if (!nl.stmt || bestBody.slice(nl.stmt.range[0], nl.stmt.range[0] + 6) !== 'local ') continue;
-
-          var edits = [{ start: nl.stmt.range[0], end: nl.stmt.range[0] + 6, name: '' }];
-          nl.binding.decls.concat(nl.binding.uses).forEach(function(n) {
-            edits.push({ start: n.range[0], end: n.range[1], name: tl.name });
-          });
-          edits.sort(function(a, b) { return b.start - a.start; });
-          var candidate = bestBody;
-          for (var ei = 0; ei < edits.length; ei++) {
-            candidate = candidate.slice(0, edits[ei].start) + edits[ei].name + candidate.slice(edits[ei].end);
-          }
-          if (candidate.length >= bestBody.length || !isValid(candidate)) continue;
-          if (!canonicalEq(origPre, candidate, null)) continue;
-          count.v++;
-
-          try {
-            var cand = compress(candidate, SEARCH_COMPRESS_OPTS);
-            if (cand && cand.ok && cand.bodyLength < best.bodyLength) {
-              var candBody = bodyOf(cand);
-              if (canonicalEq(origPre, candBody, cand.aliasMapInfo)) {
-                if (verbose) log('xreuse: ' + nl.name + ' -> ' + tl.name + ' (removed nested local)');
-                bestResult = cand;
+      var byScope={};
+      locals.forEach(function(loc){ (byScope[loc.scopeId]=byScope[loc.scopeId]||[]).push(loc); });
+      var results=[];
+      Object.keys(byScope).forEach(function(sid){
+        if(results.length>=maxCand) return;
+        var arr=byScope[sid].slice().sort(function(a,b){ return a.declPos-b.declPos; });
+        for(var ai=0; ai<arr.length && results.length<maxCand; ai++){
+          var a=arr[ai];
+          for(var bi=ai+1; bi<arr.length && results.length<maxCand; bi++){
+            var b=arr[bi];
+            if(a.name===b.name) continue;
+            if(lastUsePos(a.binding) > b.declPos) continue;
+            // 找 b 的声明语句，删 'local '
+            var bStmt=null;
+            (function findStmt(stmts){
+              if(bStmt) return;
+              for(var i=0;i<stmts.length;i++){
+                var s=stmts[i]; if(!s.range) continue;
+                if(s.type==='LocalStatement' && s.variables){
+                  for(var v=0;v<s.variables.length;v++){
+                    if(s.variables[v]===b.binding.decls[0]){ bStmt={type:'LocalStatement',variables:s.variables,init:s.init,range:s.range}; return; }
+                  }
+                }
+                findStmt(s.body||[]);
+                if(s.clauses){ for(var c=0;c<s.clauses.length;c++) findStmt(s.clauses[c].body||[]); }
               }
-            }
-          } catch (e) {}
+            })(ast.body);
+            if(!bStmt || !bStmt.range) continue;
+            var declStart=bStmt.range[0];
+            if(bestBody.slice(declStart, declStart+6)!=='local ') continue;
+            var edits=[{start:declStart, end:declStart+6, name:''}];
+            b.binding.decls.forEach(function(d){ edits.push({start:d.range[0], end:d.range[1], name:a.name}); });
+            b.binding.uses.forEach(function(u){ edits.push({start:u.range[0], end:u.range[1], name:a.name}); });
+            edits.sort(function(x,y){ return y.start-x.start; });
+            var candidate=bestBody;
+            for(var ei=0; ei<edits.length; ei++){ var ed=edits[ei]; candidate=candidate.slice(0,ed.start)+ed.name+candidate.slice(ed.end); }
+            if(candidate.length>=bestBody.length || !isValid(candidate)) continue;
+            if(!canonicalEq(origPre, candidate, null)) continue;
+            results.push(candidate);
+          }
+        }
+      });
+      return results;
+    }
+
+    function genCrossScopeReuse(bestBody, origPre, maxCand) {
+      var ast; try{ ast=parse(bestBody); }catch(e){ return []; }
+      var info; try{ info=analyze(ast); }catch(e){ return []; }
+      var stmtOfDecl=new Map();
+      (function collectStatements(node){
+        if(!node||typeof node!=='object') return;
+        if(Array.isArray(node)){ for(var i=0;i<node.length;i++) collectStatements(node[i]); return; }
+        if(node.type==='LocalStatement'&&node.variables){ for(var v=0;v<node.variables.length;v++) stmtOfDecl.set(node.variables[v], node); }
+        for(var k in node){ if(k==='range'||k==='loc') continue; if(Object.prototype.hasOwnProperty.call(node,k)) collectStatements(node[k]); }
+      })(ast.body);
+      var topLocals=[], nestedLocals=[];
+      var topScopeId=info.topScope.id;
+      info.bindings.forEach(function(b){
+        if(b.decls.length!==1||b.pinned||b.captured||b.scope.funcDepth!==0) return;
+        if(!b.decls[0].range) return;
+        var stmt=stmtOfDecl.get(b.decls[0]);
+        var entry={binding:b, name:b.name, declPos:b.decls[0].range[0], scopeId:b.scope.id, stmt:stmt};
+        if(b.scope.id===topScopeId) topLocals.push(entry);
+        else if(stmt && stmt.variables && stmt.variables.length===1) nestedLocals.push(entry);
+      });
+      if(!topLocals.length || !nestedLocals.length) return [];
+      function lastUsePos(b){ var last=b.decls[0].range[1]; b.uses.forEach(function(u){ if(u.range&&u.range[1]>last) last=u.range[1]; }); return last; }
+      var results=[];
+      for(var ni=0; ni<nestedLocals.length && results.length<maxCand; ni++){
+        var nl=nestedLocals[ni];
+        for(var ti=0; ti<topLocals.length && results.length<maxCand; ti++){
+          var tl=topLocals[ti];
+          if(nl.name===tl.name || lastUsePos(tl.binding)>=nl.declPos) continue;
+          if(!nl.stmt || bestBody.slice(nl.stmt.range[0], nl.stmt.range[0]+6)!=='local ') continue;
+          var edits=[{start:nl.stmt.range[0], end:nl.stmt.range[0]+6, name:''}];
+          nl.binding.decls.concat(nl.binding.uses).forEach(function(n){ edits.push({start:n.range[0], end:n.range[1], name:tl.name}); });
+          edits.sort(function(a,b){ return b.start-a.start; });
+          var candidate=bestBody;
+          for(var ei=0; ei<edits.length; ei++){ candidate=candidate.slice(0,edits[ei].start)+edits[ei].name+candidate.slice(edits[ei].end); }
+          if(candidate.length>=bestBody.length || !isValid(candidate)) continue;
+          if(!canonicalEq(origPre, candidate, null)) continue;
+          results.push(candidate);
         }
       }
-      return bestResult;
+      return results;
     }
 
     // ================================================================
@@ -665,9 +437,12 @@
 
     function searchOptimize(input, opts) {
       opts = opts || {};
-      var budget = opts.budget >= 0 ? opts.budget : 4000;
-      var maxIters = opts.maxIters || 200;
+      // 不默认设时间上限：按 K（束宽）+ 收敛（连续两轮无改善）严格限制；仅显式传 budget 才设墙钟 deadline（供测试用）。
+      var budget = opts.budget;
       var verbose = !!opts.verbose;
+      // 束宽（搜索优化级数）：0 = 禁用；1+ = beam search 的候选束宽度
+      var beamWidth = (opts.beamWidth !== undefined) ? opts.beamWidth : 4;
+      if (beamWidth <= 0) return compress(input, opts);   // 0 = 禁用搜索，直接用规则系统
 
       if (verbose) log = function(s) { console.log('[search]', s); };
       else log = function(){};
@@ -678,7 +453,8 @@
       }
 
       var startTime = Date.now();
-      var deadline = (opts._deadline != null) ? opts._deadline : (startTime + budget);
+      var deadline = (opts._deadline != null) ? opts._deadline
+                   : ((budget != null && budget >= 0) ? (startTime + budget) : Infinity);
 
       // 原始预处理代码 — canonical 等价基准
       var origPre;
@@ -688,73 +464,79 @@
       // 搜索模式使用更宽的阈值列表，探索更多优化空间
       var searchThresholds = [2,3,4,5,6,7,8,9];
       var cOpts = Object.assign({}, opts, {thresholds: searchThresholds});
+      var fastOpts = Object.assign({}, opts, {thresholds: [8]});   // 子分支用单阈值快速重压缩
 
-      // Baseline: 规则系统输出（搜索阈值）
-      log('baseline...');
-      var best = compress(input, cOpts);
-      if (!best || !best.ok) return best;
-      log('baseline: ' + best.bodyLength + ' chars');
+      log('beam search...');
+      var beam = [];        // [{body, result}]
+      var seen = {};        // canonical -> true（去重，避免重复探索同一逻辑状态）
+      var best = null;
 
-      var bestBody = bodyOf(best);
-      var count = { v: 0 };
-
-      // 阶段 0：原始输入端表达式提取（压缩前，发现更大的重复模式）
-      var rawResult = tryRawExprExtract(origPre, best, deadline, maxIters, count, verbose);
-      if (rawResult) {
-        best = rawResult;
-        bestBody = bodyOf(best);
-        if (verbose) log('rawExpr: improved to ' + best.bodyLength);
+      function addCandidate(result) {
+        if (!result || !result.ok) return;
+        var body = bodyOf(result);
+        var canon, origCanon;
+        try { canon = canonical(body, result.aliasMapInfo); origCanon = canonical(origPre); } catch (e) { return; }
+        if (canon !== origCanon) return;
+        // 同一 canonical（等价类）只保留最短者：更短则加入并更新，否则跳过。
+        if (seen[canon] != null && seen[canon] <= result.bodyLength) return;
+        seen[canon] = result.bodyLength;
+        beam.push({ body: body, result: result });
       }
 
-      // 迭代轮次：每次成功改进后重新开始一轮
+      // 基线：块包装开/关两种策略 + 原始端表达式提取
+      var blockMaxLens = [8, 0];
+      for (var bmi = 0; bmi < blockMaxLens.length; bmi++) {
+        if (Date.now() >= deadline) break;
+        try { addCandidate(compress(input, Object.assign({}, cOpts, { blockMaxLen: blockMaxLens[bmi] }))); } catch (e) {}
+      }
+      if (!beam.length) return compress(input, opts);
+      try {
+        var rawResult = tryRawExprExtract(origPre, beam[0].result, deadline, verbose);
+        if (rawResult) addCandidate(rawResult);
+      } catch (e) {}
+
+      beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
+      best = beam[0].result;
+      log('baseline: ' + best.bodyLength + ' chars');
+
+      // ---- Beam search：从当前最短 K 个分支，应用变换 → 重压缩 → 去重 → 再分支 ----
+      var K = beamWidth;
+      var maxRounds = 6;   // 无时间限制时的轮次上限；正常靠"连续两轮无改善"收敛
       var rounds = 0;
-      var maxRounds = 4;
-      var improved = true;
-
-      while (improved && rounds < maxRounds && Date.now() < deadline) {
-        improved = false;
+      var noImprove = 0;
+      while (rounds < maxRounds && Date.now() < deadline) {
         rounds++;
-
-        // 变换 1：表达式提取（在优化后输出端搜索）
-        var newBest = tryExprExtract(bestBody, origPre, best, deadline, maxIters, count, verbose);
-        if (newBest) {
-          best = newBest;
-          bestBody = bodyOf(best);
-          improved = true;
-          continue; // 重新开始一轮
+        var prevBestLen = best.bodyLength;
+        var cur = beam.slice(0, K);
+        for (var bi = 0; bi < cur.length; bi++) {
+          var cand = cur[bi];
+          var mods = [];
+          mods = mods.concat(genExprExtract(cand.body, origPre, 3));
+          mods = mods.concat(genAggressiveReuse(cand.body, origPre, 3));
+          mods = mods.concat(genCrossScopeReuse(cand.body, origPre, 3));
+          for (var mi = 0; mi < mods.length; mi++) {
+            if (Date.now() >= deadline) break;
+            try { addCandidate(compress(mods[mi], fastOpts)); } catch (e) {}
+          }
         }
-
-        // 变换 2：激进变量复用
-        newBest = tryAggressiveReuse(bestBody, origPre, best, deadline, maxIters, count, verbose);
-        if (newBest) {
-          best = newBest;
-          bestBody = bodyOf(best);
-          improved = true;
-          continue;
-        }
-
-        // 变换 3：跨作用域复用
-        newBest = tryCrossScopeReuse(bestBody, origPre, best, deadline, maxIters, count, verbose);
-        if (newBest) {
-          best = newBest;
-          bestBody = bodyOf(best);
-          improved = true;
-          continue;
-        }
+        beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
+        if (beam[0].result.bodyLength < best.bodyLength) best = beam[0].result;
+        if (best.bodyLength < prevBestLen) noImprove = 0;
+        else noImprove++;
+        if (noImprove >= 2) break;   // 连续两轮无改善即收敛
       }
 
       var elapsed = Date.now() - startTime;
       var origBest = compress(input, opts);
       var saved = origBest.bodyLength - best.bodyLength;
-      log('done: ' + elapsed + 'ms, ' + count.v + ' trials, ' + rounds +
+      log('done: ' + elapsed + 'ms, ' + beam.length + ' candidates, ' + rounds +
         ' rounds, saved ' + saved + ' chars (' + origBest.bodyLength + ' → ' + best.bodyLength + ')');
 
-      // 统一 originalLength/original 为顶层输入（固定点递归/变换会让 originalLength 变成中间长度）
+      // 统一 originalLength/original 为顶层输入
       best.originalLength = input.length;
       if (origPre != null) best.original = origPre;
 
       // 幂等固定点：只要输出正文与输入不同，就在结果上继续搜，直到正文不变（严格收敛到最短）。
-      // 共享 deadline 只是兜底防意外，不限制迭代轮数。
       if (Date.now() < deadline && bodyOf(best) !== origPre) {
         var deeperOpts = Object.assign({}, opts, {_deadline: deadline});
         var deeper = searchOptimize(bodyOf(best), deeperOpts);
@@ -768,161 +550,24 @@
       return best;
     }
 
-    // 异步版搜索优化器：步骤间双 rAF 让浏览器刷帧
+    // 异步版搜索优化器：委托给同步 beam search（浏览器里用 setTimeout 让 UI 先刷一帧）。
     function searchOptimizeAsync(input, opts){
-      var budget = opts.budget >= 0 ? opts.budget : 4000;
-      var maxIters = opts.maxIters || 200;
       var onProgress = opts.onProgress;
-      var hasRAF = typeof requestAnimationFrame !== 'undefined';
-      var startTime = Date.now();
-      var deadline = startTime + budget;
-
-      var origPre;
-      try { origPre = preprocess(input); } catch (e) { opts._done(compress(input, opts)); return; }
-      if (!/\S/.test(origPre)) { opts._done(compress(input, opts)); return; }
-
-      var searchThresholds = [2,3,4,5,6,7,8,9];
-      var cOpts = Object.assign({}, opts, {thresholds: searchThresholds});
-      var best, bestBody, count = {v:0};
-      var maxRounds = 4;
-      var stepIdx = 0;
-
-      // 搜索步骤队列
-      var steps = [];
-
-      // Step 0: Baseline（异步，显示阶段进度）
-      steps.push({name:'基线压缩', fn:function(next){
-        var stageName = '';
-        cOpts.stageCallback = function(n){ stageName = n; };
-        cOpts.onProgress = function(p){
-          onProgress({phase:'baseline', current:p.current, total:p.total, threshold:p.threshold, len:p.len, stage:stageName});
-        };
-        cOpts._done = function(b){
-          best = b; bestBody = bodyOf(best);
-          cOpts.stageCallback = null;
-          cOpts.onProgress = null;
-          cOpts._done = null;
-          next();
-        };
-        compress(input, cOpts);
-      }});
-
-      // Step 1: 原始端表达式提取
-      steps.push({name:'搜索阶段0', fn:function(next){
-        onProgress({phase:'search', round:0, step:'扫描重复表达式', len:best.bodyLength});
-        yieldStep(function(){
-          var rawResult = tryRawExprExtract(origPre, best, deadline, maxIters, count, false);
-          if(rawResult){ best = rawResult; bestBody = bodyOf(best); }
-          next();
-        });
-      }});
-
-      // Steps 2+: 迭代轮次，每个变换单独一步，步间双rAF刷帧
-      var currentRound = 0;
-      var improvedThisRound = false;
-
-      function addRoundSteps(){
-        currentRound++;
-        if(currentRound > maxRounds || Date.now() >= deadline) return;
-
-        var r = currentRound;
-        improvedThisRound = false;
-
-        // 变换 1: 表达式提取
-        steps.push({name:'搜索第'+r+'轮·表达式提取', fn:function(next){
-          onProgress({phase:'search', round:r, step:'表达式提取', len:best.bodyLength});
-          yieldStep(function(){
-            var newBest = tryExprExtract(bestBody, origPre, best, deadline, maxIters, count, false);
-            if(newBest && newBest.bodyLength < best.bodyLength){
-              best = newBest; bestBody = bodyOf(best); improvedThisRound = true;
-            }
-            next();
-          });
-        }});
-
-        // 变换 2: 变量复用
-        steps.push({name:'搜索第'+r+'轮·变量复用', fn:function(next){
-          if(improvedThisRound){ next(); return; }
-          onProgress({phase:'search', round:r, step:'变量复用', len:best.bodyLength});
-          yieldStep(function(){
-            var newBest = tryAggressiveReuse(bestBody, origPre, best, deadline, maxIters, count, false);
-            if(newBest && newBest.bodyLength < best.bodyLength){
-              best = newBest; bestBody = bodyOf(best); improvedThisRound = true;
-            }
-            next();
-          });
-        }});
-
-        // 变换 3: 跨域复用
-        steps.push({name:'搜索第'+r+'轮·跨域复用', fn:function(next){
-          if(improvedThisRound){ next(); return; }
-          onProgress({phase:'search', round:r, step:'跨域复用', len:best.bodyLength});
-          yieldStep(function(){
-            var newBest = tryCrossScopeReuse(bestBody, origPre, best, deadline, maxIters, count, false);
-            if(newBest && newBest.bodyLength < best.bodyLength){
-              best = newBest; bestBody = bodyOf(best); improvedThisRound = true;
-            }
-            next();
-          });
-        }});
-
-        // 轮次检查点：有改善则追加新一轮（currentRound 不重置，自然递增）
-        steps.push({name:'_check', fn:function(next){
-          if(improvedThisRound){
-            addRoundSteps();
-          }
-          next();
-        }});
-      }
-
-      // 初始添加第一轮
-      addRoundSteps();
-
-      function yieldStep(fn){
-        if(hasRAF){
-          requestAnimationFrame(function(){
-            requestAnimationFrame(fn);
-          });
-        } else {
-          setTimeout(fn, 0);
-        }
-      }
-
-      function runStep(){
-        if(stepIdx >= steps.length){
-          // 幂等固定点：在结果上继续搜（同步版，共享 deadline），直到无改善
-          // 统一 originalLength/original 为顶层输入
-          best.originalLength = input.length;
-          if (origPre != null) best.original = origPre;
-
-          if (Date.now() < deadline && bodyOf(best) !== origPre) {
-            var deeperOpts = Object.assign({}, opts);
-            delete deeperOpts.onProgress;
-            deeperOpts._deadline = deadline;
-            var deeper = searchOptimize(bodyOf(best), deeperOpts);
-            if (deeper && deeper.ok && deeper.bodyLength < best.bodyLength) {
-              deeper.originalLength = input.length;
-              if (origPre != null) deeper.original = origPre;
-              opts._done(deeper);
-              return;
-            }
-          }
-          opts._done(best);
+      var syncOpts = Object.assign({}, opts);
+      delete syncOpts.onProgress;
+      delete syncOpts._error;
+      delete syncOpts._done;
+      if (onProgress) onProgress({phase:'search', round:0, step:'beam search', len:0});
+      setTimeout(function(){
+        var result;
+        try { result = searchOptimize(input, syncOpts); }
+        catch (e) {
+          if (opts._error) opts._error(e);
+          else if (opts._done) opts._done(null);
           return;
         }
-        var step = steps[stepIdx];
-        stepIdx++;
-        try {
-          step.fn(function(){
-            yieldStep(runStep);
-          });
-        } catch(e) {
-          if(opts._error) opts._error(e);
-          else if(opts._done) opts._done(null);
-        }
-      }
-
-      yieldStep(runStep);
+        if (opts._done) opts._done(result);
+      }, 30);
     }
 
     C.searchOptimize = searchOptimize;
