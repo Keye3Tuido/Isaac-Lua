@@ -43,4 +43,7 @@ l local c,d,A,B,Z=Random,pairs,Isaac,EntityType Z=A.FindByType A.AddCallback({},
 --14. 敌人的碰撞箱大小和贴图大小随血量变化。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_NPC_RENDER,function(s,n,o,d,v,e,f)d=n:GetData()v='Visible'e='InitSeed'f=n[e]if n:IsVulnerableEnemy()and n:IsActiveEnemy(false)and not d[f]then s=(1.9*n.HitPoints/n.MaxHitPoints+.1)*Vector.One n.SpriteScale,n.SizeMulti=s,s n[v]=true d[f]=s n:Render(o)n[v],d[f]=false end end)
 
+--15. 角色半径1格内的投射物会被冻结，效果类似道具“爸爸的戒指”。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_UPDATE,function(p,t,s)s='Position'p=Game():GetNearestPlayer(t[s])if 40+t.Size/2>=t[s]:Distance(p[s])then t:AddFreeze(EntityRef(p),1)end end)
+
 --.
