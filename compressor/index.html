@@ -281,13 +281,17 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
     }
 
-    // 无进度条：同步压缩/搜索，出结果即渲染（阶段显示顺序=实际执行顺序）
-    try {
-      var rep = useSearch ? engine.searchOptimize(input, { beamWidth: searchLevel }) : engine.compress(input);
-      showResult(rep, null);
-    } catch (e) {
-      doError(e);
-    }
+    // 压缩中提示：先禁用按钮(已在 setRunning)+显示提示，让浏览器绘制后再同步压缩——
+    // 这样长代码+K 时用户能看到"压缩中"，而不是白屏卡死看不出在干什么。
+    $badge.className='badge'; $badge.textContent='压缩中…';
+    setTimeout(function(){
+      try {
+        var rep = useSearch ? engine.searchOptimize(input, { beamWidth: searchLevel }) : engine.compress(input);
+        showResult(rep, null);
+      } catch (e) {
+        doError(e);
+      }
+    }, 30);
   };
 
   updateInStat();
