@@ -22,6 +22,7 @@ const specs = [
   ['relocation', 'test_canonical_relocpull.js', []],
   ['incremental', 'test_incremental.js', []],
   ['idempotency', 'test_idempotency.js', []],
+  ['chunkedSearch', 'test_chunked_search.js', []],
   ['remote', 'remotetest.js', []],
   ['search', 'test_search_compare.js', []],
   ['bulk', 'bulktest.js', ['--offline']],
@@ -62,6 +63,7 @@ function metricsFor(run) {
     case 'edge':
     case 'pipelineParity':
     case 'validationCache':
+    case 'chunkedSearch':
       parsed = numbers(o, /(\d+)\s*pass,\s*(\d+)\s*fail/i, ['pass', 'fail']); break;
     case 'semicolon':
     case 'transparent':

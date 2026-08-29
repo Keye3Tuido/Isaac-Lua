@@ -17,11 +17,6 @@
       "passSegments": 335,
       "failSegments": 0
     },
-    "pipelineParity": {
-      "ok": true,
-      "pass": 26,
-      "fail": 0
-    },
     "validationCache": {
       "ok": true,
       "pass": 5,
@@ -59,7 +54,12 @@
     },
     "idempotency": {
       "ok": true,
-      "pass": 32,
+      "pass": 44,
+      "fail": 0
+    },
+    "chunkedSearch": {
+      "ok": true,
+      "pass": 4,
       "fail": 0
     },
     "remote": {
@@ -70,8 +70,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 206966,
-      "searchBytes": 206961,
+      "ruleBytes": 206931,
+      "searchBytes": 206926,
       "savedBytes": 5
     },
     "bulk": {
@@ -86,9 +86,9 @@
     "snapshot": {
       "ok": true,
       "total": 495,
-      "changed": 107,
+      "changed": 113,
       "regress": 0,
-      "improve": 106,
+      "improve": 112,
       "lostOk": 0,
       "newOk": 0,
       "sourceChanged": 2,
@@ -97,9 +97,9 @@
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 353,
+      "parseCount": 391,
       "inputBytes": 14336,
-      "outputBytes": 13957
+      "outputBytes": 13954
     }
   }
 }
