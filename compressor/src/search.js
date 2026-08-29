@@ -500,6 +500,13 @@
       var beamWidth = (opts.beamWidth !== undefined) ? opts.beamWidth : 4;
       if (beamWidth <= 0) return compress(input, opts);   // 0 = 禁用搜索，直接用规则系统
 
+      // 分片模式（浏览器）：opts.onStep(label) 在每个粗粒度分片（建立搜索列表/逐个候选）前调用，
+      // 分片之间 setTimeout(0) 让步，结果通过 opts._done 回调返回。Node 测试不传 onStep，走原同步路径。
+      if (opts.onStep){
+        searchOptimizeChunked(input, opts);
+        return;
+      }
+
       if (verbose) log = function(s) { console.log('[search]', s); };
       else log = function(){};
 
@@ -622,6 +629,131 @@
       }
 
       return best;
+    }
+
+    // ---- 分片搜索（浏览器）：在"建立搜索列表"与每个 beam 候选之间让步，报告进度 ----
+    function searchOptimizeChunked(input, opts){
+      var K = (opts.beamWidth !== undefined) ? opts.beamWidth : 4;
+      var budget = opts.budget;
+      var startTime = Date.now();
+      var deadline = (opts._deadline != null) ? opts._deadline
+                   : ((budget != null && budget >= 0) ? (startTime + budget) : Infinity);
+      var onStep = opts.onStep, onDone = opts._done, onError = opts._error;
+
+      var origPre;
+      try { origPre = preprocess(input); } catch(e){ if(onError) onError(e); return; }
+      if(!/\S/.test(origPre)){ try{ onDone(compress(input, opts)); }catch(e){ if(onError)onError(e);} return; }
+
+      var cOpts = Object.assign({}, opts, {thresholds: [2,3,4,5,6,7,8,9]});
+      var fastOpts = Object.assign({}, opts, {thresholds: [8]});
+
+      var beam = [], seen = {}, best = null;
+      var candCount = 0;
+
+      function addCandidate(result){
+        if(!result || !result.ok) return;
+        var body = bodyOf(result);
+        var canon, origCanon;
+        try { canon = canonical(body, result.aliasMapInfo); origCanon = canonical(origPre); } catch(e){ return; }
+        if(canon !== origCanon) return;
+        if(seen[canon] != null && seen[canon] <= result.bodyLength) return;
+        seen[canon] = result.bodyLength;
+        beam.push({body: body, result: result});
+      }
+
+      // 基线配置：主基线（全阈值）+ 顺序预设（单阈值）
+      var baseCfgs = BASELINE_PRIMARY.map(function(c){ return {cfg:c, full:true}; })
+        .concat(BASELINE_ORDER_PRESETS.map(function(fo){ return {cfg:{blockMaxLen:8, foldOrder:fo}, full:false}; }));
+
+      var phase = 'baseline', baseIdx = 0;
+      var frontier = [], fidx = 0;
+      var rounds = 0, noImprove = 0, prevBestLen = 0, prevBeamLen = 0;
+      var maxRounds = 6;
+
+      function finish(){
+        if(!best){ if(onError) onError(new Error('搜索失败')); return; }
+        best.originalLength = input.length;
+        if(origPre != null) best.original = origPre;
+        if(onDone) onDone(best);
+      }
+
+      function nextRound(){
+        beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
+        if(beam[0].result.bodyLength < best.bodyLength) best = beam[0].result;
+        var improved = best.bodyLength < prevBestLen;
+        var grew = beam.length > prevBeamLen;
+        if(improved) noImprove = 0; else noImprove++;
+        if((!improved && !grew) || noImprove >= 2 || rounds >= maxRounds){ finish(); return; }
+        rounds++;
+        prevBestLen = best.bodyLength;
+        prevBeamLen = beam.length;
+        frontier = beam.slice(0, K);
+        fidx = 0;
+        if(frontier.length === 0){ finish(); return; }
+        onStep('正在计算第'+(++candCount)+'个候选');
+        setTimeout(processNext, 0);
+      }
+
+      function processNext(){
+        try {
+          if(Date.now() >= deadline && budget != null){ finish(); return; }
+          if(phase === 'baseline'){
+            if(baseIdx < baseCfgs.length){
+              var bc = baseCfgs[baseIdx++];
+              addCandidate(compress(input, Object.assign({}, bc.full ? cOpts : fastOpts, bc.cfg)));
+              setTimeout(processNext, 0);
+              return;
+            }
+            if(!beam.length){ onDone(compress(input, opts)); return; }
+            try { var raw = tryRawExprExtract(origPre, beam[0].result, deadline, false); if(raw) addCandidate(raw); } catch(e){}
+            beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
+            best = beam[0].result;
+            prevBestLen = best.bodyLength;
+            prevBeamLen = beam.length;
+            phase = 'round';
+            rounds = 1;
+            frontier = beam.slice(0, K);
+            fidx = 0;
+            if(frontier.length === 0){ finish(); return; }
+            onStep('正在计算第'+(++candCount)+'个候选');
+            setTimeout(processNext, 0);
+            return;
+          }
+          // round 阶段：处理一个候选（套用全部 move + 深度2组合）
+          if(fidx < frontier.length){
+            var cand = frontier[fidx++];
+            var candAlias = cand.result.aliasMapInfo || null;
+            for(var mi=0; mi<MOVES.length; mi++){
+              var move = MOVES[mi];
+              var mods; try{ mods = move.apply(cand.body, origPre, candAlias, move.cand); }catch(e){ mods=[]; }
+              for(var xi=0; xi<mods.length; xi++){
+                if(Date.now() >= deadline && budget != null) break;
+                var mod = mods[xi];
+                try{ addCandidate(compress(mod.code, fastOpts)); }catch(e){}
+                for(var m2=0; m2<MOVES.length; m2++){
+                  if(m2===mi) continue;
+                  var composed; try{ composed = MOVES[m2].apply(mod.code, origPre, mod.aliasMap, 1); }catch(e){ composed=[]; }
+                  for(var ci=0; ci<composed.length; ci++){
+                    if(Date.now() >= deadline && budget != null) break;
+                    try{ addCandidate(compress(composed[ci].code, fastOpts)); }catch(e){}
+                  }
+                }
+              }
+            }
+            if(fidx < frontier.length){
+              onStep('正在计算第'+(++candCount)+'个候选');
+              setTimeout(processNext, 0);
+              return;
+            }
+            nextRound();
+            return;
+          }
+          finish();
+        } catch(e){ if(onError) onError(e); }
+      }
+
+      onStep('正在建立搜索列表');
+      setTimeout(processNext, 0);
     }
 
     C.searchOptimize = searchOptimize;

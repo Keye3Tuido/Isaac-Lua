@@ -286,11 +286,18 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
     // 这样长代码+K 时用户能看到"压缩中"，而不是白屏卡死看不出在干什么。
     $badge.className='badge busy'; $badge.textContent='压缩中…';
     setTimeout(function(){
-      try {
-        var rep = useSearch ? engine.searchOptimize(input, { beamWidth: searchLevel }) : engine.compress(input);
-        showResult(rep, null);
-      } catch (e) {
-        doError(e);
+      if(useSearch){
+        // 分片搜索：每个粗粒度分片（建立搜索列表/逐个候选）前更新提示，之间让步
+        engine.searchOptimize(input, {
+          beamWidth: searchLevel,
+          onStep: function(label){ $badge.textContent=label; },
+          _done: function(rep){ showResult(rep, null); },
+          _error: doError
+        });
+      } else {
+        try {
+          showResult(engine.compress(input), null);
+        } catch (e) { doError(e); }
       }
     }, 30);
   };
