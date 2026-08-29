@@ -23,6 +23,14 @@
     var preprocess = C.preprocess;
     var lex = C.lex;
     var needSpace = C.needSpace;
+    // 抽取类折叠（供 move 使用）：都是"只缩短才提交"的独立变换，返回 {code, aliasMap} 或 null。
+    var foldStringLiterals = C.foldStringLiterals;
+    var foldStringFactors = C.foldStringFactors;
+    var foldBlockWrapper = C.foldBlockWrapper;
+    var foldMethods = C.foldMethods;
+    var foldFieldPrefix = C.foldFieldPrefix;
+    var foldReuse = C.foldReuse;
+    var foldDeclHoist = C.foldDeclHoist;
 
     // 搜索层 compress 选项：使用更宽的阈值列表探索更多优化空间
     var SEARCH_COMPRESS_OPTS = { rename: true, encode: true, method: true, thresholds: [2,3,4,5,6,7,8,9] };
@@ -429,12 +437,32 @@
     //  变换（move）注册表 + 基线配置
     // ================================================================
 
-    // 每个 move：把一个候选正文（未重压缩）展开成若干候选正文。
-    // cand = 该 move 单次展开最多产出的候选数（一级）；二级穿插固定取 1 个最优。
+    // move 统一返回 [{code, aliasMap}]：code 是"已应用该变换、尚未重压缩"的候选正文，
+    // aliasMap 是该候选的别名映射（供下一个 move 与 canonical 验证使用）。
+    // 前三者是搜索层自有的窄变换；后七者是"抽取类"折叠（把它们当可组合 move，beam 即可探索
+    // "先A后B vs 先B后A"的不同操作顺序）。
+    function wrapFold(fn){
+      return function(body, origPre, aliasMap){
+        var r = fn(body, aliasMap, null, null, origPre);
+        return (r && r.code) ? [{code:r.code, aliasMap:r.aliasMap}] : [];
+      };
+    }
+    function wrapGen(gen){
+      return function(body, origPre, aliasMap, maxCand){
+        return gen(body, origPre, maxCand).map(function(b){ return {code:b, aliasMap:aliasMap}; });
+      };
+    }
     var MOVES = [
-      { name: 'exprExtract',     cand: 3, apply: function(body, origPre, maxCand){ return genExprExtract(body, origPre, maxCand); } },
-      { name: 'aggressiveReuse', cand: 3, apply: function(body, origPre, maxCand){ return genAggressiveReuse(body, origPre, maxCand); } },
-      { name: 'crossScopeReuse', cand: 3, apply: function(body, origPre, maxCand){ return genCrossScopeReuse(body, origPre, maxCand); } }
+      { name: 'exprExtract',     cand: 3, apply: wrapGen(genExprExtract) },
+      { name: 'aggressiveReuse', cand: 3, apply: wrapGen(genAggressiveReuse) },
+      { name: 'crossScopeReuse', cand: 3, apply: wrapGen(genCrossScopeReuse) },
+      { name: 'blockWrapper',    cand: 1, apply: wrapFold(function(b,am,s,r,o){ return foldBlockWrapper(b, am, s, r, o, 8); }) },
+      { name: 'stringLiterals',  cand: 1, apply: wrapFold(foldStringLiterals) },
+      { name: 'stringFactors',   cand: 1, apply: wrapFold(foldStringFactors) },
+      { name: 'methods',         cand: 1, apply: wrapFold(foldMethods) },
+      { name: 'fieldPrefix',     cand: 1, apply: wrapFold(foldFieldPrefix) },
+      { name: 'reuse',           cand: 1, apply: wrapFold(foldReuse) },
+      { name: 'declHoist',       cand: 1, apply: wrapFold(foldDeclHoist) }
     ];
 
     // 基线配置：多个互异起点（不同压缩参数），beam 从中分叉。追加配置即可拓宽搜索起点。
@@ -521,21 +549,23 @@
         var frontier = beam.slice(0, K);   // K 控制每轮扩展多少个候选（束宽）
         for (var bi = 0; bi < frontier.length; bi++) {
           var cand = frontier[bi];
+          var candAlias = cand.result.aliasMapInfo || null;
           for (var mi = 0; mi < MOVES.length; mi++) {
             var move = MOVES[mi];
             var mods;
-            try { mods = move.apply(cand.body, origPre, move.cand); } catch (e) { mods = []; }
+            try { mods = move.apply(cand.body, origPre, candAlias, move.cand); } catch (e) { mods = []; }
             for (var xi = 0; xi < mods.length; xi++) {
               if (Date.now() >= deadline) break;
-              try { addCandidate(compress(mods[xi], fastOpts)); } catch (e) {}
+              var mod = mods[xi];
+              try { addCandidate(compress(mod.code, fastOpts)); } catch (e) {}
               // 穿插：对一级变换结果再套一层不同 move（组合变换，深度 2）
               for (var m2 = 0; m2 < MOVES.length; m2++) {
                 if (m2 === mi) continue;
                 var composed;
-                try { composed = MOVES[m2].apply(mods[xi], origPre, 1); } catch (e) { composed = []; }
+                try { composed = MOVES[m2].apply(mod.code, origPre, mod.aliasMap, 1); } catch (e) { composed = []; }
                 for (var ci = 0; ci < composed.length; ci++) {
                   if (Date.now() >= deadline) break;
-                  try { addCandidate(compress(composed[ci], fastOpts)); } catch (e) {}
+                  try { addCandidate(compress(composed[ci].code, fastOpts)); } catch (e) {}
                 }
               }
             }

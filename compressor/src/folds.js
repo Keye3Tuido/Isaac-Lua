@@ -843,11 +843,20 @@
         var reps=c.positions.map(function(p){ return stmts.slice(p, p+c.k); });
         var slots=[];
         for(var j=0;j<c.k;j++) collectSlots(template[j], reps.slice(1).map(function(rp){return rp[j];}), slots);
+        // 变化点合并：texts 序列完全相同的多个叶子位置（如同一实参 N 在块里出现多次）共用同一个形参，
+        // 否则会被当成多个互异形参，函数签名与调用开销暴涨、收益失真。
         var varying=[];
         for(var i=0;i<slots.length;i++){
           var t=slots[i].texts;
           var same=t.every(function(x){return x===t[0];});
-          if(!same) varying.push(slots[i]);
+          if(same) continue;
+          var found=null;
+          for(var vi=0;vi<varying.length;vi++){
+            var vt=varying[vi].texts;
+            if(t.length===vt.length && t.every(function(x,idx){return x===vt[idx];})){ found=varying[vi]; break; }
+          }
+          if(found) found.ranges.push(slots[i].tRange);
+          else varying.push({texts:t, ranges:[slots[i].tRange]});
         }
         if(!varying.length) return;
         var V=varying.length;
@@ -855,7 +864,7 @@
         reps.forEach(function(rp){ rp.forEach(function(st){ origLen+=st.range[1]-st.range[0]; }); });
         var blockStart=template[0].range[0], blockEnd=template[template.length-1].range[1];
         var bodyLen=(blockEnd-blockStart);
-        varying.forEach(function(v){ bodyLen -= (v.tRange[1]-v.tRange[0]); });   // 变化点换 1 字形参
+        varying.forEach(function(v){ v.ranges.forEach(function(r){ bodyLen -= (r[1]-r[0]); }); });   // 变化点换 1 字形参
         bodyLen += V*1;
         var decl=('local function f('+new Array(V+1).join('x,')+')').length + bodyLen + 3 + 1; // 'end' + 分隔
         var calls=0;
@@ -896,7 +905,10 @@
         if(!ok) return;
         var blockStart=c.template[0].range[0], blockEnd=c.template[c.template.length-1].range[1];
         var bodySrc=src.slice(blockStart, blockEnd);
-        var bodyEdits=c.varying.map(function(v,i){ return {start:v.tRange[0]-blockStart, end:v.tRange[1]-blockStart, name:params[i]}; });
+        var bodyEdits=[];
+        c.varying.forEach(function(v,i){
+          v.ranges.forEach(function(r){ bodyEdits.push({start:r[0]-blockStart, end:r[1]-blockStart, name:params[i]}); });
+        });
         var bodyText=applyEdits(bodySrc, bodyEdits);
         decls.push('local function '+fname+'('+params.join(',')+')'+bodyText+'end');
         for(var r=0;r<c.N;r++){

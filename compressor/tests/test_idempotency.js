@@ -51,6 +51,7 @@ const cases = [
   { name: '跨作用域复用(搜索)', code: 'local top=Game() print(top) do local nested=f() print(nested) end do local x=g() print(x) end' },
   { name: '块包装(非连续散布)', code: 'func(AAA,x1,BB,CCC())DD()EE()g1()OTHER()func(AAA,x2,BB,CCC())DD()EE()g2()OTHER()func(AAA,x3,BB,CCC())DD()EE()g3()' },
   { name: '复用+块包装组合', code: 'local keep=Game() print(keep) do local a=f() print(a) end func(AAA,x1,BB)q1()func(AAA,x2,BB)q2()func(AAA,x3,BB)q3()' },
+  { name: '穿插顺序敏感(块包装先于别名化)', code: "process('DATA_A',1)render(1)update(1)refresh(1)save(1)process('DATA_A',2)render(2)update(2)refresh(2)save(2)process('DATA_A',3)render(3)update(3)refresh(3)save(3)" },
 ];
 
 // 追加真实语料：ver2 可读源码 + 用户 930 压缩版

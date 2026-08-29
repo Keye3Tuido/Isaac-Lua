@@ -103,11 +103,12 @@
             if(p.type!=='Identifier' || !varOf.has(p)) return null;
             paramBindingToIndex.set(varOf.get(p), pi);
           }
-          // 每个形参必须恰好出现一次；不进入嵌套函数
+          // 每个形参至少出现一次（可出现多次）；不进入嵌套函数。
+          // 出现多次的形参记录进 multiUse：内联时其对应实参必须是"纯值"（无调用/vararg），
+          // 否则一次求值变多次求值会改变语义——由 CallStatement 内联点做纯度守卫。
           var counts = new Map();
-          var ok = true;
           function scan(node){
-            if(!ok || !node || typeof node!=='object') return;
+            if(!node || typeof node!=='object') return;
             if(Array.isArray(node)){ for(var i=0;i<node.length;i++) scan(node[i]); return; }
             if(node.type==='FunctionDeclaration'){ return; }
             if(node.type==='Identifier' && varOf.has(node)){
@@ -118,11 +119,13 @@
             for(var k in node){ if(k==='range'||k==='loc') continue; if(Object.prototype.hasOwnProperty.call(node,k)) scan(node[k]); }
           }
           body.forEach(scan);
+          var multiUse=[];
           for(var ci=0; ci<params.length; ci++){
-            if(counts.get(varOf.get(params[ci])) !== 1){ ok = false; break; }
+            var cnt = counts.get(varOf.get(params[ci])) || 0;
+            if(cnt < 1) return null;      // 形参未出现：无用形参，不作为薄包装
+            if(cnt > 1) multiUse.push(ci);
           }
-          if(!ok) return null;
-          return {body: body, paramBindingToIndex: paramBindingToIndex, paramCount: params.length};
+          return {body: body, paramBindingToIndex: paramBindingToIndex, paramCount: params.length, multiUse: multiUse};
         }
         (function scanStmts(stmts){
           for(var si=0; si<stmts.length; si++){
@@ -754,6 +757,16 @@
               if(wb2 && wrapperInline.has(wb2)){
                 var wi2 = wrapperInline.get(wb2);
                 var wargs = cexpr.arguments || [];
+                // 纯度守卫：出现多次的形参，其实参必须无调用/vararg（否则一次求值变多次，语义不同）
+                if(wi2.multiUse && wi2.multiUse.length){
+                  var impure=false;
+                  for(var mi2=0; mi2<wi2.multiUse.length && !impure; mi2++){
+                    var an=wargs[wi2.multiUse[mi2]];
+                    if(an && hasSideEffectNode(an)) impure=true;
+                    if(an && (function(n){var f=false;(function w(x){if(f||!x||typeof x!=='object')return;if(Array.isArray(x)){for(var i=0;i<x.length;i++)w(x[i]);return;}if(x.type==='VarargLiteral'){f=true;return;}for(var k in x){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(x,k))w(x[k]);}})(n);return f;})(an)) impure=true;
+                  }
+                  if(impure) return {type:'CallStmt', expr:normExpr(st.expression)};   // 不内联，按普通调用
+                }
                 var expanded = [];
                 for(var bi2=0; bi2<wi2.body.length; bi2++){
                   var sub = substituteWrapperBody(wi2.body[bi2], wi2.paramBindingToIndex, wargs);
