@@ -83,55 +83,52 @@
           report.aliasMapInfo = aliasMap;
         });
 
-        addStage('括号转点', doRename, function(){
+        // ---- 可重排的 fold 序列 ----
+        // 每个 fold 是"只缩短才提交"的独立变换；复合 stage（reuse/declHoist 连带的后置 fold）
+        // 暂时作为单个单元参与排序（后续可再原子化）。默认顺序与旧管线逐字一致。
+        // opts.foldOrder 传入自定义顺序（搜索层对顺序做 beam 用）。
+        var FOLD_DEFS = {};
+        FOLD_DEFS.bracketDot = function(){ addStage('括号转点', doRename, function(){
           var bdRes = foldBracketDot(state.current, state.activeAliasMap, steps, rec, state.code);
           if(bdRes) state.current = bdRes.code;
           report.stages.push({name:'1.1b-括号转点', code:state.current, len:state.current.length});
-        });
-
-        addStage('只读内联', doRename, function(){
+        }); };
+        FOLD_DEFS.readonlyInline = function(){ addStage('只读内联', doRename, function(){
           var riRes = foldReadonlyInline(state.current, state.activeAliasMap, steps, rec, state.code);
           if(riRes) state.current = riRes.code;
           report.stages.push({name:'1.1c-只读内联', code:state.current, len:state.current.length});
-        });
-
-        addStage('常量折叠', doRename, function(){
+        }); };
+        FOLD_DEFS.constant = function(){ addStage('常量折叠', doRename, function(){
           var cfRes = foldConstant(state.current, state.activeAliasMap, steps, rec, state.code);
           if(cfRes) state.current = cfRes.code;
           report.stages.push({name:'1.1d-常量折叠', code:state.current, len:state.current.length});
-        });
-
-        addStage('常量条件折叠', doRename, function(){
+        }); };
+        FOLD_DEFS.constCondition = function(){ addStage('常量条件折叠', doRename, function(){
           var ccRes = foldConstCondition(state.current, state.activeAliasMap, steps, rec, state.code);
           if(ccRes) state.current = ccRes.code;
           report.stages.push({name:'1.1d2-常量条件折叠', code:state.current, len:state.current.length});
-        });
-
-        addStage('表字段合并', doRename, function(){
+        }); };
+        FOLD_DEFS.tableFields = function(){ addStage('表字段合并', doRename, function(){
           var tfRes = foldTableFields(state.current, state.activeAliasMap, steps, rec, state.code);
           if(tfRes) state.current = tfRes.code;
           report.stages.push({name:'1.1d3-表字段合并', code:state.current, len:state.current.length});
-        });
-
-        addStage('布尔别名', doRename, function(){
+        }); };
+        FOLD_DEFS.boolNil = function(){ addStage('布尔别名', doRename, function(){
           var bnRes = foldBoolNil(state.current, state.activeAliasMap, steps, rec, state.code);
           if(bnRes) state.current = bnRes.code;
           report.stages.push({name:'1.1e-布尔别名', code:state.current, len:state.current.length});
-        });
-
-        addStage('数字归一', doRename, function(){
+        }); };
+        FOLD_DEFS.numbers = function(){ addStage('数字归一', doRename, function(){
           var nmRes = foldNumbers(state.current, state.activeAliasMap, steps, rec, state.code);
           if(nmRes) state.current = nmRes.code;
           report.stages.push({name:'1.1f-数字归一', code:state.current, len:state.current.length});
-        });
-
-        addStage('括号消除', doRename, function(){
+        }); };
+        FOLD_DEFS.parens = function(){ addStage('括号消除', doRename, function(){
           var prRes = foldParens(state.current, state.activeAliasMap, steps, rec, state.code);
           if(prRes) state.current = prRes.code;
           report.stages.push({name:'1.1h-括号消除', code:state.current, len:state.current.length});
-        });
-
-        addStage('精简方法调用', doMethod, function(){
+        }); };
+        FOLD_DEFS.methods = function(){ addStage('精简方法调用', doMethod, function(){
           var methodRes = foldMethods(state.current, state.activeAliasMap, steps, rec, state.code);
           if(methodRes){
             state.current = methodRes.code;
@@ -139,9 +136,8 @@
             report.aliasMapInfo = state.activeAliasMap;
           }
           report.stages.push({name:'1.2-method折叠', code:state.current, len:state.current.length});
-        });
-
-        addStage('合并字段前缀', doRename, function(){
+        }); };
+        FOLD_DEFS.fieldPrefix = function(){ addStage('合并字段前缀', doRename, function(){
           var prefixRes = foldFieldPrefix(state.current, state.activeAliasMap, steps, rec, state.code);
           if(prefixRes){
             state.current = prefixRes.code;
@@ -149,15 +145,13 @@
             report.aliasMapInfo = state.activeAliasMap;
           }
           report.stages.push({name:'1.3-字段前缀折叠', code:state.current, len:state.current.length});
-        });
-
-        addStage('call-sugar', doEncode, function(){
+        }); };
+        FOLD_DEFS.callSugar = function(){ addStage('call-sugar', doEncode, function(){
           var sugarRes = foldCallSugar(state.current, state.activeAliasMap, steps, rec, state.code);
           if(sugarRes) state.current = sugarRes.code;
           report.stages.push({name:'1.4-call-sugar', code:state.current, len:state.current.length});
-        });
-
-        addStage('复用重复文字', doRename, function(){
+        }); };
+        FOLD_DEFS.stringLiterals = function(){ addStage('复用重复文字', doRename, function(){
           var litRes = foldStringLiterals(state.current, state.activeAliasMap, steps, rec, state.code);
           if(litRes){
             state.current = litRes.code;
@@ -165,9 +159,8 @@
             report.aliasMapInfo = state.activeAliasMap;
           }
           report.stages.push({name:'1.4-字面量内联', code:state.current, len:state.current.length});
-        });
-
-        addStage('字符串公共前缀因子', doRename, function(){
+        }); };
+        FOLD_DEFS.stringFactors = function(){ addStage('字符串公共前缀因子', doRename, function(){
           var facRes = foldStringFactors(state.current, state.activeAliasMap, steps, rec, state.code);
           if(facRes){
             state.current = facRes.code;
@@ -175,9 +168,8 @@
             report.aliasMapInfo = state.activeAliasMap;
           }
           report.stages.push({name:'1.4c-字符串前缀因子', code:state.current, len:state.current.length});
-        });
-
-        addStage('块包装', doRename, function(){
+        }); };
+        FOLD_DEFS.blockWrapper = function(){ addStage('块包装', doRename, function(){
           var cwRes = foldBlockWrapper(state.current, state.activeAliasMap, steps, rec, state.code, blockMaxLen);
           if(cwRes){
             state.current = cwRes.code;
@@ -185,27 +177,23 @@
             report.aliasMapInfo = state.activeAliasMap;
           }
           report.stages.push({name:'1.4d-块包装', code:state.current, len:state.current.length});
-        });
-
-        addStage('合并声明', doRename, function(){
+        }); };
+        FOLD_DEFS.locals = function(){ addStage('合并声明', doRename, function(){
           var localRes = foldLocals(state.current, state.activeAliasMap, steps, rec, state.code);
           if(localRes) state.current = localRes.code;
           report.stages.push({name:'1.5-local合并', code:state.current, len:state.current.length});
-        });
-
-        addStage('local function 合并', doRename, function(){
+        }); };
+        FOLD_DEFS.localFunc = function(){ addStage('local function 合并', doRename, function(){
           var lfRes = foldLocalFunc(state.current, state.activeAliasMap, steps, rec, state.code);
           if(lfRes) state.current = lfRes.code;
           report.stages.push({name:'1.5b-local function 合并', code:state.current, len:state.current.length});
-        });
-
-        addStage('拆分赋值', doRename, function(){
+        }); };
+        FOLD_DEFS.splitMultiAssign = function(){ addStage('拆分赋值', doRename, function(){
           var splitRes = splitMultiAssign(state.current, state.activeAliasMap, steps, rec, state.code);
           if(splitRes) state.current = splitRes.code;
           report.stages.push({name:'1.6-多赋值拆分', code:state.current, len:state.current.length});
-        });
-
-        addStage('翻转条件', doRename, function(){
+        }); };
+        FOLD_DEFS.ifNot = function(){ addStage('翻转条件', doRename, function(){
           var ifnotGuard=0;
           while(ifnotGuard++<50){
             var ifnotRes = foldIfNot(state.current, state.activeAliasMap, steps, rec, state.code);
@@ -213,9 +201,8 @@
             state.current = ifnotRes.code;
           }
           report.stages.push({name:'1.6b-if-not二择', code:state.current, len:state.current.length});
-        });
-
-        addStage('共用变量', doRename && opts.reuse!==false, function(){
+        }); };
+        FOLD_DEFS.reuse = function(){ addStage('共用变量', doRename && opts.reuse!==false, function(){
           var reuseRes = foldReuse(state.current, state.activeAliasMap, steps, rec, state.code);
           if(reuseRes){
             state.current = reuseRes.code;
@@ -226,9 +213,8 @@
             }
           }
           report.stages.push({name:'1.7-变量复用', code:state.current, len:state.current.length});
-        });
-
-        addStage('前移声明', doRename && opts.reuse!==false, function(){
+        }); };
+        FOLD_DEFS.declHoist = function(){ addStage('前移声明', doRename && opts.reuse!==false, function(){
           var hoistRes = foldDeclHoist(state.current, state.activeAliasMap, steps, rec, state.code);
           if(hoistRes){
             state.current = hoistRes.code;
@@ -250,7 +236,14 @@
             state.current = bwRes2.code;
             report.stages.push({name:'1.7c2-块包装(二次)', code:state.current, len:state.current.length});
           }
-        });
+        }); };
+
+        var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','constant','constCondition','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist'];
+        var foldOrder = (opts.foldOrder && opts.foldOrder.length) ? opts.foldOrder : DEFAULT_FOLD_ORDER;
+        for(var _fi=0; _fi<foldOrder.length; _fi++){
+          var _fk = foldOrder[_fi];
+          if(FOLD_DEFS[_fk]) FOLD_DEFS[_fk]();
+        }
 
         addStage('删除注释', doEncode, function(){
           var beforeRemove=state.current.length;
