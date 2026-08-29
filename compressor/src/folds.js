@@ -818,18 +818,20 @@
         }
       }
 
-      // 枚举候选块（连续重复、shape 一致）
+      // 枚举候选块（任意位置重复、shape 一致）：按 shape 序列哈希找出所有 ≥2 次出现的语句块，
+      // 不再要求重复块相邻连续——真实代码里"重复操作"通常是散布的。
+      var shapes=stmts.map(function(st){ return shapeOf(st); });
       var cands=[];
-      for(var s=0;s<stmts.length;s++){
-        for(var k=1;k<=maxLen&&s+k<=stmts.length;k++){
-          var N=1;
-          while(s+(N+1)*k<=stmts.length){
-            var compatible=true;
-            for(var j=0;j<k;j++){ if(shapeOf(stmts[s+j])!==shapeOf(stmts[s+N*k+j])){ compatible=false; break; } }
-            if(!compatible) break;
-            N++;
-          }
-          if(N>=2) cands.push({s:s,k:k,N:N});
+      for(var k=1;k<=maxLen && k<=stmts.length;k++){
+        var seqMap=Object.create(null);
+        for(var s=0;s+k<=stmts.length;s++){
+          var key=shapes.slice(s,s+k).join('\u0000');
+          (seqMap[key]=seqMap[key]||[]).push(s);
+        }
+        for(var key in seqMap){
+          if(!Object.prototype.hasOwnProperty.call(seqMap,key)) continue;
+          var positions=seqMap[key];
+          if(positions.length>=2) cands.push({positions:positions, k:k, N:positions.length});
         }
       }
       if(!cands.length) return null;
@@ -837,9 +839,8 @@
       // 打分：参数化 + 收益（1 字名估算）
       var scored=[];
       cands.forEach(function(c){
-        var template=stmts.slice(c.s,c.s+c.k);
-        var reps=[];
-        for(var r=0;r<c.N;r++) reps.push(stmts.slice(c.s+r*c.k, c.s+r*c.k+c.k));
+        var template=stmts.slice(c.positions[0], c.positions[0]+c.k);
+        var reps=c.positions.map(function(p){ return stmts.slice(p, p+c.k); });
         var slots=[];
         for(var j=0;j<c.k;j++) collectSlots(template[j], reps.slice(1).map(function(rp){return rp[j];}), slots);
         var varying=[];
@@ -864,30 +865,26 @@
           calls += ('f('+args.join(',')+')').length;
         }
         var gain=origLen-(decl+calls);
-        if(gain>0) scored.push({s:c.s,k:c.k,N:c.N,V:V,gain:gain,template:template,reps:reps,varying:varying});
+        if(gain>0) scored.push({positions:c.positions,k:c.k,N:c.N,V:V,gain:gain,template:template,reps:reps,varying:varying});
       });
       if(!scored.length) return null;
 
-      // 加权区间调度：不重叠块、总收益最大
-      scored.sort(function(a,b){ var ea=a.s+a.k*a.N, eb=b.s+b.k*b.N; return ea-eb; });
-      var ends=scored.map(function(x){return x.s+x.k*x.N;});
-      var dp=new Array(scored.length).fill(0);
-      var pick=new Array(scored.length).fill(false);
-      function prevIdx(i){
-        var lo=-1, hi=i-1;
-        while(lo<hi){ var mid=(lo+hi+1)>>1; if(ends[mid]<=scored[i].s) lo=mid; else hi=mid-1; }
-        return lo;
-      }
-      for(var i=0;i<scored.length;i++){
-        var take=scored[i].gain, pv=prevIdx(i);
-        if(pv>=0) take+=dp[pv];
-        var skip=(i>0)?dp[i-1]:0;
-        if(take>skip){ dp[i]=take; pick[i]=true; } else { dp[i]=skip; }
-      }
+      // 贪心选块：按收益降序，选语句下标互不重叠的候选（散布重复块无法用区间调度）
+      scored.sort(function(a,b){ return b.gain - a.gain; });
+      var usedStmts=new Set();
       var chosen=[];
-      for(var i2=scored.length-1;i2>=0;){
-        if(pick[i2]){ chosen.push(scored[i2]); i2=prevIdx(i2); } else { i2--; }
-      }
+      scored.forEach(function(c){
+        var overlap=false;
+        for(var pi=0;pi<c.positions.length;pi++){
+          for(var j=c.positions[pi]; j<c.positions[pi]+c.k; j++){ if(usedStmts.has(j)){ overlap=true; break; } }
+          if(overlap) break;
+        }
+        if(overlap) return;
+        for(var pi=0;pi<c.positions.length;pi++){
+          for(var j=c.positions[pi]; j<c.positions[pi]+c.k; j++) usedStmts.add(j);
+        }
+        chosen.push(c);
+      });
       if(!chosen.length) return null;
 
       // 分配真实别名 + 形参名，构建候选

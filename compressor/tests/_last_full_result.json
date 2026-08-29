@@ -70,8 +70,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 206966,
-      "searchBytes": 206961,
+      "ruleBytes": 206934,
+      "searchBytes": 206929,
       "savedBytes": 5
     },
     "bulk": {
