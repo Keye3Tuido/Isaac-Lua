@@ -1775,6 +1775,45 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
+    // ---------- 德摩根折叠（把两个 not 合并成一个） ----------
+    //   not X or not Y  →  not(X and Y)
+    //   not X and not Y →  not(X or Y)
+    // 求值逻辑保持：not 先求值操作数再取反，De Morgan 不改变操作数求值顺序/次数（含短路），故无需排除副作用。
+    // canonical 的德摩根归一两侧一致施加，等价校验自然通过。
+    function foldDeMorgan(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var edits=[];
+      function operandText(op){
+        var t=src.slice(op.range[0], op.range[1]);
+        if(op.type==='LogicalExpression') t='('+t+')';   // 防优先级错误，逻辑表达式套括号
+        return t;
+      }
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='LogicalExpression' && (n.operator==='or'||n.operator==='and')
+           && n.left && n.left.type==='UnaryExpression' && n.left.operator==='not'
+           && n.right && n.right.type==='UnaryExpression' && n.right.operator==='not'
+           && n.range && n.left.range && n.right.range && n.left.argument && n.left.argument.range && n.right.argument && n.right.argument.range){
+          var flip=(n.operator==='or')?'and':'or';
+          var name='not('+operandText(n.left.argument)+' '+flip+' '+operandText(n.right.argument)+')';
+          if(name.length < n.range[1]-n.range[0]){
+            edits.push({start:n.range[0], end:n.range[1], name:name});
+            return;   // 已折叠，不递归子表达式
+          }
+        }
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'de-morgan/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'de-morgan/等价', steps);
+      if(rec) rec('德摩根折叠(提交)', src.length, candidate.length, '合并 '+edits.length+' 处德摩根');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
     // ---------- 表字段赋值 → 表构造器（local M={} M.X=v M.Y=w → local M={X=v,Y=w}） ----------
     // 仅合并紧邻声明的点访问赋值；字段值不得引用 M（否则构造器里对 M 的读会指到外层 M，语义不同）。
     // canonical 的 mergeTableFields 归一保证两侧等价；"M 不再被读"的退化情形由 canCommit 拒绝。
@@ -2097,6 +2136,6 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

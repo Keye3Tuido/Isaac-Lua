@@ -72,6 +72,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.1d2 常量条件折叠（`if true/false then A else B end` → `A`/`B`，含局部时才保留 `do..end`）
 1.1d2b 常量循环折叠（`while false do A end` → 删；`repeat A until true` → `A`（无局部）/`do A end`（有局部）；`repeat A until false` → `while 1 do A end`；条件位 `true` → `1`）
 1.1d2c 早返回守卫折叠（函数体开头连续 `if c then return end` 合并为 `if not(c1 or c2...) then <rest> end`，`or` 短路保持求值顺序）
+1.1d2d 德摩根折叠（`not X or not Y` → `not(X and Y)`；`not X and not Y` → `not(X or Y)`，求值顺序/次数保持）
 1.1d3 表字段合并（`local M={} M.X=v M.Y=w` → `local M={X=v,Y=w}`；字段值不得引用 M）
 1.1e 布尔别名（true/false 提取别名）
 1.1f 数字归一（0.X → .X）

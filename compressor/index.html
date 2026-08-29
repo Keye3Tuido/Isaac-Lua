@@ -15,12 +15,11 @@
 .tool-hero{text-align:center;margin:0 auto 24px}.game-logo{display:block;width:min(320px,65vw);height:auto;margin:0 auto 1px;filter:drop-shadow(0 11px 4px rgba(0,0,0,.66))}.tool-heading{max-width:700px;margin:auto;text-shadow:0 3px 2px #140806}h1{margin:8px 0 5px;color:#f0dfc7;font:400 clamp(1.9rem,4.5vw,3rem)/1.1 var(--display);letter-spacing:.035em}.sub{color:#c4af93;font:400 .96rem/1.4 var(--display)}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{position:relative;min-height:535px;padding:22px 24px 25px;border:32px solid transparent;border-image:url('../assets/basement-panel.webp') 112 fill stretch;color:#dcc9ad;background:#1a1210;box-shadow:0 10px 20px rgba(0,0,0,.34)}.card h2{margin:0 0 8px;padding-bottom:7px;border-bottom:1px solid #644237;color:#e6d4b7;font:400 1rem/1.4 var(--display)}.stat{display:block;min-height:18px;margin-bottom:5px;color:#99816f;font:700 .78rem/1.2 var(--hud)}textarea{width:100%;height:330px;margin-top:10px;padding:12px;border:2px solid #5f4035;resize:none;overflow-y:auto;overflow-x:hidden;outline:0;color:#d9cab1;background:#100b09;box-shadow:inset 0 0 24px rgba(0,0,0,.38);font:13px/1.6 var(--mono);white-space:pre-wrap}textarea::placeholder{color:#76675d}textarea:focus{border-color:#985062;box-shadow:inset 0 0 24px rgba(0,0,0,.38),0 0 0 2px rgba(132,37,58,.28)}#out{word-break:break-all}
 .row{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin-top:9px}button{min-height:40px;padding:7px 16px;border:2px solid #70483c;color:#d8c4a6;background:#261713;cursor:url('../assets/menu-cursor.png') 5 1,pointer;font:400 .86rem/1.25 var(--display);transition:.1s}.primary{border-color:#8a4050;color:#efd4b6;background:#32161d}.ghost{border-style:dashed;color:#ae9680}button::before{content:'>';margin-right:7px;color:#a64858;opacity:.55}button:hover::before{opacity:1}button:hover{color:#fff0d2;border-color:#9a5360;background:#331a20;transform:translateY(-1px)}button:active{transform:translateY(1px)}button:disabled{opacity:.45}.search-toggle{display:inline-flex;align-items:center;gap:6px;color:#a38c78;font:400 .8rem/1.2 var(--display);user-select:none}.search-toggle select{min-width:88px;padding:4px 6px;border:1px solid #70483c;border-radius:4px;color:#d8c4a6;background:#1a1210;font:400 .8rem/1.2 var(--display)}
-#progress{display:none;max-width:900px;margin:14px auto;padding:16px 20px;border:24px solid transparent;border-image:url('../assets/basement-panel.webp') 112 fill stretch;background:#1a1210;box-shadow:0 8px 16px rgba(0,0,0,.3)}#progress.active{display:block}#progress .label{margin-bottom:6px;color:#aa927c;font:700 12px/1.2 var(--hud)}#progress .track{height:17px;overflow:hidden;border:2px solid #5e4035;background:#100b09}#progress .bar{height:100%;width:0;color:#eadbc4;background:#84253a;font:700 11px/13px var(--hud);text-align:center;white-space:nowrap;transition:width .15s}
 .badge{display:inline-block;padding:1px 7px;color:#eee1d4;background:#84253a;font:700 .78rem/1.2 var(--hud)}.badge.ok{background:#557d59}.badge.err{background:#a83d49}#msg{display:none;max-width:900px;margin:14px auto 0;padding:15px 20px;border:22px solid transparent;border-image:url('../assets/basement-panel.webp') 112 fill stretch;color:#d8c5aa;background:#1a1210;font:12px/1.6 var(--mono);white-space:pre-wrap}#msg.ok,#msg.err{display:block}#msg.ok{color:#91bd92}#msg.err{color:#df8b91}
 #stagesCard{min-height:0!important;max-width:960px;margin:18px auto 0!important;padding:22px 24px 25px!important}.diff-legend{margin-bottom:7px;color:#9e8876;font:11px/1.4 var(--hud)}#stages{display:flex;flex-direction:column;gap:8px;margin-top:10px}.stage-item{padding:8px 11px;border:1px solid #5b3d33;color:#d6c7ad;background:#100b09;font:12px/1.4 var(--mono);transition:.1s}.stage-item:hover{border-color:#85564a;background:#18100d}.stage-item.expandable{cursor:url('../assets/menu-cursor.png') 5 1,pointer}.stage-header{display:flex;align-items:center;justify-content:space-between;gap:8px}.stage-name{color:#dec07b;font-weight:700}.stage-len,.stage-expand{color:#8d796c;font-family:var(--hud)}.stage-delta{margin-left:8px;font-family:var(--hud)}.stage-delta.positive{color:#8bc28e}.stage-delta.negative{color:#dc7a80}.stage-code{display:none;max-height:240px;margin-top:8px;padding:8px;overflow-y:auto;border:1px solid #4c3027;background:#090605;color:#bca98f;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all}.stage-item.expanded .stage-code{display:block}.stage-item.expanded .stage-expand::before{content:'▼ '}.stage-item:not(.expanded) .stage-expand::before{content:'▶ '}.stage-code ins,.diff-legend ins{color:#a9d4aa;background:rgba(73,135,78,.24);text-decoration:none}.stage-code del,.diff-legend del{color:#e39a9f;background:rgba(140,32,47,.22);text-decoration:line-through}.diff-toggle{margin-left:8px;padding:0 6px;border:1px solid #70514b;color:#a89485;cursor:pointer;font:10px/1.5 var(--hud);user-select:none}.diff-toggle:hover,.diff-toggle.active{color:#dfc37f;border-color:#ad8648}footer{margin-top:18px;color:#9e8876;text-align:center;font:700 .75rem/1.2 var(--hud)}code{padding:1px 5px;color:#e1c47c;background:#100b09;font-family:var(--mono)}
 button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-toggle:focus-within{outline:2px solid #a95765;outline-offset:3px}::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:#100b09}::-webkit-scrollbar-thumb{border:3px solid #100b09;background:#765346}
 @media(max-width:850px){body{padding:15px 8px 40px;background-attachment:scroll}.wrap{padding:0 3px}.home-btn{position:relative;left:auto;top:auto;display:block;width:max-content;margin:0 auto 4px}.grid{grid-template-columns:1fr}.card{min-height:500px}}
-@media(max-width:520px){.game-logo{width:min(285px,74vw)}h1{font-size:1.8rem}.card{min-height:470px;padding:16px 10px 20px;border-width:22px}.row{align-items:stretch}.row button{flex:1}textarea{height:290px}.stage-header{align-items:flex-start;flex-direction:column}#progress,#msg{border-width:18px;padding:12px}}
+@media(max-width:520px){.game-logo{width:min(285px,74vw)}h1{font-size:1.8rem}.card{min-height:470px;padding:16px 10px 20px;border-width:22px}.row{align-items:stretch}.row button{flex:1}textarea{height:290px}.stage-header{align-items:flex-start;flex-direction:column}#msg{border-width:18px;padding:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important}}
 </style>
 </head>
@@ -56,8 +55,6 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 
   <div id="msg"></div>
 
-  <div id="progress"><div class="label"></div><div class="track"><div class="bar"></div></div></div>
-
   <div class="card" id="stagesCard" style="display:none;margin-top:16px;">
     <h2>压缩阶段</h2>
     <div class="diff-legend"><del>删除</del> <ins>新增</ins> ——点击阶段展开，可切换「diff / 完整代码」</div>
@@ -75,10 +72,10 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 <script src="src/analyze.js?v=2"></script>
 <script src="src/plan.js?v=2"></script>
 <script src="src/encode.js?v=2"></script>
-<script src="src/canonical.js?v=2"></script>
-<script src="src/folds.js?v=2"></script>
-<script src="src/compress.js?v=2"></script>
-<script src="src/search.js?v=3"></script>
+<script src="src/canonical.js?v=3"></script>
+<script src="src/folds.js?v=3"></script>
+<script src="src/compress.js?v=3"></script>
+<script src="src/search.js?v=4"></script>
 <script src="core.js?v=2"></script>
 <script>
 (function(){
@@ -90,7 +87,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
   var $msg=document.getElementById('msg'), $badge=document.getElementById('badge');
   var $inStat=document.getElementById('inStat'), $outStat=document.getElementById('outStat');
   var $stagesCard=document.getElementById('stagesCard'), $stages=document.getElementById('stages');
-  var $progress=document.getElementById('progress'), $searchLevel=document.getElementById('searchLevel');
+  var $searchLevel=document.getElementById('searchLevel');
 
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
@@ -191,12 +188,9 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
     var searchLevel=parseInt($searchLevel.value,10)||0;
     var useSearch=searchLevel>0;
     var t0=Date.now();
-    var $bar=$progress.querySelector('.bar');
-    var $plabel=$progress.querySelector('.label');
 
     function showResult(rep, baseline){
       setRunning(false);
-      $progress.classList.remove('active');
       var elapsed=(Date.now()-t0)/1000;
 
       $out.value=rep.output;
@@ -283,44 +277,16 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 
     function doError(e){
       setRunning(false);
-      $progress.classList.remove('active');
       $out.value=''; $badge.className='badge err'; $badge.textContent='已拒绝'; $outStat.textContent='';
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
     }
 
-    if(useSearch){
-      $bar.style.width='0%'; $bar.textContent='';
-      $plabel.textContent='搜索模式 · 开始…';
-      $progress.classList.add('active');
-      var searchStepN = 0;
-      engine.searchOptimize(input, {
-        beamWidth: searchLevel,
-        onProgress: function(p){
-          if(p.phase==='baseline'){
-            var pct=Math.round(p.current/p.total*50);
-            $bar.style.width=pct+'%';
-            $bar.textContent=pct+'%';
-            $plabel.textContent='基线压缩 · '+(p.stage||'')+' (阈值'+p.threshold+')';
-          } else {
-            searchStepN++;
-            var base=50+Math.round(searchStepN/15*48);
-            $bar.style.width=Math.min(base,98)+'%';
-            $bar.textContent=Math.min(base,98)+'%';
-            $plabel.textContent='搜索优化 · '+(p.step||'')+(p.round?' 第'+p.round+'轮':'');
-          }
-        },
-        _error: doError,
-        _done: function(rep){
-          showResult(rep, null);
-        }
-      });
-    } else {
-      // 普通模式（无搜索）：同步压缩，亚秒级，无需进度条
-      try {
-        showResult(engine.compress(input), null);
-      } catch (e) {
-        doError(e);
-      }
+    // 无进度条：同步压缩/搜索，出结果即渲染（阶段显示顺序=实际执行顺序）
+    try {
+      var rep = useSearch ? engine.searchOptimize(input, { beamWidth: searchLevel }) : engine.compress(input);
+      showResult(rep, null);
+    } catch (e) {
+      doError(e);
     }
   };
 

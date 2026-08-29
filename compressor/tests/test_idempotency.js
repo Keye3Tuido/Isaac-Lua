@@ -52,6 +52,8 @@ const cases = [
   { name: '常量循环折叠(repeat until false)', code: 'repeat print(1) until false' },
   { name: '早返回守卫(单)', code: 'local function f(a) if a then return end print(1) end' },
   { name: '早返回守卫(多重or合并)', code: 'local function f(a,b) if a then return end if b then return end print(1) print(2) end' },
+  { name: '德摩根(not or → and)', code: 'return not a or not b' },
+  { name: '德摩根(not and → or)', code: 'return not a and not b' },
   { name: '表字段合并', code: 'local M={}M.FOO=function()return 1 end M.BAR=function()return 2 end return M.FOO()+M.BAR()' },
   { name: '跨作用域复用(搜索)', code: 'local top=Game() print(top) do local nested=f() print(nested) end do local x=g() print(x) end' },
   { name: '块包装(非连续散布)', code: 'func(AAA,x1,BB,CCC())DD()EE()g1()OTHER()func(AAA,x2,BB,CCC())DD()EE()g2()OTHER()func(AAA,x3,BB,CCC())DD()EE()g3()' },

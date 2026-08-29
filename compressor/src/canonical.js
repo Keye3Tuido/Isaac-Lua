@@ -670,6 +670,15 @@
         // 常量折叠归一
         var cf=constFold(node);
         if(cf!==null) return cf;
+        // 德摩根归一：not X or not Y ≡ not(X and Y)；not X and not Y ≡ not(X or Y)。
+        // 两侧一致施加，使"把两个 not 合并成一个"的缩短 fold 可被严格验证。
+        // 求值逻辑保持：not 是"先求值操作数再取反"，De Morgan 不改变操作数的求值顺序与次数。
+        if(node.type==='LogicalExpression' && (node.operator==='or'||node.operator==='and')
+           && node.left && node.left.type==='UnaryExpression' && node.left.operator==='not'
+           && node.right && node.right.type==='UnaryExpression' && node.right.operator==='not'){
+          var dmFlip = (node.operator==='or') ? 'and' : 'or';
+          return {type:'UnaryExpression', operator:'not', argument:{type:'LogicalExpression', operator:dmFlip, left:normExpr(node.left.argument), right:normExpr(node.right.argument)}};
+        }
         // 比较运算归一：a OP b ≡ b FLIP(OP) a（操作数字典序），仅当至多一侧有副作用
         if(node.type==='BinaryExpression'){
           var op2=node.operator;
