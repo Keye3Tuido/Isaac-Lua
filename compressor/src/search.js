@@ -631,7 +631,10 @@
       return best;
     }
 
-    // ---- 分片搜索（浏览器）：在"建立搜索列表"与每个 beam 候选之间让步，报告进度 ----
+    // ---- 分片搜索（浏览器）：每执行一次 compress 后让步一帧，报告进度 ----
+    // 长代码下单次 compress 可能耗时数秒，若把整个候选（几十~上百次 compress）塞进
+    // 一个同步块，主线程会被长期占用，徽标无法重绘、页面看起来像卡死。这里把候选处理
+    // 拆成"每次 compress 后 setTimeout(16ms) 让步"的显式状态机。
     function searchOptimizeChunked(input, opts){
       var K = (opts.beamWidth !== undefined) ? opts.beamWidth : 4;
       var budget = opts.budget;
@@ -639,6 +642,7 @@
       var deadline = (opts._deadline != null) ? opts._deadline
                    : ((budget != null && budget >= 0) ? (startTime + budget) : Infinity);
       var onStep = opts.onStep, onDone = opts._done, onError = opts._error;
+      var YIELD = 16;   // 一帧（约 16ms），确保浏览器在每步之间重绘徽标
 
       var origPre;
       try { origPre = preprocess(input); } catch(e){ if(onError) onError(e); return; }
@@ -669,9 +673,18 @@
       var frontier = [], fidx = 0;
       var rounds = 0, noImprove = 0, prevBestLen = 0, prevBeamLen = 0;
       var maxRounds = 6;
+      var maxCands = maxRounds * K;   // 候选总数上限 = 最多 6 轮 × 每轮 K 个（收敛会提前结束）
+      var rs = null;   // round 阶段状态机：{mi,mods,xi,phase,m2,composed,ci}
 
       function finish(){
-        if(!best){ if(onError) onError(new Error('搜索失败')); return; }
+        // 预算在基线中途耗尽时 best 可能还没定，退回 beam 里最短者，再退回裸 compress
+        if(!best && beam.length){
+          beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
+          best = beam[0].result;
+        }
+        if(!best){
+          try{ best = compress(input, opts); }catch(e){ if(onError) onError(e); return; }
+        }
         best.originalLength = input.length;
         if(origPre != null) best.original = origPre;
         if(onDone) onDone(best);
@@ -689,9 +702,104 @@
         prevBeamLen = beam.length;
         frontier = beam.slice(0, K);
         fidx = 0;
+        rs = null;
         if(frontier.length === 0){ finish(); return; }
-        onStep('正在计算第'+(++candCount)+'个候选');
-        setTimeout(processNext, 0);
+        onStep('正在计算第'+(++candCount)+'/'+maxCands+'个候选');
+        setTimeout(processNext, YIELD);
+      }
+
+      function candLabel(){
+        var m = (rs ? rs.mi : 0) + 1;
+        var s = '正在计算第'+candCount+'/'+maxCands+'个候选 · 变换'+m+'/'+MOVES.length;
+        if(rs && (rs.phase === 'capply' || rs.phase === 'cmod')){
+          s += ' · 组合'+(rs.m2+1)+'/'+MOVES.length;
+        }
+        return s;
+      }
+
+      // 处理当前候选的"一步"：把每个可能慢的操作（生成器 move.apply 或 compress）都拆成
+      // "先显示标签→让步一帧→再执行"两段。生成器 move（aggressiveReuse / crossScopeReuse）
+      // 的 apply 在 3.8 万字文件上实测 ~30s，若不让步，徽标会在这 30s 里纹丝不动。
+      function stepCandidate(){
+        var cand = frontier[fidx];
+        var candAlias = cand.result.aliasMapInfo || null;
+        if(!rs) rs = { mi:0, mods:null, xi:0, phase:'apply', m2:0, composed:null, ci:0, applying:false };
+
+        if(rs.mi >= MOVES.length){
+          // 本候选全部 move 处理完毕
+          fidx++; rs = null;
+          if(fidx < frontier.length){ onStep('正在计算第'+(++candCount)+'/'+maxCands+'个候选'); setTimeout(processNext, YIELD); }
+          else nextRound();
+          return;
+        }
+
+        var move = MOVES[rs.mi];
+
+        // ---- 阶段：应用当前 move（生成器可能很慢）----
+        if(rs.phase === 'apply'){
+          if(!rs.applying){
+            rs.applying = true;
+            onStep(candLabel() + ' · 分析中…');
+            setTimeout(processNext, YIELD);
+            return;
+          }
+          try{ rs.mods = move.apply(cand.body, origPre, candAlias, move.cand); }catch(e){ rs.mods = []; }
+          rs.phase = 'mod'; rs.xi = 0; rs.applying = false;
+          onStep(candLabel());
+          setTimeout(processNext, YIELD);
+          return;
+        }
+
+        // ---- 阶段：压缩当前 mod ----
+        if(rs.phase === 'mod'){
+          if(rs.xi >= rs.mods.length){
+            rs.mi++; rs.mods = null; rs.phase = 'apply'; rs.m2 = 0; rs.composed = null; rs.ci = 0; rs.applying = false;
+            stepCandidate();
+            return;
+          }
+          var mod = rs.mods[rs.xi];
+          try{ addCandidate(compress(mod.code, fastOpts)); }catch(e){}
+          rs.phase = 'capply'; rs.m2 = 0; rs.composed = null; rs.ci = 0;
+          onStep(candLabel());
+          setTimeout(processNext, YIELD);
+          return;
+        }
+
+        // ---- 阶段：应用组合 move m2（生成器可能很慢）----
+        if(rs.phase === 'capply'){
+          var mod2 = rs.mods[rs.xi];
+          while(rs.m2 < MOVES.length && rs.m2 === rs.mi){ rs.m2++; }   // 跳过与当前 move 相同者
+          if(rs.m2 >= MOVES.length){
+            rs.xi++; rs.phase = 'mod'; rs.m2 = 0; rs.composed = null; rs.ci = 0; rs.applying = false;
+            stepCandidate();
+            return;
+          }
+          if(!rs.applying){
+            rs.applying = true;
+            onStep(candLabel() + ' · 分析中…');
+            setTimeout(processNext, YIELD);
+            return;
+          }
+          try{ rs.composed = MOVES[rs.m2].apply(mod2.code, origPre, mod2.aliasMap, 1); }catch(e){ rs.composed = []; }
+          rs.phase = 'cmod'; rs.ci = 0; rs.applying = false;
+          onStep(candLabel());
+          setTimeout(processNext, YIELD);
+          return;
+        }
+
+        // ---- 阶段：压缩组合候选 ----
+        if(rs.phase === 'cmod'){
+          if(rs.ci >= rs.composed.length){
+            rs.m2++; rs.composed = null; rs.phase = 'capply'; rs.ci = 0; rs.applying = false;
+            stepCandidate();
+            return;
+          }
+          var comp = rs.composed[rs.ci++];
+          try{ addCandidate(compress(comp.code, fastOpts)); }catch(e){}
+          onStep(candLabel());
+          setTimeout(processNext, YIELD);
+          return;
+        }
       }
 
       function processNext(){
@@ -699,9 +807,10 @@
           if(Date.now() >= deadline && budget != null){ finish(); return; }
           if(phase === 'baseline'){
             if(baseIdx < baseCfgs.length){
+              onStep('正在建立搜索列表 ('+(baseIdx+1)+'/'+baseCfgs.length+')');
               var bc = baseCfgs[baseIdx++];
               addCandidate(compress(input, Object.assign({}, bc.full ? cOpts : fastOpts, bc.cfg)));
-              setTimeout(processNext, 0);
+              setTimeout(processNext, YIELD);
               return;
             }
             if(!beam.length){ onDone(compress(input, opts)); return; }
@@ -714,46 +823,19 @@
             rounds = 1;
             frontier = beam.slice(0, K);
             fidx = 0;
+            rs = null;
             if(frontier.length === 0){ finish(); return; }
-            onStep('正在计算第'+(++candCount)+'个候选');
-            setTimeout(processNext, 0);
+            onStep('正在计算第'+(++candCount)+'/'+maxCands+'个候选');
+            setTimeout(processNext, YIELD);
             return;
           }
-          // round 阶段：处理一个候选（套用全部 move + 深度2组合）
-          if(fidx < frontier.length){
-            var cand = frontier[fidx++];
-            var candAlias = cand.result.aliasMapInfo || null;
-            for(var mi=0; mi<MOVES.length; mi++){
-              var move = MOVES[mi];
-              var mods; try{ mods = move.apply(cand.body, origPre, candAlias, move.cand); }catch(e){ mods=[]; }
-              for(var xi=0; xi<mods.length; xi++){
-                if(Date.now() >= deadline && budget != null) break;
-                var mod = mods[xi];
-                try{ addCandidate(compress(mod.code, fastOpts)); }catch(e){}
-                for(var m2=0; m2<MOVES.length; m2++){
-                  if(m2===mi) continue;
-                  var composed; try{ composed = MOVES[m2].apply(mod.code, origPre, mod.aliasMap, 1); }catch(e){ composed=[]; }
-                  for(var ci=0; ci<composed.length; ci++){
-                    if(Date.now() >= deadline && budget != null) break;
-                    try{ addCandidate(compress(composed[ci].code, fastOpts)); }catch(e){}
-                  }
-                }
-              }
-            }
-            if(fidx < frontier.length){
-              onStep('正在计算第'+(++candCount)+'个候选');
-              setTimeout(processNext, 0);
-              return;
-            }
-            nextRound();
-            return;
-          }
-          finish();
+          // round 阶段：处理一个候选（套用全部 move + 深度2组合），每步最多一次 compress
+          stepCandidate();
         } catch(e){ if(onError) onError(e); }
       }
 
-      onStep('正在建立搜索列表');
-      setTimeout(processNext, 0);
+      onStep('正在建立搜索列表…');
+      setTimeout(processNext, YIELD);
     }
 
     C.searchOptimize = searchOptimize;
