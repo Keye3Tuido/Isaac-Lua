@@ -474,13 +474,17 @@
       if(mi>=0){ o.splice(mi,1); var bi=o.indexOf(beforeKey); if(bi>=0) o.splice(bi,0,moveKey); else o.push(moveKey); }
       return o;
     }
-    var BASELINE_CONFIGS = [
+    // 主基线（全阈值，彻底）：块包装开/关。
+    var BASELINE_PRIMARY = [
       { blockMaxLen: 8 },
-      { blockMaxLen: 0 },
-      { blockMaxLen: 8, foldOrder: reorderFold('blockWrapper','callSugar') },
-      { blockMaxLen: 8, foldOrder: reorderFold('stringFactors','stringLiterals') },
-      { blockMaxLen: 8, foldOrder: reorderFold('blockWrapper','methods') },
-      { blockMaxLen: 8, foldOrder: reorderFold('reuse','locals') }
+      { blockMaxLen: 0 }
+    ];
+    // 顺序预设（单阈值，便宜）：只探索 fold 顺序，不抢 beam 轮次的预算。
+    var BASELINE_ORDER_PRESETS = [
+      reorderFold('blockWrapper','callSugar'),
+      reorderFold('stringFactors','stringLiterals'),
+      reorderFold('blockWrapper','methods'),
+      reorderFold('reuse','locals')
     ];
 
     // ================================================================
@@ -535,10 +539,14 @@
         beam.push({ body: body, result: result });
       }
 
-      // 基线：多个互异起点 + 原始端表达式提取
-      for (var bci = 0; bci < BASELINE_CONFIGS.length; bci++) {
+      // 基线：主基线（全阈值）+ 顺序预设（单阈值，便宜）+ 原始端表达式提取
+      for (var bci = 0; bci < BASELINE_PRIMARY.length; bci++) {
         if (Date.now() >= deadline) break;
-        try { addCandidate(compress(input, Object.assign({}, cOpts, BASELINE_CONFIGS[bci]))); } catch (e) {}
+        try { addCandidate(compress(input, Object.assign({}, cOpts, BASELINE_PRIMARY[bci]))); } catch (e) {}
+      }
+      for (var bpi = 0; bpi < BASELINE_ORDER_PRESETS.length; bpi++) {
+        if (Date.now() >= deadline) break;
+        try { addCandidate(compress(input, Object.assign({}, fastOpts, { blockMaxLen: 8, foldOrder: BASELINE_ORDER_PRESETS[bpi] }))); } catch (e) {}
       }
       if (!beam.length) return compress(input, opts);
       try {
