@@ -48,6 +48,9 @@ const cases = [
   { name: '透明别名消解', code: 'local M=Isaac M.GetPlayer(0) M.GetPlayer(1) M.GetPlayer(2)' },
   { name: '常量条件折叠', code: 'if true then a() else b() end' },
   { name: '表字段合并', code: 'local M={}M.FOO=function()return 1 end M.BAR=function()return 2 end return M.FOO()+M.BAR()' },
+  { name: '跨作用域复用(搜索)', code: 'local top=Game() print(top) do local nested=f() print(nested) end do local x=g() print(x) end' },
+  { name: '块包装(非连续散布)', code: 'func(AAA,x1,BB,CCC())DD()EE()g1()OTHER()func(AAA,x2,BB,CCC())DD()EE()g2()OTHER()func(AAA,x3,BB,CCC())DD()EE()g3()' },
+  { name: '复用+块包装组合', code: 'local keep=Game() print(keep) do local a=f() print(a) end func(AAA,x1,BB)q1()func(AAA,x2,BB)q2()func(AAA,x3,BB)q3()' },
 ];
 
 // 追加真实语料：ver2 可读源码 + 用户 930 压缩版
