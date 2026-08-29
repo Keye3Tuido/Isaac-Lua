@@ -1692,6 +1692,13 @@
         }
         return false;
       }
+      function hasBreakOrGoto(node){
+        var found=false;
+        (function w(n){ if(found||!n||typeof n!=='object')return; if(Array.isArray(n)){for(var i=0;i<n.length;i++)w(n[i]);return;}
+          if(n.type==='BreakStatement'||n.type==='GotoStatement'){found=true;return;}
+          for(var k in n){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(n,k))w(n[k]);} })(node);
+        return found;
+      }
       var edits=[];
       (function walk(n){
         if(!n||typeof n!=='object') return;
@@ -1709,8 +1716,9 @@
           var inner = body.length ? src.slice(body[0].range[0], body[body.length-1].range[1]) : '';
           var name;
           if(n.condition.value){
-            // repeat A until true → A（无局部）/ do A end（有局部）/ 空（A 空）
+            // repeat A until true → A（无局部）/ do A end（有局部）/ 空（A 空）；体含 break/goto 则跳过（展开后目标会变）
             if(!body.length) name = '';
+            else if(hasBreakOrGoto(body)) return;
             else if(bodyHasLocals(body)) name = 'do '+inner+' end';
             else name = inner;
           } else {

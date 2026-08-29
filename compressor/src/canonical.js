@@ -555,6 +555,14 @@
         if(cv.kind==='str') return cv.v!=='';
         return null;
       }
+      // 是否含 break/goto：repeat until true 展开成 do/直接体时，break/goto 目标会从"repeat"变成"外层循环/块外"，语义不同。
+      function hasBreakOrGoto(node){
+        var found=false;
+        (function w(n){ if(found||!n||typeof n!=='object')return; if(Array.isArray(n)){for(var i=0;i<n.length;i++)w(n[i]);return;}
+          if(n.type==='BreakStatement'||n.type==='GotoStatement'){found=true;return;}
+          for(var k in n){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(n,k))w(n[k]);} })(node);
+        return found;
+      }
 
       function hasSideEffectNode(node){
         var found=false;
@@ -891,7 +899,7 @@
             curVer=new Map(snap2); t2.forEach(function(b){bumpDef(b);});
             if(rt !== null){
               if(rt === false) return {type:'While', cond:{type:'BooleanLiteral', value:true, raw:'true'}, body:body2};
-              return {type:'Do', body:body2};
+              if(!hasBreakOrGoto(st.body)) return {type:'Do', body:body2};   // until true → do A end（体无 break/goto 才安全）
             }
             var cond2=normExpr(st.condition);
             return {type:'Repeat', cond:cond2, body:body2};
