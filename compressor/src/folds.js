@@ -1731,6 +1731,50 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
+    // ---------- 早返回守卫折叠（反条件省 return） ----------
+    //   函数体开头连续的 if c then return end 合并为 if not(c1 or c2...) then <rest> end。
+    //   多重 early return 用 or 短路合并（保持求值顺序：c1 真则不求 c2）。只缩短才提交。
+    //   canonical 的 normGuardedFunctionBody 归一两侧一致施加，等价校验自然通过。
+    function foldEarlyReturn(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      function isGuard(st){
+        return st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
+          && st.clauses[0].type==='IfClause'
+          && st.clauses[0].body && st.clauses[0].body.length===1
+          && st.clauses[0].body[0].type==='ReturnStatement'
+          && (!st.clauses[0].body[0].arguments || st.clauses[0].body[0].arguments.length===0)
+          && st.clauses[0].condition && st.clauses[0].condition.range;
+      }
+      var edits=[];
+      function processBody(body){
+        if(!body || body.length < 2) return;
+        var i=0;
+        while(i<body.length && isGuard(body[i])) i++;
+        if(i===0) return;
+        var rest=body.slice(i);
+        if(!rest.length) return;   // 全是守卫无后续体：等价于空函数，但不比空更短，跳过
+        var conds=[];
+        for(var c=0;c<i;c++) conds.push(src.slice(body[c].clauses[0].condition.range[0], body[c].clauses[0].condition.range[1]));
+        var inner=src.slice(rest[0].range[0], rest[rest.length-1].range[1]);
+        var name='if not('+conds.join(' or ')+') then '+inner+' end';
+        edits.push({start:body[0].range[0], end:rest[rest.length-1].range[1], name:name});
+      }
+      (function walk(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
+        if(n.type==='FunctionDeclaration'){ processBody(n.body); walk(n.body); return; }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'early-return/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'early-return/等价', steps);
+      if(rec) rec('早返回守卫折叠(提交)', src.length, candidate.length, '合并 '+edits.length+' 处早返回守卫');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
     // ---------- 表字段赋值 → 表构造器（local M={} M.X=v M.Y=w → local M={X=v,Y=w}） ----------
     // 仅合并紧邻声明的点访问赋值；字段值不得引用 M（否则构造器里对 M 的读会指到外层 M，语义不同）。
     // canonical 的 mergeTableFields 归一保证两侧等价；"M 不再被读"的退化情形由 canCommit 拒绝。
@@ -2053,6 +2097,6 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

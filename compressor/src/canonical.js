@@ -697,10 +697,35 @@
       // 函数体：进入新的"版本环境"（参数视为各自的 v0）。为简单与健全，函数内对外层局部的
       // 赋值/捕获较复杂——但我们的复用变换被限制在"未被闭包捕获"的变量上，且函数边界两侧
       // 版本独立推进。这里对函数体内部按相同规则递归 SSA 化。
+      // 早返回守卫检测：if c then return end（单 clause、无 else、体为单条空 return）
+      function isGuardStmt(st){
+        return st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
+          && st.clauses[0].type==='IfClause'
+          && st.clauses[0].body && st.clauses[0].body.length===1
+          && st.clauses[0].body[0].type==='ReturnStatement'
+          && (!st.clauses[0].body[0].arguments || st.clauses[0].body[0].arguments.length===0);
+      }
+      // 函数体开头的连续守卫归一：
+      //   if c1 then return end if c2 then return end rest  ≡  if not(c1 or c2) then rest end
+      // 两侧一致施加，"反条件省 return"（含多重 early return）得以被验证。
+      function normGuardedFunctionBody(rawBody){
+        var i=0, conds=[];
+        while(i<rawBody.length && isGuardStmt(rawBody[i])){
+          conds.push(normExpr(rawBody[i].clauses[0].condition));
+          i++;
+        }
+        if(!conds.length) return normBlock(rawBody);
+        var rest=normBlock(rawBody.slice(i));
+        var orCond=conds[0];
+        for(var c=1;c<conds.length;c++) orCond={type:'LogicalExpression', operator:'or', left:orCond, right:conds[c]};
+        var notCond={type:'UnaryExpression', operator:'not', argument:orCond};
+        return [{type:'If', clauses:[{type:'IfClause', cond:notCond, body:rest}]}];
+      }
+
       function normFunction(node){
         // 参数 binding 取 v0（声明即定义）
         (node.parameters||[]).forEach(function(p){ if(p.type==='Identifier' && varOf.has(p)){ var b=varOf.get(p); bumpDef(b); } });
-        var body=normBlock(node.body||[]);
+        var body=normGuardedFunctionBody(node.body||[]);
         return {type:'Function', params:(node.parameters||[]).map(function(p){
                   if(p.type==='Identifier' && varOf.has(p)){ var b=varOf.get(p); return {type:'Identifier',kind:'local',n:idFor(b,curVersion(b))}; }
                   return {type:'Vararg'};
