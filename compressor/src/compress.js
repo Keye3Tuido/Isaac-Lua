@@ -2,12 +2,13 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc;
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
       var doEncode = opts.encode !== false;
       var doMethod = opts.method !== false;   // :method 折叠（带严格缩短闸门）
+      var blockMaxLen = (opts.blockMaxLen !== undefined) ? opts.blockMaxLen : 8;   // 块包装最大块长（0=禁用）
 
       var pre=preprocess(input);
       if(!/\S/.test(pre)) throw new Error('输入为空（剥离 l/lua 前缀后无内容）');
@@ -100,6 +101,18 @@
           report.stages.push({name:'1.1d-常量折叠', code:state.current, len:state.current.length});
         });
 
+        addStage('常量条件折叠', doRename, function(){
+          var ccRes = foldConstCondition(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(ccRes) state.current = ccRes.code;
+          report.stages.push({name:'1.1d2-常量条件折叠', code:state.current, len:state.current.length});
+        });
+
+        addStage('表字段合并', doRename, function(){
+          var tfRes = foldTableFields(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(tfRes) state.current = tfRes.code;
+          report.stages.push({name:'1.1d3-表字段合并', code:state.current, len:state.current.length});
+        });
+
         addStage('布尔别名', doRename, function(){
           var bnRes = foldBoolNil(state.current, state.activeAliasMap, steps, rec, state.code);
           if(bnRes) state.current = bnRes.code;
@@ -152,6 +165,26 @@
             report.aliasMapInfo = state.activeAliasMap;
           }
           report.stages.push({name:'1.4-字面量内联', code:state.current, len:state.current.length});
+        });
+
+        addStage('字符串公共前缀因子', doRename, function(){
+          var facRes = foldStringFactors(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(facRes){
+            state.current = facRes.code;
+            state.activeAliasMap = facRes.aliasMap;
+            report.aliasMapInfo = state.activeAliasMap;
+          }
+          report.stages.push({name:'1.4c-字符串前缀因子', code:state.current, len:state.current.length});
+        });
+
+        addStage('块包装', doRename, function(){
+          var cwRes = foldBlockWrapper(state.current, state.activeAliasMap, steps, rec, state.code, blockMaxLen);
+          if(cwRes){
+            state.current = cwRes.code;
+            state.activeAliasMap = cwRes.aliasMap;
+            report.aliasMapInfo = state.activeAliasMap;
+          }
+          report.stages.push({name:'1.4d-块包装', code:state.current, len:state.current.length});
         });
 
         addStage('合并声明', doRename, function(){
@@ -210,6 +243,12 @@
           if(localRes3){
             state.current = localRes3.code;
             report.stages.push({name:'1.7c-prefix合并', code:state.current, len:state.current.length});
+          }
+          // 前缀合并后重跑块包装：捕获 prefix 合并后新暴露的重复块
+          var bwRes2 = foldBlockWrapper(state.current, state.activeAliasMap, steps, rec, state.code, blockMaxLen);
+          if(bwRes2){
+            state.current = bwRes2.code;
+            report.stages.push({name:'1.7c2-块包装(二次)', code:state.current, len:state.current.length});
           }
         });
 

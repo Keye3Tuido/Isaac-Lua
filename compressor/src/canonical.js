@@ -80,6 +80,84 @@
         }
       }
 
+      // ---- 薄块包装检测（block-wrapper inlining）----
+      // 形如 local function f(p1..pV)<语句块>end（或 local f=function(p1..pV)<语句块>end）的"薄包装"：
+      // 函数体是一组"简单语句"（调用语句 / return 单调用），每个形参作为 Identifier 叶子恰好出现一次
+      // （不进入嵌套函数）。其调用 f(a1..aV) ≡ 把形参替换为实参后的语句块；
+      // 归一化时做语句级内联展开、并删除包装声明，使"提取块包装"可严格验证。
+      var wrapperInline = new Map(); // binding -> {body:[AST], paramBindingToIndex:Map, paramCount}
+      (function detectWrappers(){
+        function blockWrapperInfo(fn){
+          var params = fn.parameters || [];
+          if(!params.length) return null;
+          var body = fn.body || [];
+          if(!body.length) return null;
+          for(var bi=0; bi<body.length; bi++){
+            var bst = body[bi];
+            if(bst.type==='CallStatement') continue;
+            return null;   // 只允许"纯调用语句"体（return 会在语句位内联时改变控制流，不支持）
+          }
+          var paramBindingToIndex = new Map();
+          for(var pi=0; pi<params.length; pi++){
+            var p = params[pi];
+            if(p.type!=='Identifier' || !varOf.has(p)) return null;
+            paramBindingToIndex.set(varOf.get(p), pi);
+          }
+          // 每个形参必须恰好出现一次；不进入嵌套函数
+          var counts = new Map();
+          var ok = true;
+          function scan(node){
+            if(!ok || !node || typeof node!=='object') return;
+            if(Array.isArray(node)){ for(var i=0;i<node.length;i++) scan(node[i]); return; }
+            if(node.type==='FunctionDeclaration'){ return; }
+            if(node.type==='Identifier' && varOf.has(node)){
+              var b = varOf.get(node);
+              if(paramBindingToIndex.has(b)) counts.set(b, (counts.get(b)||0)+1);
+              return;
+            }
+            for(var k in node){ if(k==='range'||k==='loc') continue; if(Object.prototype.hasOwnProperty.call(node,k)) scan(node[k]); }
+          }
+          body.forEach(scan);
+          for(var ci=0; ci<params.length; ci++){
+            if(counts.get(varOf.get(params[ci])) !== 1){ ok = false; break; }
+          }
+          if(!ok) return null;
+          return {body: body, paramBindingToIndex: paramBindingToIndex, paramCount: params.length};
+        }
+        (function scanStmts(stmts){
+          for(var si=0; si<stmts.length; si++){
+            var st = stmts[si];
+            var fn = null, nameNode = null;
+            if(st.type === 'FunctionDeclaration' && st.isLocal && st.identifier){ fn = st; nameNode = st.identifier; }
+            else if(st.type === 'LocalStatement' && st.variables && st.variables.length===1 && st.init && st.init.length===1 && st.init[0].type==='FunctionDeclaration'){
+              fn = st.init[0]; nameNode = st.variables[0];
+            }
+            if(fn && nameNode && nameNode.type==='Identifier' && varOf.has(nameNode)){
+              var info = blockWrapperInfo(fn);
+              if(info) wrapperInline.set(varOf.get(nameNode), info);
+            }
+          }
+        })(ast.body);
+      })();
+
+      // 语法级替换：把包装体内的形参节点换成实参节点（用于语句级内联）。不进入嵌套函数。
+      function substituteWrapperBody(node, paramBindingToIndex, args){
+        if(!node || typeof node!=='object') return node;
+        if(Array.isArray(node)){ return node.map(function(x){ return substituteWrapperBody(x, paramBindingToIndex, args); }); }
+        if(node.type==='FunctionDeclaration'){ return node; }
+        if(node.type==='Identifier' && varOf.has(node)){
+          var b = varOf.get(node);
+          if(paramBindingToIndex.has(b)) return args[paramBindingToIndex.get(b)];
+          return node;
+        }
+        var clone = {};
+        for(var k in node){
+          if(k==='range'||k==='loc') continue;
+          if(Object.prototype.hasOwnProperty.call(node,k)) clone[k] = substituteWrapperBody(node[k], paramBindingToIndex, args);
+        }
+        return clone;
+      }
+
       // ---- 内在透明别名归一（copy-propagation 标准形）----
       // 一个只读局部 M（单次声明、从不被赋值）若 init 为"从不被赋值的全局 G"或"另一透明别名链至 G"，
       // 则读 M 与读 G 在语义上完全等价（G 不变，M 即 G 的快照常量）。canonical 把这类 M 的声明删除、
@@ -424,6 +502,17 @@
       function constValue(node){
         var lit=litConst(node);
         if(lit) return lit;
+        // 解析字面量别名：读 u（u='X'/u=100）≡ 读字面量，使 constFold 能折叠 u..'Y' 这类拼接。
+        if(node.type==='Identifier' && varOf.has(node)){
+          var b2=varOf.get(node);
+          if(b2 && stringOfAlias.hasOwnProperty(b2.name)) return {kind:'str', v:stringOfAlias[b2.name]};
+          if(b2 && autoLitByBinding.has(b2)){
+            var ln=autoLitByBinding.get(b2);
+            if(ln && ln.type==='StringLiteral') return {kind:'str', v:ln.content};
+            if(ln && ln.type==='NumericLiteral') return {kind:'int', v:ln.value};
+            if(ln && ln.type==='BooleanLiteral') return {kind:'bool', v:ln.value};
+          }
+        }
         if(node.type==='BinaryExpression'){
           var L=constValue(node.left), R=constValue(node.right);
           if(L&&R){
@@ -510,8 +599,16 @@
         }
         if(node.type==='CallExpression')
           return {type:'Call', base:normExpr(node.base), args:(node.arguments||[]).map(normExpr)};
-        if(node.type==='StringCallExpression')
+        if(node.type==='StringCallExpression'){
+          // 冒号方法糖参数：obj:m'X' ≡ obj:m('X') ≡ obj:m(X)，与 CallExpression 冒号分支同标准形，
+          // 否则 base 的 MemberExpression(':') 会走通用递归、与 Access 形态不一致。
+          if(node.base && node.base.type==='MemberExpression' && node.base.indexer===':'){
+            var self2=node.base.base;
+            return {type:'Call', base:{type:'Access', base:normExpr(self2), key:{field:node.base.identifier.name}},
+                    args:[normExpr(self2), normExpr(node.argument)]};
+          }
           return {type:'Call', base:normExpr(node.base), args:[normExpr(node.argument)]};
+        }
         if(node.type==='TableCallExpression')
           return {type:'Call', base:normExpr(node.base), args:[normExpr(node.arguments)]};
         if(node.type==='IndexExpression'){
@@ -610,7 +707,7 @@
             for(var ki=0;ki<st.variables.length;ki++){
               var kv=st.variables[ki];
               var kb=(kv.type==='Identifier' && varOf.has(kv)) ? varOf.get(kv) : null;
-              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb));
+              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb) || wrapperInline.has(kb));
               if(!drop) keepIdx.push(ki);
             }
             if(keepIdx.length===0) return {type:'__DROP__'};
@@ -632,7 +729,7 @@
             for(var ai=0; ai<st.variables.length; ai++){
               var rawV=st.variables[ai];
               var kb=(rawV.type==='Identifier' && varOf.has(rawV) && varOf.get(rawV)) ? varOf.get(rawV) : null;
-              if(kb && (autoTAByBinding.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb))) continue;
+              if(kb && (autoTAByBinding.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb) || aliasLocalBindings.has(kb))) continue;
               keepRawVars.push(rawV);
               keepRawInits.push(st.init ? st.init[ai] : undefined);
             }
@@ -650,9 +747,34 @@
             if(allLocalTargets) return {type:'LocalDecl', vars:tgts, init:rhs};
             return {type:'Assign', targets:tgts, init:rhs};
           }
-          case 'CallStatement': return {type:'CallStmt', expr:normExpr(st.expression)};
+          case 'CallStatement': {
+            // 薄块包装语句级内联：f(a1..aV) ≡ 把形参替换为实参后的包装体语句块
+            var cexpr = st.expression;
+            if(cexpr && cexpr.type==='CallExpression' && cexpr.base && cexpr.base.type==='Identifier' && varOf.has(cexpr.base)){
+              var wb2 = varOf.get(cexpr.base);
+              if(wb2 && wrapperInline.has(wb2)){
+                var wi2 = wrapperInline.get(wb2);
+                var wargs = cexpr.arguments || [];
+                var expanded = [];
+                for(var bi2=0; bi2<wi2.body.length; bi2++){
+                  var sub = substituteWrapperBody(wi2.body[bi2], wi2.paramBindingToIndex, wargs);
+                  var ns2 = normStmt(sub);
+                  if(ns2 && ns2.type!=='__DROP__') expanded.push(ns2);
+                }
+                return {type:'__EXPAND__', body:expanded};
+              }
+            }
+            return {type:'CallStmt', expr:normExpr(st.expression)};
+          }
           case 'ReturnStatement': return {type:'Return', args:(st.arguments||[]).map(normExpr)};
           case 'IfStatement': {
+            // 常量条件折叠归一：if <bool常量> then A else B end ≡ do A end / do B end。
+            // 用 constValue 解析条件（含布尔别名 Y→true），纯布尔常量时归一为对应分支的 Do 块。
+            var cc0 = st.clauses && st.clauses[0] && st.clauses[0].condition ? constValue(st.clauses[0].condition) : null;
+            if(cc0 && cc0.kind === 'bool'){
+              var takenBody = cc0.v ? (st.clauses[0].body||[]) : (st.clauses[1] && st.clauses[1].body ? st.clauses[1].body : []);
+              return {type:'Do', body: normBlock(takenBody)};
+            }
             // if-not 二择归一：`if not C then A else B end` ≡ `if C then B else A end`。
             // 推广到【条件顶层是连续若干个 not】：剥光全部前导 not，按 not 个数的奇偶决定是否对调分支——
             //   偶数个（如 `not not c`）：if 条件本就只看真假，双否抵消 → 去掉全部 not、分支不动；
@@ -732,7 +854,9 @@
           }
           case 'FunctionDeclaration': {
             if(st.isLocal && st.identifier && st.identifier.type==='Identifier' && varOf.has(st.identifier)){
-              var b=varOf.get(st.identifier); var nv=bumpDef(b);
+              var b=varOf.get(st.identifier);
+              if(wrapperInline.has(b)) return {type:'__DROP__'};   // 薄包装声明：内联后删除
+              var nv=bumpDef(b);
               // local function f() end ≡ local f=function() end：归一为 LocalDecl，与合并后的 local a,f=... 同形
               return {type:'LocalDecl', vars:[{type:'Identifier',kind:'local',n:idFor(b,nv)}], init:[normFunction(st)]};
             }
@@ -753,6 +877,7 @@
         for(var i=0;i<stmts.length;i++){
           var ns=normStmt(stmts[i]);
           if(ns && ns.type==='__DROP__') continue; // 透明别名整条声明被消解，两侧一致跳过
+          if(ns && ns.type==='__EXPAND__'){ for(var ei=0; ei<ns.body.length; ei++) out.push(ns.body[ei]); continue; } // 薄块包装内联展开
           // 把多变量 LocalDecl 展开成单变量序列，消除 `local a,b=1,2` 与
           // `local a=1 local b=2` 的分组结构差异（二者在我们的合并约束下语义一致）。
           if(ns && ns.type==='LocalDecl' && ns.vars.length>1){
@@ -795,6 +920,8 @@
         //   且只越过不读 T 的语句（被越过语句看不到 T 的存在差异）。下沉是块内稳定移动，
         //   不跨越任何引用 T 的语句，故语义保持。
         bubbleRelocatableDecls(out);
+        out = mergeTableFields(out);
+        out = flattenEmptyDo(out);
         return out;
       }
 
@@ -821,6 +948,60 @@
           for(var k in x){ if(Object.prototype.hasOwnProperty.call(x,k)) w(x[k]); }
         })(node);
         return found;
+      }
+      // 判断 Do 块体是否引入局部绑定（local / for 循环变量）
+      function doHasLocalDecls(body){
+        for(var i=0;i<body.length;i++){
+          var s=body[i];
+          if(s.type==='LocalDecl' || s.type==='ForNum' || s.type==='ForGen') return true;
+        }
+        return false;
+      }
+      // 空作用域 Do 块展开归一：`do A end`（A 无局部声明）≡ `A`
+      function flattenEmptyDo(list){
+        var out=[];
+        for(var i=0;i<list.length;i++){
+          var s=list[i];
+          if(s && s.type==='Do' && s.body && !doHasLocalDecls(s.body)){
+            for(var j=0;j<s.body.length;j++) out.push(s.body[j]);
+          } else {
+            out.push(s);
+          }
+        }
+        return out;
+      }
+      // 表字段赋值合并归一：`local M={} M.X=1 M.Y=2` ≡ `local M={X=1,Y=2}`。
+      // 仅当字段值不引用 M（否则构造器里对 M 的读会指到外层 M，语义不同）且赋值紧邻声明。
+      function mergeTableFields(list){
+        var out=[], i=0;
+        while(i<list.length){
+          var st=list[i];
+          var merged=false;
+          if(st && st.type==='LocalDecl' && st.vars.length===1 && st.init.length===1
+             && st.init[0] && st.init[0].type==='TableConstructorExpression'
+             && (!st.init[0].fields || st.init[0].fields.length===0)
+             && st.vars[0] && st.vars[0].kind==='local' && typeof st.vars[0].n==='number'){
+            var mid=st.vars[0].n;
+            var fields=[], j=i+1;
+            while(j<list.length){
+              var as=list[j];
+              if(as && as.type==='Assign' && as.targets.length===1 && as.init.length===1
+                 && as.targets[0] && as.targets[0].type==='Access'
+                 && as.targets[0].base && as.targets[0].base.kind==='local' && as.targets[0].base.n===mid
+                 && as.targets[0].key && as.targets[0].key.field
+                 && !refsLocalId(as.init[0], mid)){
+                fields.push({type:'TableKeyString', key:{type:'Identifier', name:as.targets[0].key.field}, value:as.init[0]});
+                j++;
+              } else break;
+            }
+            if(fields.length){
+              out.push({type:'LocalDecl', vars:st.vars, init:[{type:'TableConstructorExpression', fields:fields}]});
+              i=j; merged=true;
+            }
+          }
+          if(!merged){ out.push(st); i++; }
+        }
+        return out;
       }
       // 取单变量 LocalDecl 的 (localId, initNode)；不符合则返回 null
       function singleLocalDecl(stmt){

@@ -44,14 +44,16 @@ console.log(result.output);  // l <压缩后的单行代码>
 - `src/canonical.js` — SSA 版本化归一 + 等价性验证；无别名 canonical 使用精确源码键控的有界 LRU 缓存
 - `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass
 - `src/compress.js` — 单一阶段注册表 + 同步/异步执行器、多阈值策略、异步进度回调
-- `src/search.js` — 搜索优化器（表达式提取、激进变量复用，canonical 验证兜底）
+- `src/search.js` — 搜索优化器（**beam search**：表达式提取、激进/跨作用域变量复用、块包装策略分支；canonical 验证兜底）
 
 **加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；同步与带进度的异步压缩共享同一阶段表，由 `tests/test_pipeline_parity.js` 校验报告和输出一致。
 
 **UI 特性**：
 - 压缩进度条：逐阶段实时更新，显示当前阶段名和百分比
-- 搜索优化开关：勾选后启用 `searchOptimize`，用更宽阈值 + 搜索变换探索额外优化空间
+- 搜索优化级数下拉框：0=关闭（只用规则系统），1~32=beam search 束宽 K（越大搜得越深、越慢）
 - 压缩期间按钮禁用防重复点击
+
+**搜索层做什么**：规则系统（`compress`）做的是「可静态证明安全」的贪心优化。搜索层（`searchOptimize`）用 **beam search** 在规则系统输出之上做第二轮搜索：维护一个候选束（默认宽 4），从当前最短的若干候选出发，应用规则系统因保守而不敢做的变换（提取带调用/索引链的重复子表达式、放宽变量复用门槛、跨作用域复用、块包装开/关），每次变换后重跑规则系统让后续 pass 在新结构上生效，用 **canonical 等价去重**（同一等价类只保留最短者）+ 只缩短才提交兜底，连续两轮无改善即收敛，并迭代到幂等固定点——从而在不同优化步骤与分块策略穿插组合中找到（近似）最优结果。
 
 ### 压缩流水线
 
@@ -65,14 +67,18 @@ console.log(result.output);  // l <压缩后的单行代码>
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.1b 括号转点（obj["Field"] → obj.Field，关键词字段除外）
 1.1c 只读内联（只读字面量/常量别名 copy-propagation + 死纯局部消除）
-1.1d 常量折叠（整数 ±、字符串 ..、not 布尔）
+1.1d 常量折叠（整数 ±、字符串 ..、not 布尔；递归求值）
+1.1d2 常量条件折叠（`if true/false then A else B end` → `A`/`B`，含局部时才保留 `do..end`）
+1.1d3 表字段合并（`local M={} M.X=v M.Y=w` → `local M={X=v,Y=w}`；字段值不得引用 M）
 1.1e 布尔别名（true/false 提取别名）
 1.1f 数字归一（0.X → .X）
 1.1h 括号消除（冗余圆括号移除，保留 load-bearing 的 `;(`）
 1.2  :method 折叠（base 为简单变量；只缩短才提交）
-1.3  字段前缀折叠（obj.PREFIX_X 系列提取公共前缀因子）
+1.3  字段前缀折叠（obj.PREFIX_X 系列提取公共前缀因子；支持多级派生因子，按成本选最优拆分等级）
 1.4  Safe call sugar: `f("x")` -> `f"x"`, `f({})` -> `f{}`
-1.4b 字符串字面量内联（重复标识符样字面量提取别名）
+1.4b 字符串字面量内联（重复字符串提取别名，含 call sugar `a'X'` 参数）
+1.4c 字符串公共前缀因子（多串共享前缀时迭代提取多级因子，含嵌套 `a..b..'UP'`）
+1.4d 块包装（重复语句块打包成薄函数：固定点任意位置、变化点作形参；多个互斥候选按加权区间调度取最短）
 1.5  local 合并（相邻 body local 并一条）
 1.5b local function 合并（并入前条声明；函数体引用被并变量时退化为「先声明、后赋值」）
 1.6  多重赋值拆分（非 local 多赋值 → 单赋值序列；编码层兑现节省）
@@ -80,6 +86,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.7  变量复用（活跃区间不交 → 共享名 + 省 local；含循环内丢弃变量 `_`；SSA 等价校验）
 1.7b 声明上提（顶层局部上提到别名头作前向 nil 占位 + 降级 local）
 1.7c prefix 合并（声明上提完成后，别名头与紧邻 body local 合并省 local 关键字）
+1.7c2 块包装(二次)（prefix 合并后重跑，捕获新暴露的重复块）
    ↓
 【阶段 2：编码优化】
 1.8  去除注释
@@ -119,15 +126,19 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 **局部规范化**（阶段 1.1b~1.1h）：
 - **括号转点** — `obj["Field"]` → `obj.Field`（关键词字段如 `t["end"]` 除外，避免非法语法）
 - **只读内联** — 只读字面量/常量别名 copy-propagation（`local t=1000000` 读处还原为字面量）+ 死纯局部消除
-- **常量折叠** — 整数 `±`、字符串 `..`、`not` 布尔；折叠后必须更短才提交
+- **常量折叠** — 整数 `±`、字符串 `..`、`not` 布尔；**递归求值**折叠嵌套常量（`1+2*3` → `7` 一次到位，保证幂等）；折叠后必须更短才提交
+- **常量条件折叠** — `if true/false then A else B end` → `A`/`B`（分支无局部声明时直接展开）；分支含局部声明时才用 `do..end` 包裹保留作用域；空分支直接删除；`canonical` 的 IfStatement 归一 + 空 Do 块展开验证等价
+- **表字段合并** — `local M={} M.X=v M.Y=w` → `local M={X=v,Y=w}`（仅合并紧邻声明、字段值不引用 M 的点访问赋值）；`canonical` 的 `mergeTableFields` 归一验证等价
 - **布尔别名** — `true`/`false` 提取别名
 - **数字归一** — `0.X` → `.X` 等前导零消除
 - **括号消除** — 冗余圆括号移除，保留 load-bearing 的 `;(`
 
 **增量优化**（阶段 1.2~1.7c）：
 - **`:method` 折叠** — `obj:M(args)` → `obj[s](obj,args)` + `s='M'`（仅 base 为简单标识符；只缩短才提交）
-- **字段前缀折叠** — `obj.PREFIX_X` 系列提取公共前缀因子 `U`，改写为 `obj[U..'rest']`；可注入现有 batched local 尾部
-- **字符串字面量内联** — 标识符样字面量（`≥3` 字、`≥2` 次）提取别名 `u='X'` 注入 batched local，替换每处 `'X'` 为 `u`
+- **字段前缀折叠** — `obj.PREFIX_X` 系列提取公共前缀因子 `U`，改写为 `obj[U..'rest']`；可注入现有 batched local 尾部。支持**多级派生因子**：候选前缀构成一棵树，在树上做 DP 选择最优抽取集合——子前缀可写成 `V=U..'seg'`（派生，声明后赋值，省去重复存储父前缀字符串），按成本选最优拆分等级（前缀太短或子分组太少时自动退回单级/不拆）
+- **字符串字面量内联** — 重复字符串（`≥3` 字、`≥2` 次，不含 `'`/`\`/换行）提取别名 `u='X'` 注入 batched local，替换每处 `'X'` 为 `u`；不再限定标识符样字符，call sugar `a'X'` 的参数也纳入（改写为 `a(u)`）
+- **字符串公共前缀因子** — 多串共享公共前缀时，迭代提取收益最大的公共前缀作因子（`'ACTION_SHOOT_UP'` 系列 → `a='ACTION_SHOOT_'` + `a..'UP'`）；支持**多级嵌套**：`'DATABASE_TABLE_X_COLUMN_NAME_1'` → `a..b..'NAME_1'`（`a='DATABASE_TABLE_'`、`b='X_COLUMN_'`），每级带盈亏闸门，不赚则跳过
+- **块包装** — 重复出现的【语句块】（1~N 条顶层语句）打包成薄函数：`func(AAA,var1,BB,CCC()) DD() EE() var2()` ×N → `local function f(p1,p2)<块(p1,p2)>end` + `f(v1,v2)`。**固定点按文本一致判定、可位于任意位置**（如 `AAA`/`BB`/`CCC` 穿插在变化实参之间），**变化点（标识符/字面量）作形参**。多个候选块可能互斥，用**加权区间调度**取不重叠、总收益（=最短）最大的一组。`canonical` 内置「块包装内联」归一（把 `f(a1..aV)` 展开为形参替换后的语句块）验证等价；仅收集顶层语句，避免跨作用域捕获嵌套局部；幂等
 - **`local` 合并** — 相邻 `local A=x local B=y` → `local A,B=x,y`，省 `local ` 关键字；声明上提后额外一轮将别名头与紧邻 body local 合并（阶段 1.7c）
 - **local function 合并** — 统一识别 `local function f()…end` 与 `local f=function()…end` 两种等价形态，按语义与长度选最短：函数体不引用被并变量时直接合并 `local a,f=1,function()…end`；**引用被并变量时**（如 `f` 读 `a`）退化为「先声明、后赋值」`local a,f=1 f=function()…end`（Lua 里 `local a,f=1,function()return a end` 的闭包读到的是外层 `a`=nil，语义会变；先声明后赋值则正确捕获新 `a`）。无前条 local 可并时保持原形态不强行拆成 `local f f=function()`（那样反而多出变量名与逗号）
 - **多重赋值拆分** — 非 local 多重赋值安全条件下拆为单赋值序列；编码层每个非末值符号收尾兑现 1 字节省
@@ -153,9 +164,11 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 1. **真·Lua 5.3 语法校验** — 用 fengari `load()`，与游戏内解释器一致，抓住畸形数字等边界 case
 2. **luaparse 复核** — 再建一次 AST，确认可解析
 3. **AST 语义等价（SSA 版本化归一）** — "局部变量被赋值后视作新逻辑变量"做 alpha 归一深比较，使变量复用、透明别名消解、死前向声明消除等优化可严格验证。归一覆盖：
-   - `obj.F` ≡ `obj["F"]`、`obj:M()` ≡ `obj[m](obj)`
+   - `obj.F` ≡ `obj["F"]`、`obj:M()` ≡ `obj[m](obj)`、`obj:m'X'` ≡ `obj:m('X')`
    - `local a,b=...` ≡ 连续 `local`、`local function f` ≡ `local f=function`、`'X'` ≡ `"X"`
    - `obj[U..'X']` ≡ `obj.<P+X>`（因子还原）、`obj[u]` ≡ `obj.X`（字符串别名还原）
+   - 别名局部赋值丢弃：派生因子 `V=U..'seg'`（别名局部被拼接赋值）与独立 `V='P+seg'` 同标准形
+   - 块包装内联：`f(a1..aV)` ≡ 把形参替换为实参后的包装体语句块（`local function f(p1..pV)<块>end` 被识别为薄块包装后语句级内联展开、删除声明）
    - 安全多重赋值 ≡ 单赋值序列
    - **透明别名读 ≡ 源全局读**（copy-propagation 标准形，并删除别名声明）
    - **死前向声明消除**（`local v=nil ...(不读v)... v=e` ≡ `... local v=e`）
@@ -187,7 +200,7 @@ node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 89/89、边界 40/40、仓库真实语料 335/335 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 9/9、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 301，输出 13959 字节。
+**当前状态**：基础 89/89、边界 40/40、仓库真实语料 335/335 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 32/32、流水线一致性 26/26、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 353，输出 13957 字节。
 
 **语料测试口径**：仓库真实代码按「每条 `l` 段单独压缩」进行——不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐条测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 

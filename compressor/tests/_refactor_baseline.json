@@ -59,7 +59,7 @@
     },
     "idempotency": {
       "ok": true,
-      "pass": 9,
+      "pass": 32,
       "fail": 0
     },
     "remote": {
@@ -70,8 +70,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 206934,
-      "searchBytes": 206929,
+      "ruleBytes": 206966,
+      "searchBytes": 206961,
       "savedBytes": 5
     },
     "bulk": {
@@ -86,20 +86,20 @@
     "snapshot": {
       "ok": true,
       "total": 495,
-      "changed": 0,
+      "changed": 107,
       "regress": 0,
-      "improve": 0,
+      "improve": 106,
       "lostOk": 0,
       "newOk": 0,
-      "sourceChanged": 0,
+      "sourceChanged": 2,
       "removed": 0
     },
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 301,
+      "parseCount": 353,
       "inputBytes": 14336,
-      "outputBytes": 13959
+      "outputBytes": 13957
     }
   }
 }
