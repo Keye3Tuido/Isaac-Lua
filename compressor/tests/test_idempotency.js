@@ -60,6 +60,12 @@ const cases = [
   { name: '块包装(非连续散布)', code: 'func(AAA,x1,BB,CCC())DD()EE()g1()OTHER()func(AAA,x2,BB,CCC())DD()EE()g2()OTHER()func(AAA,x3,BB,CCC())DD()EE()g3()' },
   { name: '复用+块包装组合', code: 'local keep=Game() print(keep) do local a=f() print(a) end func(AAA,x1,BB)q1()func(AAA,x2,BB)q2()func(AAA,x3,BB)q3()' },
   { name: '穿插顺序敏感(块包装先于别名化)', code: "process('DATA_A',1)render(1)update(1)refresh(1)save(1)process('DATA_A',2)render(2)update(2)refresh(2)save(2)process('DATA_A',3)render(3)update(3)refresh(3)save(3)" },
+  { name: '尾值符号收尾(多值赋值重排)', code: "local a,b='hello',1 print(a,b)print(a,b)print(a,b)" },
+  { name: '尾值符号收尾(纯表收尾)', code: 'local a,b={1,2},3 print(a,b)print(a,b)' },
+  { name: '尾值符号收尾(混合值末值全局)', code: "local A,B,C,D,E='MoveSpeed','Luck',ipairs A()B()C()D()E()" },
+  { name: '尾值符号收尾(变量多于值)', code: "local A,B,C,D='hello',1 A()B()C()D()" },
+  { name: '块包装(完全相同块无变化点)', code: 'Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)' },
+  { name: '方法名因子(复用成员别名后缀)', code: "Isaac.AddCallback(ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local d=p:GetData()if p:IsHoldingItem()then d.HoldingItem=30 else d.HoldingItem=(d.HoldingItem or 0)-1 end end)" },
 ];
 
 // 追加真实语料：ver2 可读源码 + 用户 930 压缩版

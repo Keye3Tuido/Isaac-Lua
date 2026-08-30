@@ -38,11 +38,11 @@ console.log(result.output);  // l <压缩后的单行代码>
 
 **核心模块**：
 - `core.js` — 词法器 + 工厂函数，构造共享上下文并组装各模块
-- `src/analyze.js` — AST 解析、作用域分析、全局/成员访问收集
+- `src/analyze.js` — AST 解析、作用域分析、全局/成员访问收集、元表纯度分析（`analyzeMetatableFree`）
 - `src/plan.js` — 统一规划（重命名+折叠+因子分解+透明别名消解）
 - `src/encode.js` — 去注释、间隔符最小化、分号消除
-- `src/canonical.js` — SSA 版本化归一 + 等价性验证；无别名 canonical 使用精确源码键控的有界 LRU 缓存
-- `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass
+- `src/canonical.js` — SSA 版本化归一 + 等价性验证；无别名 canonical 使用精确源码键控的有界 LRU 缓存；整链别名（`chainAliasByLocal`）还原
+- `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass；纯成员链冗余消除（`foldMemberChain`）
 - `src/compress.js` — 单一阶段注册表 + 同步/异步执行器、多阈值策略、异步进度回调
 - `src/search.js` — 搜索优化器（**beam search**：表达式提取、激进/跨作用域变量复用、块包装策略分支；canonical 验证兜底）。浏览器端走分片执行（每次 compress/move 后让步一帧 + 徽标进度），Node 端走同步路径，两者结果一致
 
@@ -50,6 +50,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 
 **UI 特性**：
 - 搜索优化级数下拉框：0=关闭（只用规则系统），1~32=beam search 束宽 K（越大搜得越深、越慢）
+- 无元表模式勾选框：假定所有变量（含全局）无自定义 `__index`/`__newindex` 元表，放开成员链冗余消除的纯度闸门，允许更激进压缩
 - 压缩阶段列表：按实际执行顺序展示每个阶段，可点开查看相对上一阶段的 diff（相邻阶段公共前缀/后缀裁剪，超大改动显示"diff 过大"提示而非整段红绿）
 - 压缩期间徽标实时进度（"正在计算第 n/N 个候选 · 变换 M/10"，N=最多 6 轮 × K），按钮禁用防重复点击
 
@@ -68,6 +69,7 @@ console.log(result.output);  // l <压缩后的单行代码>
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.1b 括号转点（obj["Field"] → obj.Field，关键词字段除外）
 1.1c 只读内联（只读字面量/常量别名 copy-propagation + 死纯局部消除）
+1.1c2 成员链冗余消除（重复的纯点访问链 base.f1.f2… 提取为局部别名；safe 模式要求 base 可证明无元表，无元表模式放开）
 1.1d 常量折叠（整数 ±、字符串 ..、not 布尔；递归求值）
 1.1d2 常量条件折叠（`if true/false then A else B end` → `A`/`B`，含局部时才保留 `do..end`）
 1.1d2b 常量循环折叠（`while false do A end` → 删；`repeat A until true` → `A`（无局部）/`do A end`（有局部）；`repeat A until false` → `while 1 do A end`；条件位 `true` → `1`）
@@ -91,6 +93,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.7b 声明上提（顶层局部上提到别名头作前向 nil 占位 + 降级 local）
 1.7c prefix 合并（声明上提完成后，别名头与紧邻 body local 合并省 local 关键字）
 1.7c2 块包装(二次)（prefix 合并后重跑，捕获新暴露的重复块）
+1.7d 尾值符号收尾（多值赋值 local 里把"以引号/花括号结尾"的纯字面量排到最后，省后续关键字前的空格）
    ↓
 【阶段 2：编码优化】
 1.8  去除注释
@@ -130,6 +133,8 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 **局部规范化**（阶段 1.1b~1.1h）：
 - **括号转点** — `obj["Field"]` → `obj.Field`（关键词字段如 `t["end"]` 除外，避免非法语法）
 - **只读内联** — 只读字面量/常量别名 copy-propagation（`local t=1000000` 读处还原为字面量）+ 死纯局部消除
+- **成员链冗余消除（CSE）** — 把重复出现的**纯点访问链** `base.f1.f2…` 提取为局部别名（`print(t.a.b.c) print(t.a.b.c)` → `local v=t.a.b.c print(v) print(v)`）。安全性：safe 模式下要求 base 是可证明无 `__index`/`__newindex` 元表的局部（字面量表构造、从不重赋值/写成员/逃逸、全程无 `setmetatable`），深链逐级经字面量表构造；`noMetatable` 模式（opts）假定所有变量（含全局）无元表，只保留"从不写/重赋值"的稳定性要求。`canonical` 的整链别名（`chainAliasByLocal`）双侧还原验证等价
+- **尾值符号收尾** — 多值赋值 `local a,b='hello',1 …` 把以符号（引号/花括号）结尾的纯字面量值排到最后 → `local b,a=1,'hello'…`，使后续关键字前可省一个空格。仅重排纯字面量（求值顺序无关），`canonical` 的只读字面量别名归一验证等价
 - **常量折叠** — 整数 `±`、字符串 `..`、`not` 布尔；**递归求值**折叠嵌套常量（`1+2*3` → `7` 一次到位，保证幂等）；折叠后必须更短才提交
 - **常量条件折叠** — `if true/false then A else B end` → `A`/`B`（分支无局部声明时直接展开）；分支含局部声明时才用 `do..end` 包裹保留作用域；空分支直接删除；`canonical` 的 IfStatement 归一 + 空 Do 块展开验证等价
 - **表字段合并** — `local M={} M.X=v M.Y=w` → `local M={X=v,Y=w}`（仅合并紧邻声明、字段值不引用 M 的点访问赋值）；`canonical` 的 `mergeTableFields` 归一验证等价

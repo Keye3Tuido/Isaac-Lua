@@ -39,6 +39,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
       <div class="row">
         <button class="primary" id="run">压缩</button>
         <label class="search-toggle" title="搜索优化级数：0=关闭（只用规则系统）；N=beam search 束宽，越大搜得越深但越慢"><span>搜索优化级数</span><select id="searchLevel"><option value="0" selected>0（关闭）</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="16">16</option><option value="20">20</option><option value="24">24</option><option value="32">32</option></select></label>
+        <label class="search-toggle" title="无元表模式：假定所有变量（含全局）都没有自定义 __index/__newindex 元表，成员访问无状态变化，允许更激进的整链折叠"><span>无元表模式</span><input type="checkbox" id="noMetatable"></label>
         <button class="ghost" id="clear">清空</button>
       </div>
       <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
@@ -70,13 +71,13 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 <script src="fengari-web.js?v=3303327"></script>
 <script>if(!window.fengari)document.write('<script src="node_modules/fengari-web/dist/fengari-web.js"><\/script>')</script>
 <!-- LuaMin 核心：先加载各 src/ 模块（自注册到 window.__LuaMinParts），再加载 core.js 工厂 -->
-<script src="src/analyze.js?v=2"></script>
-<script src="src/plan.js?v=2"></script>
+<script src="src/analyze.js?v=3"></script>
+<script src="src/plan.js?v=3"></script>
 <script src="src/encode.js?v=2"></script>
-<script src="src/canonical.js?v=3"></script>
-<script src="src/folds.js?v=3"></script>
-<script src="src/compress.js?v=3"></script>
-<script src="src/search.js?v=6"></script>
+<script src="src/canonical.js?v=6"></script>
+<script src="src/folds.js?v=13"></script>
+<script src="src/compress.js?v=8"></script>
+<script src="src/search.js?v=9"></script>
 <script src="core.js?v=2"></script>
 <script>
 (function(){
@@ -89,6 +90,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
   var $inStat=document.getElementById('inStat'), $outStat=document.getElementById('outStat');
   var $stagesCard=document.getElementById('stagesCard'), $stages=document.getElementById('stages');
   var $searchLevel=document.getElementById('searchLevel');
+  var $noMetatable=document.getElementById('noMetatable');
 
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
@@ -100,6 +102,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
     $runBtn.disabled = v;
     $clearBtn.disabled = v;
     $searchLevel.disabled = v;
+    $noMetatable.disabled = v;
   }
 
   // ---- 轻量 diff（token 级 LCS）：展示某阶段相对上一阶段的增删 ----
@@ -200,6 +203,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 
     var searchLevel=parseInt($searchLevel.value,10)||0;
     var useSearch=searchLevel>0;
+    var noMetatable=$noMetatable.checked;
     var t0=Date.now();
 
     function showResult(rep, baseline){
@@ -302,13 +306,14 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
         // 分片搜索：每执行一次 compress 后让步一帧并更新提示，页面保持响应（无时间上限，跑满收敛）。
         engine.searchOptimize(input, {
           beamWidth: searchLevel,
+          noMetatable: noMetatable,
           onStep: function(label){ $badge.textContent=label; },
           _done: function(rep){ showResult(rep, null); },
           _error: doError
         });
       } else {
         try {
-          showResult(engine.compress(input), null);
+          showResult(engine.compress(input, { noMetatable: noMetatable }), null);
         } catch (e) { doError(e); }
       }
     }, 30);

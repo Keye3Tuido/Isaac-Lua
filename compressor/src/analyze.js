@@ -245,6 +245,77 @@
       })(ast.body);
     }
 
-    C.parse=parse; C.analyze=analyze; C.collectGlobalNames=collectGlobalNames; C.candidateGenerator=candidateGenerator; C.collectMemberAccess=collectMemberAccess;
+    // ---------- 元表纯度分析（供"纯成员链冗余消除"使用） ----------
+    // 把一个局部表分两档判断：
+    //   【稳定 stable】——值在两次读之间不会变：单声明、从不重赋值、从不被"写"（不是
+    //     任何成员/索引写目标的根 base）、从不"逃逸"（所有使用点都是成员/索引访问的 base，
+    //     不以值形式被读/传参/赋值/返回）。
+    //   【无元表 pure】——在 stable 基础上，init 为表构造器（fresh 表，天生无元表），
+    //     且全程从未调用 setmetatable（防子表经别名逃逸后被打元表）。
+    // 返回 { stableBindings:Set, pureBindings:Set, setmetatableUsed:boolean }。
+    function analyzeMetatableFree(ast, info){
+      var setmetatableUsed=false;
+      var basePositions=new Set();   // 作为 . / [] base 的 Identifier 节点位置 "start:end"（读写都算）
+      var assignedB=new Set();       // 被重新赋值过（t=... 作为赋值目标）的 binding
+      var writtenB=new Set();        // 被写成员/索引过（t.x=... 的根 base 是 t）的 binding
+      var declInit=new Map();        // binding -> 其声明 init AST 节点（第一个声明）
+      function rootBaseOf(node){
+        var r=node;
+        while(r && (r.type==='MemberExpression'||r.type==='IndexExpression')) r=r.base;
+        return r;
+      }
+      (function walk(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)walk(n[i]);return;}
+        if(n.type==='CallExpression' && n.base && n.base.type==='Identifier' && n.base.name==='setmetatable'){
+          setmetatableUsed=true;
+        }
+        if(n.type==='AssignmentStatement' && n.variables){
+          for(var i=0;i<n.variables.length;i++){
+            var tv=n.variables[i];
+            if(!tv) continue;
+            if(tv.type==='Identifier'){
+              var tb=info.varOf.get(tv); if(tb) assignedB.add(tb);
+            } else {
+              var root=rootBaseOf(tv);
+              if(root && root.type==='Identifier'){ var rb=info.varOf.get(root); if(rb) writtenB.add(rb); }
+            }
+          }
+        }
+        if(n.type==='LocalStatement' && n.variables && n.init){
+          for(var i=0;i<n.variables.length;i++){
+            var vv=n.variables[i];
+            if(vv && vv.type==='Identifier'){
+              var vb=info.varOf.get(vv);
+              if(vb && !declInit.has(vb)) declInit.set(vb, n.init[i]||null);
+            }
+          }
+        }
+        if((n.type==='MemberExpression' && n.indexer==='.') || n.type==='IndexExpression'){
+          if(n.base && n.base.type==='Identifier' && n.base.range){
+            basePositions.add(n.base.range[0]+':'+n.base.range[1]);
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+
+      var stableBindings=new Set(), pureBindings=new Set();
+      info.bindings.forEach(function(b){
+        if(b.decls.length!==1) return;
+        if(assignedB.has(b) || writtenB.has(b)) return;
+        var allBase=true;
+        for(var i=0;i<b.uses.length;i++){
+          var u=b.uses[i];
+          if(!basePositions.has(u.range[0]+':'+u.range[1])){ allBase=false; break; }
+        }
+        if(!allBase) return;
+        stableBindings.add(b);
+        var init=declInit.get(b);
+        if(init && init.type==='TableConstructorExpression') pureBindings.add(b);
+      });
+      return {stableBindings:stableBindings, pureBindings:pureBindings, setmetatableUsed:setmetatableUsed};
+    }
+
+    C.parse=parse; C.analyze=analyze; C.collectGlobalNames=collectGlobalNames; C.candidateGenerator=candidateGenerator; C.collectMemberAccess=collectMemberAccess; C.analyzeMetatableFree=analyzeMetatableFree;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

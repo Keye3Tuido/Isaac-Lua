@@ -467,7 +467,7 @@
 
     // 基线配置：多个互异起点（不同压缩参数 + 不同 fold 顺序），beam 从中分叉。
     // fold 顺序预设：把最"顺序敏感"的抽取类 fold 前移，探索"先A后B vs 先B后A"。
-    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','constant','constCondition','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist'];
+    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist'];
     function reorderFold(moveKey, beforeKey){
       var o = DEFAULT_FOLD_ORDER.slice();
       var mi = o.indexOf(moveKey);
@@ -480,11 +480,15 @@
       { blockMaxLen: 0 }
     ];
     // 顺序预设（单阈值，便宜）：只探索 fold 顺序，不抢 beam 轮次的预算。
+    // 成员字段折叠已拆成可重排 fold：memberFold:false 时改由 foldMemberField 承担，
+    // 用默认顺序即可试"先整链CSE后成员折叠"（memberChain 在 memberField 之前）。
     var BASELINE_ORDER_PRESETS = [
       reorderFold('blockWrapper','callSugar'),
       reorderFold('stringFactors','stringLiterals'),
       reorderFold('blockWrapper','methods'),
-      reorderFold('reuse','locals')
+      reorderFold('reuse','locals'),
+      { memberFold: false },                                               // 默认顺序：先整链CSE后成员折叠（整链提取 Isaac.AddCallback）
+      { foldOrder: reorderFold('memberField','memberChain'), memberFold: false }   // 先成员折叠后整链CSE
     ];
 
     // ================================================================
@@ -542,13 +546,14 @@
       }
 
       // 基线：主基线（全阈值）+ 顺序预设（单阈值，便宜）+ 原始端表达式提取
-      for (var bci = 0; bci < BASELINE_PRIMARY.length; bci++) {
+      var baseCfgs = BASELINE_PRIMARY.map(function(c){ return {cfg:c, full:true}; })
+        .concat(BASELINE_ORDER_PRESETS.map(function(fo){
+          if(Array.isArray(fo)) return {cfg:{blockMaxLen:8, foldOrder:fo}, full:false};
+          return {cfg:Object.assign({blockMaxLen:8}, fo), full:false};
+        }));
+      for (var bci = 0; bci < baseCfgs.length; bci++) {
         if (Date.now() >= deadline) break;
-        try { addCandidate(compress(input, Object.assign({}, cOpts, BASELINE_PRIMARY[bci]))); } catch (e) {}
-      }
-      for (var bpi = 0; bpi < BASELINE_ORDER_PRESETS.length; bpi++) {
-        if (Date.now() >= deadline) break;
-        try { addCandidate(compress(input, Object.assign({}, fastOpts, { blockMaxLen: 8, foldOrder: BASELINE_ORDER_PRESETS[bpi] }))); } catch (e) {}
+        try { addCandidate(compress(input, Object.assign({}, baseCfgs[bci].full ? cOpts : fastOpts, baseCfgs[bci].cfg))); } catch (e) {}
       }
       if (!beam.length) return compress(input, opts);
       try {
@@ -618,17 +623,27 @@
       if (origPre != null) best.original = origPre;
 
       // 幂等固定点：只要输出正文与输入不同，就在结果上继续搜，直到正文不变（严格收敛到最短）。
-      if (Date.now() < deadline && bodyOf(best) !== origPre) {
+      // 等长但文本不同的"平局"也采纳并继续，保证输出文本稳定（否则 searchOptimize(s) 会得到不同但等长的结果）。
+      var _fixedBest = best;
+      var _visited = new Set();
+      _visited.add(origPre);
+      while (Date.now() < deadline) {
+        var _fb = bodyOf(_fixedBest);
+        if (_visited.has(_fb)) break;   // 防循环（平局来回切换）
+        _visited.add(_fb);
         var deeperOpts = Object.assign({}, opts, {_deadline: deadline});
-        var deeper = searchOptimize(bodyOf(best), deeperOpts);
-        if (deeper && deeper.ok && deeper.bodyLength < best.bodyLength) {
+        var deeper = searchOptimize(_fb, deeperOpts);
+        if (!deeper || !deeper.ok) break;
+        if (deeper.bodyLength <= _fixedBest.bodyLength && deeper.output !== _fixedBest.output) {
           deeper.originalLength = input.length;
           if (origPre != null) deeper.original = origPre;
-          return deeper;
+          _fixedBest = deeper;
+          continue;
         }
+        break;
       }
 
-      return best;
+      return _fixedBest;
     }
 
     // ---- 分片搜索（浏览器）：每执行一次 compress 后让步一帧，报告进度 ----
@@ -667,7 +682,10 @@
 
       // 基线配置：主基线（全阈值）+ 顺序预设（单阈值）
       var baseCfgs = BASELINE_PRIMARY.map(function(c){ return {cfg:c, full:true}; })
-        .concat(BASELINE_ORDER_PRESETS.map(function(fo){ return {cfg:{blockMaxLen:8, foldOrder:fo}, full:false}; }));
+        .concat(BASELINE_ORDER_PRESETS.map(function(fo){
+          if(Array.isArray(fo)) return {cfg:{blockMaxLen:8, foldOrder:fo}, full:false};
+          return {cfg:Object.assign({blockMaxLen:8}, fo), full:false};
+        }));
 
       var phase = 'baseline', baseIdx = 0;
       var frontier = [], fidx = 0;

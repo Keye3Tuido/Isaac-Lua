@@ -52,15 +52,19 @@
       // 字符串字面量内联：local u='X' 后，对 u 的所有读（作为表达式）等价于字面量 'X'。
       // 这条登记让 canonical 把读 u 归一为字符串 'X'，从而 'X' 直接出现的位置和 u 等价。
       var stringAliasByLocal=(aliasMap&&aliasMap.stringAliasByLocal)||null;
+      // 纯成员链冗余消除：local v=a.b.c 后，对 v 的所有读等价于 a.b.c（整链别名）。
+      // 该登记让 canonical 把读 v 归一为整条访问链，从而"直接写 a.b.c"与"提取 v 后读 v"等价。
+      var chainAliasByLocal=(aliasMap&&aliasMap.chainAliasByLocal)||null;
 
       var transparentAliases=(aliasMap&&aliasMap.transparentAliases)||null;
-      var aliasLocalNames=new Set(), globalOfAlias={}, fieldOfAlias={}, prefixOfAlias={}, stringOfAlias={};
+      var aliasLocalNames=new Set(), globalOfAlias={}, fieldOfAlias={}, prefixOfAlias={}, stringOfAlias={}, chainAliasNames=new Set();
       if(byName){ for(var gk in byName){ if(byName.hasOwnProperty(gk)){ aliasLocalNames.add(byName[gk]); globalOfAlias[byName[gk]]=gk; } } }
       if(transparentAliases){ for(var tk in transparentAliases){ if(transparentAliases.hasOwnProperty(tk)){ aliasLocalNames.add(tk); globalOfAlias[tk]=transparentAliases[tk]; } } }
       if(memberByLocal){ for(var mk in memberByLocal){ if(memberByLocal.hasOwnProperty(mk)){ aliasLocalNames.add(mk); fieldOfAlias[mk]=memberByLocal[mk]; } } }
       if(factorLocals){ for(var fi=0;fi<factorLocals.length;fi++) aliasLocalNames.add(factorLocals[fi]); }
       if(prefixFoldByLocal){ for(var pk in prefixFoldByLocal){ if(prefixFoldByLocal.hasOwnProperty(pk)){ aliasLocalNames.add(pk); prefixOfAlias[pk]=prefixFoldByLocal[pk]; } } }
       if(stringAliasByLocal){ for(var sk in stringAliasByLocal){ if(stringAliasByLocal.hasOwnProperty(sk)){ aliasLocalNames.add(sk); stringOfAlias[sk]=stringAliasByLocal[sk]; } } }
+      if(chainAliasByLocal){ for(var ck in chainAliasByLocal){ if(chainAliasByLocal.hasOwnProperty(ck)){ aliasLocalNames.add(ck); chainAliasNames.add(ck); } } }
 
       var varOf=info.varOf;
       // 别名声明 binding 集合（binding 级，不误伤嵌套同名局部）：
@@ -89,7 +93,6 @@
       (function detectWrappers(){
         function blockWrapperInfo(fn){
           var params = fn.parameters || [];
-          if(!params.length) return null;
           var body = fn.body || [];
           if(!body.length) return null;
           for(var bi=0; bi<body.length; bi++){
@@ -465,6 +468,40 @@
         return logicalId.get(key);
       }
 
+      // ---- 纯成员链别名归一（整链 copy-propagation）----
+      // 形态：local v=a.b.c（单声明、从不被赋值、init 为成员/索引访问链，且 foldMemberChain 已证明链纯）。
+      // 读 v ≡ 读 a.b.c（两侧一致施加）。把整链别名并入 autoLitByBinding，读处替换、声明处删除。
+      if(chainAliasNames.size>0){
+        var chainAssignedB=new Set();
+        (function collectChainAssigned(node){
+          if(!node||typeof node!=='object')return;
+          if(Array.isArray(node)){for(var ci=0;ci<node.length;ci++)collectChainAssigned(node[ci]);return;}
+          if(node.type==='AssignmentStatement'&&node.variables){
+            for(var cj=0;cj<node.variables.length;cj++){
+              var tv=node.variables[cj];
+              if(tv&&tv.type==='Identifier'){ var tb=varOf.get(tv); if(tb) chainAssignedB.add(tb); }
+            }
+          }
+          for(var k in node){if(k==='range'||k==='loc'||k==='parent'||k==='scope')continue;if(Object.prototype.hasOwnProperty.call(node,k))collectChainAssigned(node[k]);}
+        })(ast.body);
+        (function detectChainAlias(node){
+          if(!node||typeof node!=='object')return;
+          if(Array.isArray(node)){for(var di=0;di<node.length;di++)detectChainAlias(node[di]);return;}
+          if(node.type==='LocalStatement'&&node.variables&&node.init){
+            for(var dj=0;dj<node.variables.length;dj++){
+              var vv=node.variables[dj], ie=node.init[dj];
+              if(!vv||vv.type!=='Identifier'||!ie) continue;
+              if(!chainAliasNames.has(vv.name)) continue;
+              var cb=varOf.get(vv);
+              if(!cb||cb.decls.length!==1||chainAssignedB.has(cb)) continue;
+              if(ie.type!=='MemberExpression' && ie.type!=='IndexExpression') continue;
+              autoLitByBinding.set(cb, normExpr(ie));
+            }
+          }
+          for(var k in node){if(k==='range'||k==='loc'||k==='parent'||k==='scope')continue;if(Object.prototype.hasOwnProperty.call(node,k))detectChainAlias(node[k]);}
+        })(ast.body);
+      }
+
       function stringContent(node){
         if(node.type!=='StringLiteral') return null;
         var raw=node.raw;
@@ -661,6 +698,7 @@
               if(n.type==='Identifier' && varOf.has(n)){
                 var b=varOf.get(n);
                 if(b && stringOfAlias.hasOwnProperty(b.name)) return stringOfAlias[b.name];
+                if(b && fieldOfAlias.hasOwnProperty(b.name)) return fieldOfAlias[b.name];
               }
               return null;
             }
@@ -668,6 +706,7 @@
             var rp=asPrefixLocal(idx.right), rs=asLiteralOrStringAlias(idx.right);
             if(lp!=null && rs!=null) return normAccess(node.base, lp+rs, null);
             if(ls!=null && rp!=null) return normAccess(node.base, ls+rp, null);
+            if(ls!=null && rs!=null) return normAccess(node.base, ls+rs, null);
           }
           var sc=idx?stringContent(idx):null;
           if(sc!==null) return normAccess(node.base, sc, null);

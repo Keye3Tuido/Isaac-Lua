@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField;
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
@@ -53,7 +53,7 @@
         addStage('缩短命名', doRename, function(){
           var info=analyze(state.ast0);
           var allGlobals=collectGlobalNames(state.ast0, info);
-          var plan=planAll(info, allGlobals, state.ast0, allowElision, threshold);
+          var plan=planAll(info, allGlobals, state.ast0, allowElision, threshold, opts.memberFold !== false, !!opts.noMetatable);
           state.renamedCount=plan.edits.length;
           state.aliasedCount=Object.keys(plan.aliasByName).length;
           state.elisionUsed=Object.keys(plan.transparentAliases||{}).length>0;
@@ -95,6 +95,29 @@
           var riRes = foldReadonlyInline(state.current, state.activeAliasMap, steps, rec, state.code);
           if(riRes) state.current = riRes.code;
           report.stages.push({name:'1.1c-只读内联', code:state.current, len:state.current.length});
+        }); };
+        FOLD_DEFS.memberChain = function(){ addStage('成员链冗余消除', doRename, function(){
+          var mcRes = foldMemberChain(state.current, state.activeAliasMap, steps, rec, state.code, opts);
+          if(mcRes){
+            state.current = mcRes.code;
+            state.activeAliasMap = mcRes.aliasMap;
+            report.aliasMapInfo = state.activeAliasMap;
+          }
+          report.stages.push({name:'1.1c2-成员链冗余消除', code:state.current, len:state.current.length});
+        }); };
+        FOLD_DEFS.memberField = function(){ addStage('成员字段折叠', doRename, function(){
+          var mfRes = foldMemberField(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(mfRes){
+            state.current = mfRes.code;
+            state.activeAliasMap = mfRes.aliasMap;
+            report.aliasMapInfo = state.activeAliasMap;
+          }
+          report.stages.push({name:'1.1c4-成员字段折叠', code:state.current, len:state.current.length});
+        }); };
+        FOLD_DEFS.tailSymbol = function(){ addStage('尾值符号收尾', doRename, function(){
+          var tsRes = foldTailSymbol(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(tsRes) state.current = tsRes.code;
+          report.stages.push({name:'1.7d-尾值符号收尾', code:state.current, len:state.current.length});
         }); };
         FOLD_DEFS.constant = function(){ addStage('常量折叠', doRename, function(){
           var cfRes = foldConstant(state.current, state.activeAliasMap, steps, rec, state.code);
@@ -182,6 +205,11 @@
           }
           report.stages.push({name:'1.4c-字符串前缀因子', code:state.current, len:state.current.length});
         }); };
+        FOLD_DEFS.methodFactor = function(){ addStage('方法名因子', doRename, function(){
+          var mfRes = foldMethodFactor(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(mfRes) state.current = mfRes.code;
+          report.stages.push({name:'1.4c2-方法名因子', code:state.current, len:state.current.length});
+        }); };
         FOLD_DEFS.blockWrapper = function(){ addStage('块包装', doRename, function(){
           var cwRes = foldBlockWrapper(state.current, state.activeAliasMap, steps, rec, state.code, blockMaxLen);
           if(cwRes){
@@ -251,7 +279,7 @@
           }
         }); };
 
-        var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist'];
+        var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','tailSymbol'];
         var foldOrder = (opts.foldOrder && opts.foldOrder.length) ? opts.foldOrder : DEFAULT_FOLD_ORDER;
         for(var _fi=0; _fi<foldOrder.length; _fi++){
           var _fk = foldOrder[_fi];

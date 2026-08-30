@@ -2,10 +2,11 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'plan', install:function(C){
-    var KEYWORDS=C.KEYWORDS, candidateGenerator=C.candidateGenerator, collectMemberAccess=C.collectMemberAccess;
-    function planAll(info, allGlobalNames, ast, allowElision, threshold){
+    var KEYWORDS=C.KEYWORDS, candidateGenerator=C.candidateGenerator, collectMemberAccess=C.collectMemberAccess, analyzeMetatableFree=C.analyzeMetatableFree;
+    function planAll(info, allGlobalNames, ast, allowElision, threshold, allowMemberFold, noMetatable){
       var bindings=info.bindings;
       threshold = threshold !== undefined ? threshold : 8;  // 默认 m+8（保守）
+      if(allowMemberFold === undefined) allowMemberFold = true;
 
       // (a) 全局候选：纯读取、从不被赋值；用可配置盈亏预筛 (m-1)*k > m+threshold
       // threshold 可在运行时调整，compress 多阈值取短策略会尝试不同值。
@@ -22,6 +23,78 @@
         var k=nodes.length, m=nm.length;
         if((m-1)*k > (m+threshold)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
       });
+
+      // (a0) 根源跳过"单一整链 base 全局"：noMetatable 且无 setmetatable 时全局成员链必纯。
+      // 若某全局 G 的所有出现都是同一条完整成员链 G.Field… 的 root，则整链会被 memberChain 提取，
+      // 提取后 G 只在整链声明里出现 1 次，单独别名化 G 反而多一层（全局别名 + 整链别名）。
+      // 这里直接不别名化 G，让 memberChain 生成一层整链别名。
+      if(noMetatable){
+        var _mf=analyzeMetatableFree(ast, info);
+        if(!_mf.setmetatableUsed){
+          var _subChain=new Set();
+          (function _markSub(n){
+            if(!n||typeof n!=='object')return;
+            if(Array.isArray(n)){for(var _i=0;_i<n.length;_i++)_markSub(n[_i]);return;}
+            if(n.type==='MemberExpression'&&n.indexer==='.'&&n.base&&n.base.type==='MemberExpression'&&n.base.range){
+              _subChain.add(n.base.range[0]+':'+n.base.range[1]);
+            }
+            for(var _k in n){ if(_k==='range'||_k==='loc'||_k==='parent'||_k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,_k)) _markSub(n[_k]); }
+          })(ast);
+          var _baseChain=new Map();
+          // 收集"写目标完整链"（G.Field = x 中的 G.Field）：写位置的 G 不会被整链替换，跳过别名化会残留长名
+          var _writeChain=new Set();
+          (function _markWrite(n){
+            if(!n||typeof n!=='object')return;
+            if(Array.isArray(n)){for(var _w=0;_w<n.length;_w++)_markWrite(n[_w]);return;}
+            if(n.type==='AssignmentStatement'&&n.variables){
+              for(var _wi=0;_wi<n.variables.length;_wi++){
+                var _tv=n.variables[_wi];
+                if(_tv&&(_tv.type==='MemberExpression'||_tv.type==='IndexExpression')){
+                  var _wf=[], _wc=_tv;
+                  while(_wc&&_wc.type==='MemberExpression'&&_wc.indexer==='.'){
+                    _wf.unshift(_wc.identifier.name);
+                    _wc=_wc.base;
+                  }
+                  if(_wc&&_wc.type==='Identifier') _writeChain.add(_wc.name+'.'+_wf.join('.'));
+                }
+              }
+            }
+            for(var _wk in n){ if(_wk==='range'||_wk==='loc'||_wk==='parent'||_wk==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,_wk)) _markWrite(n[_wk]); }
+          })(ast);
+          (function _walkBase(n){
+            if(!n||typeof n!=='object')return;
+            if(Array.isArray(n)){for(var _j=0;_j<n.length;_j++)_walkBase(n[_j]);return;}
+            if(n.type==='MemberExpression'&&n.indexer==='.'&&n.range&&!_subChain.has(n.range[0]+':'+n.range[1])){
+              var _flds=[], _cur=n;
+              while(_cur&&_cur.type==='MemberExpression'&&_cur.indexer==='.'){
+                _flds.unshift(_cur.identifier.name);
+                _cur=_cur.base;
+              }
+              if(_cur&&_cur.type==='Identifier'&&_cur.range&&info.varOf.get(_cur)===null){
+                var _key=_cur.range[0]+':'+_cur.range[1];
+                var _txt=_flds.join('.');
+                if(!_baseChain.has(_key)) _baseChain.set(_key,_txt);
+                else if(_baseChain.get(_key)!==_txt) _baseChain.set(_key,null);
+              }
+            }
+            for(var _k2 in n){ if(_k2==='range'||_k2==='loc'||_k2==='parent'||_k2==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,_k2)) _walkBase(n[_k2]); }
+          })(ast);
+          globalCands=globalCands.filter(function(g){
+            var _ct=null;
+            for(var _gi=0;_gi<g.nodes.length;_gi++){
+              var _gk=g.nodes[_gi].range[0]+':'+g.nodes[_gi].range[1];
+              var _c=_baseChain.get(_gk);
+              if(_c===undefined||_c===null) return true;   // 有出现不是单一完整链 root，保留别名化
+              if(_ct===null) _ct=_c;
+              else if(_ct!==_c) return true;               // 不同完整链，保留别名化
+            }
+            var _len=g.m+1+_ct.length;                     // 完整链长度 = |G|+'.'+|字段序列|
+            if(g.k*(_len-1) <= (8+_len)) return true;       // 整链盈亏不足，保留全局别名化
+            if(_writeChain.has(g.name+'.'+_ct)) return true; // 该链是写目标，写位置不会被整链替换，保留别名化
+            return false;                                   // 跳过全局别名化
+          });
+        }
+      }
 
       // (a1) 识别透明别名：local X=GlobalVar 或 local X=LocalAlias 形式的局部变量
       // 只识别会被折叠的全局变量（globalCands）的别名
@@ -153,6 +226,7 @@
         var k=sites.length, m=field.length;
         if((m-2)*k > (m+3)) memberCands.push({field:field, sites:sites, k:k, m:m});
       });
+      if(!allowMemberFold) memberCands = [];   // 成员字段折叠改由 foldMemberField 承担（可重排）
 
       // (b) 统一节点表：局部 binding（kind=L）+ 全局候选（kind=G）
       //   被消解的透明别名 binding 不进入着色表：它们的声明会被删除、使用会重定向到全局别名，

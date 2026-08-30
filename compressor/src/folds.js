@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'folds', install:function(C){
-    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, fengari=C.fengari;
+    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess;
 
     function canCommit(originalCode, candidate, aliasMap){
       if(luaValidate && luaValidate(candidate)) return false;
@@ -839,6 +839,17 @@
       // 打分：参数化 + 收益（1 字名估算）
       var scored=[];
       cands.forEach(function(c){
+        // 过滤重叠起点：连续相同块时同一窗口有多个重叠起点，块包装只能取不重叠子集，
+        // 收益必须按不重叠子集算，否则重叠起点让收益虚高、误导选错 k（如 25 个相同语句选 k=8 而非 k=5）。
+        var nps=[], usedRanges=[];
+        for(var pi=0; pi<c.positions.length; pi++){
+          var ps=c.positions[pi], pe=ps+c.k;
+          var ov=false;
+          for(var ui=0; ui<usedRanges.length; ui++){ if(ps<usedRanges[ui][1] && pe>usedRanges[ui][0]){ ov=true; break; } }
+          if(!ov){ nps.push(ps); usedRanges.push([ps,pe]); }
+        }
+        c.positions=nps; c.N=nps.length;
+        if(c.N<2) return;
         var template=stmts.slice(c.positions[0], c.positions[0]+c.k);
         var reps=c.positions.map(function(p){ return stmts.slice(p, p+c.k); });
         var slots=[];
@@ -858,7 +869,6 @@
           if(found) found.ranges.push(slots[i].tRange);
           else varying.push({texts:t, ranges:[slots[i].tRange]});
         }
-        if(!varying.length) return;
         var V=varying.length;
         var origLen=0;
         reps.forEach(function(rp){ rp.forEach(function(st){ origLen+=st.range[1]-st.range[0]; }); });
@@ -920,11 +930,16 @@
       });
       if(!decls.length) return null;
 
-      var insertPos=0;
-      if(priorDrop>0 && priorDrop<=ast.body.length && ast.body[priorDrop-1].range) insertPos=ast.body[priorDrop-1].range[1];
+      // 函数声明插到"第一个被包装语句"之前（而非仅头部之后）：
+      // 这样前置于被包装语句的其它声明（如成员链CSE的 local e=b[c]）在函数定义之前，
+      // 函数体引用它们不会构成 forward 引用。
+      var insertPos=Infinity;
+      for(var ei=0; ei<allEdits.length; ei++){ var es=allEdits[ei].start; if(es<insertPos) insertPos=es; }
+      var headerEnd=(priorDrop>0 && priorDrop<=ast.body.length && ast.body[priorDrop-1].range) ? ast.body[priorDrop-1].range[1] : 0;
+      if(insertPos < headerEnd) insertPos = headerEnd;
       var declText=decls.join(' ');
       var sep=(insertPos>0 && isNamePart(src[insertPos-1])) ? ' ' : '';
-      var allEdits2=allEdits.concat([{start:insertPos, end:insertPos, name:sep+declText+' '}]);
+      var allEdits2=[{start:insertPos, end:insertPos, name:sep+declText+' '}].concat(allEdits);
       var candidate=applyEdits(src, allEdits2);
 
       if(candidate.length >= src.length){
@@ -2149,6 +2164,467 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc;
+    // ---------- 纯成员链冗余消除（CSE） ----------
+    // 把重复出现的"稳定纯成员访问链" base.f1.f2...fn（点访问、读位置）提取为局部别名：
+    //   print(t.x) print(t.x)  →  local v=t.x print(v) print(v)
+    // 安全前提：
+    //   safe 模式：root 是"无元表 pure"局部（analyzeMetatableFree）+ 全程无 setmetatable
+    //              + 深链逐级经过字面量表构造（中间子表 fresh、无元表）。
+    //   noMetatable 模式：root 是"稳定 stable"局部即可（全局标识符视作用户断言的纯），
+    //              假定无 __index/__newindex 元表副作用。
+    // 稳定性（值在两次读之间不变）由 analyzeMetatableFree 保证：root 从不被写/重赋值/逃逸。
+    function foldMemberChain(src, priorAlias, steps, rec, originalCode, opts){
+      opts=opts||{};
+      var noMetatable=!!opts.noMetatable;
+      // byName 反向映射：别名名 -> 全局名。整链 root 若是全局别名，且其所有使用都被整链覆盖，
+      // 则整链直接用全局名（一层别名），并删除该全局别名声明，避免"全局别名+整链别名"两层。
+      var globalByAlias={};
+      if(priorAlias && priorAlias.byName){
+        for(var gba in priorAlias.byName){ if(priorAlias.byName.hasOwnProperty(gba)) globalByAlias[priorAlias.byName[gba]]=gba; }
+      }
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+      var mf=analyzeMetatableFree(ast, info);
+
+      function strContent(node){
+        if(!node) return null;
+        if(node.type!=='StringLiteral') return null;
+        var v=node.value;
+        if(typeof v==='string') return v;
+        var raw=node.raw||'';
+        if(raw.length>=2&&(raw[0]==='"'||raw[0]==="'")) return raw.slice(1,-1);
+        return raw;
+      }
+      // 找到 binding 的声明 init 与所在 LocalStatement 的 range end
+      function initInfo(b){
+        var decl=b.decls[0], found=null;
+        (function walk(n){
+          if(found) return;
+          if(!n||typeof n!=='object')return;
+          if(Array.isArray(n)){n.forEach(walk);return;}
+          if(n.type==='LocalStatement'&&n.variables&&n.init){
+            for(var i=0;i<n.variables.length;i++){
+              if(n.variables[i]===decl){ found={init:n.init[i]||null, stmtEnd:n.range[1]}; return; }
+            }
+          }
+          for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+        })(ast.body);
+        return found;
+      }
+      // 从构造器沿字段名逐级追踪：中间各级必须是字面量表构造器（fresh 表）
+      function traceLiteralPath(ctor, fields){
+        var cur=ctor;
+        for(var i=0;i<fields.length;i++){
+          var fname=fields[i], val=null;
+          if(cur&&cur.type==='TableConstructorExpression'){
+            for(var j=0;j<cur.fields.length;j++){
+              var f=cur.fields[j], keyName=null;
+              if(f.type==='TableKeyString'&&f.key) keyName=f.key.name;
+              else if(f.type==='TableKey'&&f.key&&f.key.type==='StringLiteral') keyName=strContent(f.key);
+              if(keyName===fname){ val=f.value; break; }
+            }
+          }
+          if(val===null) return false;
+          if(i<fields.length-1 && val.type!=='TableConstructorExpression') return false;
+          cur=val;
+        }
+        return true;
+      }
+      // 取点访问链的 root（Identifier）与字段名序列 [f1..fn]；root 非 Identifier 则返回 null
+      function rootAndFields(node){
+        var fields=[], cur=node;
+        while(cur&&cur.type==='MemberExpression'&&cur.indexer==='.'){
+          fields.unshift(cur.identifier.name);
+          cur=cur.base;
+        }
+        if(cur&&cur.type==='Identifier') return {root:cur, fields:fields};
+        return null;
+      }
+
+      // 收集写目标节点（成员/索引赋值位置）
+      var writeTargets=new Set();
+      (function collectWrites(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)collectWrites(n[i]);return;}
+        if(n.type==='AssignmentStatement'&&n.variables){
+          for(var i=0;i<n.variables.length;i++){
+            var tv=n.variables[i];
+            if(tv&&tv.range&&(tv.type==='MemberExpression'||tv.type==='IndexExpression')) writeTargets.add(tv.range[0]+':'+tv.range[1]);
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) collectWrites(n[k]); }
+      })(ast.body);
+
+      // 索引是否为"字符串/成员别名"（b[c] / b['x'] 这类可还原成 b.Field 的方括号访问）
+      function indexIsStringAlias(idx){
+        if(!idx) return false;
+        if(idx.type==='StringLiteral') return true;
+        if(idx.type==='Identifier'){
+          var ib=info.varOf.get(idx);
+          if(ib && priorAlias){
+            if(priorAlias.memberByLocal && priorAlias.memberByLocal.hasOwnProperty(ib.name)) return true;
+            if(priorAlias.stringAliasByLocal && priorAlias.stringAliasByLocal.hasOwnProperty(ib.name)) return true;
+          }
+        }
+        return false;
+      }
+
+      // 收集读链：每个 MemberExpression('.') 节点 = 一条从 root 到此字段的链；
+      // 也收集 IndexExpression（方括号，索引为字符串/成员别名），如 b[c]（c='AddCallback'）。
+      var chainGroups=new Map(); // text -> [sites]
+      (function collect(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)collect(n[i]);return;}
+        if(n.type==='FunctionDeclaration'){ collect(n.body); return; }   // 跳过标识符链
+        if(n.type==='MemberExpression'&&n.indexer==='.'&&n.range&&n.identifier){
+          if(writeTargets.has(n.range[0]+':'+n.range[1])) return;
+          var rf=rootAndFields(n);
+          if(!rf) return;
+          var text=src.slice(n.range[0],n.range[1]);
+          var rootAlias=globalByAlias.hasOwnProperty(rf.root.name) ? rf.root.name : null;
+          if(!chainGroups.has(text)) chainGroups.set(text,[]);
+          chainGroups.get(text).push({range:n.range, root:rf.root, fields:rf.fields, rootAlias:rootAlias});
+        } else if(n.type==='IndexExpression'&&n.range&&n.base&&n.base.type==='Identifier'&&indexIsStringAlias(n.index)){
+          if(writeTargets.has(n.range[0]+':'+n.range[1])) return;
+          var itext=src.slice(n.range[0],n.range[1]);
+          if(!chainGroups.has(itext)) chainGroups.set(itext,[]);
+          chainGroups.get(itext).push({range:n.range, root:n.base, fields:[]});
+        }
+        for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) collect(n[k]); }
+      })(ast.body);
+
+      // 已占用名字
+      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
+      (function collectNames(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){n.forEach(collectNames);return;}
+        if(n.type==='Identifier'&&n.name) taken.add(n.name);
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
+      })(ast.body);
+      var POOL=candidateGenerator();
+      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+
+      // 判定一条链是否"纯"
+      function isPureChain(site){
+        var b=info.varOf.get(site.root);
+        if(noMetatable){
+          // 局部需 stable；全局标识符假定无元表（用户断言），但本代码内若写过它则不稳定
+          if(b) return mf.stableBindings.has(b);
+          return !mf.setmetatableUsed;  // 全局：只要本代码没调 setmetatable 就接受（稳妥）
+        }
+        if(!b||!mf.pureBindings.has(b)) return false;
+        if(mf.setmetatableUsed) return false;
+        if(site.fields.length>=2){
+          var ii=initInfo(b);
+          if(!ii||!ii.init||!traceLiteralPath(ii.init, site.fields)) return false;
+        }
+        return true;
+      }
+      // 声明插入位置：必须晚于"头部别名声明"（链里引用的 byName/memberByLocal 别名都在头部）
+      // 和"root 自己的声明"（若 root 是局部）。取两者较大者。
+      function insertPosOf(rootNode){
+        var headerEnd = 0;
+        var drop = (priorAlias && priorAlias.dropLeading) || 0;
+        if(drop>0 && drop<=ast.body.length && ast.body[drop-1].range) headerEnd = ast.body[drop-1].range[1];
+        var b=info.varOf.get(rootNode);
+        if(!b) return headerEnd;
+        var ii=initInfo(b);
+        var rootEnd = ii ? ii.stmtEnd : 0;
+        return Math.max(headerEnd, rootEnd);
+      }
+
+      // 收集合格链候选
+      var cands=[];
+      chainGroups.forEach(function(sites, text){
+        if(sites.length<2) return;
+        if(!isPureChain(sites[0])) return;
+        var chainLen=text.length;
+        var saving=sites.length*(chainLen-1)-(8+chainLen);
+        if(saving<=0) return;
+        cands.push({text:text, sites:sites, chainLen:chainLen, saving:saving, insertPos:insertPosOf(sites[0].root), rootAlias:sites[0].rootAlias, root:sites[0].root, fields:sites[0].fields});
+      });
+      if(!cands.length) return null;
+      cands.sort(function(a,b){ return b.saving-a.saving; });
+
+      // 贪心选择（不重叠）
+      var chosen=[], usedRanges=[];
+      function overlaps(s,e){ for(var i=0;i<usedRanges.length;i++){ if(s<usedRanges[i][1]&&e>usedRanges[i][0]) return true; } return false; }
+      cands.forEach(function(c){
+        for(var i=0;i<c.sites.length;i++){ if(overlaps(c.sites[i].range[0], c.sites[i].range[1])) return; }
+        var alias=nextName();
+        if(!alias) return;
+        c.alias=alias;
+        chosen.push(c);
+        for(var j=0;j<c.sites.length;j++) usedRanges.push([c.sites[j].range[0], c.sites[j].range[1]]);
+      });
+      if(!chosen.length) return null;
+
+      // 展开 byName 全局别名：若某整链的 root 是全局别名，且该别名所有使用都被这些整链覆盖
+      // （提取后别名不再被引用），则整链直接用全局名、删除别名声明，避免两层别名。
+      // 仅处理"头部单变量声明"的别名：多变量 batched 声明的部分删除编辑太脆，保守跳过。
+      var consumedByAlias={};   // byName 别名名 -> 全局名（被完全消耗）
+      var dropN=(priorAlias&&priorAlias.dropLeading)||0;
+      if(Object.keys(globalByAlias).length>0){
+        var aliasTotalUses={}, aliasCoveredUses={};
+        info.bindings.forEach(function(b){
+          if(b.name && globalByAlias.hasOwnProperty(b.name)) aliasTotalUses[b.name]=b.uses.length;
+        });
+        chosen.forEach(function(c){
+          if(c.rootAlias) aliasCoveredUses[c.rootAlias]=(aliasCoveredUses[c.rootAlias]||0)+c.sites.length;
+        });
+        for(var an in aliasTotalUses){
+          if(!(aliasCoveredUses[an] && aliasCoveredUses[an]>=aliasTotalUses[an])) continue;
+          // 该别名必须是头部范围内的单变量声明，才可安全整条删除
+          for(var sti=0; sti<dropN && sti<ast.body.length; sti++){
+            var hst=ast.body[sti];
+            if(hst.type==='LocalStatement'&&hst.variables&&hst.variables.length===1
+               &&hst.variables[0].type==='Identifier'&&hst.variables[0].name===an){
+              consumedByAlias[an]=globalByAlias[an];
+              break;
+            }
+          }
+        }
+        // 展开整链文本：root 别名换成全局名
+        chosen.forEach(function(c){
+          if(c.rootAlias && consumedByAlias.hasOwnProperty(c.rootAlias)){
+            c.text=consumedByAlias[c.rootAlias]+'.'+c.fields.join('.');
+          }
+        });
+      }
+
+      // 构造 edits：在第一处前插入 local v=<chain>，所有处替换为 v
+      var edits=[], chainAliasByLocal={};
+      // 删除被完全消耗的 byName 别名声明（头部单变量 local）
+      var removedDropLeading=0;
+      if(Object.keys(consumedByAlias).length>0){
+        for(var sti2=0; sti2<dropN && sti2<ast.body.length; sti2++){
+          var hst2=ast.body[sti2];
+          if(hst2.type==='LocalStatement'&&hst2.variables&&hst2.variables.length===1
+             &&hst2.variables[0].type==='Identifier'&&consumedByAlias.hasOwnProperty(hst2.variables[0].name)){
+            edits.push({start:hst2.range[0], end:hst2.range[1], name:''});
+            removedDropLeading++;
+          }
+        }
+      }
+      // 先所有"插入声明"，再所有"替换使用点"：两者同起点时（如整链在代码开头、无头部声明），
+      // 插入必须排在替换之前，否则会被 applyEdits 的重叠跳过。
+      chosen.forEach(function(c){
+        chainAliasByLocal[c.alias]=c.text;
+        // 插入位置若紧跟标识符（如头部 local b=Isaac 的结尾），需前置空格，否则粘连成非法标识符
+        var sep=(c.insertPos>0 && isNamePart(src[c.insertPos-1])) ? ' ' : '';
+        edits.push({start:c.insertPos, end:c.insertPos, name:sep+'local '+c.alias+'='+c.text+' '});
+      });
+      chosen.forEach(function(c){
+        for(var i=0;i<c.sites.length;i++){
+          edits.push({start:c.sites[i].range[0], end:c.sites[i].range[1], name:c.alias});
+        }
+      });
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+
+      // byName 移除被整链消耗的别名；dropLeading 减去被删除的头部声明数
+      var newByName={};
+      if(priorAlias && priorAlias.byName){
+        for(var gbn in priorAlias.byName){
+          if(priorAlias.byName.hasOwnProperty(gbn) && !consumedByAlias.hasOwnProperty(priorAlias.byName[gbn])) newByName[gbn]=priorAlias.byName[gbn];
+        }
+      }
+      var newAlias={
+        byName:newByName,
+        memberByLocal:(priorAlias&&priorAlias.memberByLocal)||{},
+        factorLocals:(priorAlias&&priorAlias.factorLocals)||[],
+        prefixFoldByLocal:Object.assign({},(priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+        stringAliasByLocal:Object.assign({},(priorAlias&&priorAlias.stringAliasByLocal)||{}),
+        chainAliasByLocal:Object.assign({},(priorAlias&&priorAlias.chainAliasByLocal)||{},chainAliasByLocal),
+        transparentAliases:(priorAlias&&priorAlias.transparentAliases)||{},
+        dropLeading:Math.max(0,((priorAlias&&priorAlias.dropLeading)||0)-removedDropLeading)
+      };
+      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      assertParses(candidate, 'member-chain/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, newAlias, 'member-chain/等价', steps);
+      if(rec) rec('成员链冗余消除(提交)', src.length, candidate.length, '提取 '+chosen.length+' 条纯成员链');
+      return {code:candidate, aliasMap:newAlias};
+    }
+
+    // ---------- 多值赋值尾值符号收尾 ----------
+    // 把多值赋值里"以符号(引号/花括号)结尾"的纯字面量值排到最后，使后续关键字前可省一个空格：
+    //   local a,b='hello',1 ...  →  local b,a=1,'hello' ...   （'hello'后无需空格，1后需要）
+    // 安全：只交换"纯字面量"（字符串/数字/布尔/nil/纯表构造），求值顺序无关；canonical 的
+    //   只读字面量别名 + 死纯局部消除已把 local a,b=1,2 与 local b,a=2,1 归一为同形。
+    function foldTailSymbol(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      function isPureLit(n){
+        if(!n||typeof n!=='object') return false;
+        if(n.type==='NumericLiteral'||n.type==='StringLiteral'||n.type==='BooleanLiteral'||n.type==='NilLiteral') return true;
+        if(n.type==='TableConstructorExpression'){
+          for(var i=0;i<n.fields.length;i++){
+            var f=n.fields[i];
+            if(f.type==='TableKey'){ if(!isPureLit(f.key)||!isPureLit(f.value)) return false; }
+            else if(f.type==='TableKeyString'||f.type==='TableValue'){ if(!isPureLit(f.value)) return false; }
+          }
+          return true;
+        }
+        return false;
+      }
+      function endsSpaceFree(text){
+        var c=text[text.length-1];
+        return c==="'"||c==='"'||c==='}';
+      }
+      function endsSpaceNeeded(text){
+        var c=text[text.length-1];
+        return /[0-9A-Za-z_]/.test(c);
+      }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)walk(n[i]);return;}
+        if(n.type==='LocalStatement'&&n.variables&&n.init&&n.init.length>=2){
+          for(var v=0;v<n.init.length;v++) if(n.variables[v].type!=='Identifier') return;
+          var li=n.init.length-1;
+          var lastText=src.slice(n.init[li].range[0], n.init[li].range[1]);
+          if(!endsSpaceNeeded(lastText)) return;   // 末值已符号收尾，无需重排
+          // 找最近的"符号收尾且纯字面量"的在前值，与末值交换（只要求被移到末尾的那个是纯的；
+          // 交换是否安全由 canCommit/canonical 最终判定——纯字面量作只读别名会被丢弃，其余值相对顺序不变）
+          for(var si=li-1; si>=0; si--){
+            var stText=src.slice(n.init[si].range[0], n.init[si].range[1]);
+            if(endsSpaceFree(stText) && isPureLit(n.init[si])){
+              edits.push({start:n.variables[si].range[0], end:n.variables[si].range[1], name:src.slice(n.variables[li].range[0],n.variables[li].range[1])});
+              edits.push({start:n.variables[li].range[0], end:n.variables[li].range[1], name:src.slice(n.variables[si].range[0],n.variables[si].range[1])});
+              edits.push({start:n.init[si].range[0], end:n.init[si].range[1], name:src.slice(n.init[li].range[0],n.init[li].range[1])});
+              edits.push({start:n.init[li].range[0], end:n.init[li].range[1], name:src.slice(n.init[si].range[0],n.init[si].range[1])});
+              return;   // 本语句处理完，跳到下一语句
+            }
+          }
+          return;
+        }
+        for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      // 重排本身等长，收益要等间隔符最小化才兑现——用最小化后的长度做闸门
+      if(minimizeSpacing(candidate).length >= minimizeSpacing(src).length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'tail-symbol/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'tail-symbol/等价', steps);
+      if(rec) rec('尾值符号收尾(提交)', src.length, candidate.length, '重排 '+edits.length/4+' 处多值赋值');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 方法名因子（复用已有字符串/成员别名） ----------
+    // obj:M(args) 当方法名 M = 已有别名串 + 前缀/后缀 时，改写为 obj['prefix'..alias](obj,args)
+    // 或 obj[alias..'suffix'](obj,args)，复用已有别名省去新声明。
+    // 例如 c='HoldingItem'（成员别名）时 p:IsHoldingItem() → p['Is'..c](p)。
+    function foldMethodFactor(src, priorAlias, steps, rec, originalCode){
+      if(!priorAlias) return null;
+      var aliasStr={};
+      if(priorAlias.stringAliasByLocal) for(var k1 in priorAlias.stringAliasByLocal) aliasStr[k1]=priorAlias.stringAliasByLocal[k1];
+      if(priorAlias.memberByLocal) for(var k2 in priorAlias.memberByLocal) aliasStr[k2]=priorAlias.memberByLocal[k2];
+      if(priorAlias.prefixFoldByLocal) for(var k3 in priorAlias.prefixFoldByLocal) aliasStr[k3]=priorAlias.prefixFoldByLocal[k3];
+      var keys=Object.keys(aliasStr);
+      if(!keys.length) return null;
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)walk(n[i]);return;}
+        if(n.type==='CallExpression' && n.base && n.base.type==='MemberExpression' && n.base.indexer===':'){
+          var me=n.base;
+          if(me.base && me.base.type==='Identifier' && me.base.range && me.identifier.range){
+            var baseText=src.slice(me.base.range[0], me.base.range[1]);
+            var M=me.identifier.name;
+            var colonPos=me.base.range[1], idEnd=me.identifier.range[1];
+            var lp=src.indexOf('(', idEnd);
+            var hasArgs=(n.arguments && n.arguments.length>0);
+            for(var ai=0; ai<keys.length; ai++){
+              var an=keys[ai], s=aliasStr[an];
+              if(!s || s.length>=M.length) continue;
+              var repl=null;
+              if(M.slice(-s.length)===s){           // M = prefix + alias → 'prefix'..alias
+                var pre=M.slice(0, M.length-s.length);
+                repl="['"+pre+"'.."+an+"]";
+              } else if(M.slice(0, s.length)===s){  // M = alias + suffix → alias..'suffix'
+                var suf=M.slice(s.length);
+                repl="["+an+"..'"+suf+"']";
+              }
+              if(repl===null) continue;
+              edits.push({start:colonPos, end:idEnd, name:repl});
+              if(lp>=0) edits.push({start:lp+1, end:lp+1, name: hasArgs ? (baseText+',') : baseText});
+              break;
+            }
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc') continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'method-factor/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'method-factor/等价', steps);
+      if(rec) rec('方法名因子(提交)', src.length, candidate.length, '折叠 '+edits.length/2+' 处方法名');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 成员字段折叠（可重排版） ----------
+    // obj.Field（点访问）→ obj[alias]，alias='Field'。与 foldMethods 同构（点字段，非冒号方法）。
+    // 从 plan.js 拆出，使"成员字段折叠"成为可重排 fold，搜索层顺序预设可试"先整链CSE后成员折叠"。
+    function foldMemberField(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var groups=new Map();
+      collectMemberAccess(ast, groups);
+
+      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
+      (function cn(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){n.forEach(cn);return;}
+        if(n.type==='Identifier'&&n.name) taken.add(n.name);
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) cn(n[k]); }
+      })(ast.body);
+      var POOL=candidateGenerator();
+      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+
+      var chosen=[];
+      Array.from(groups.keys()).sort(function(a,b){return groups.get(b).length-groups.get(a).length;}).forEach(function(field){
+        var sites=groups.get(field);
+        if(sites.length<2) return;
+        var m=field.length, k=sites.length;
+        if((m-2)*k <= (m+3)) return;   // 盈亏预筛（与 plan.js 一致）
+        var alias=nextName();
+        if(!alias) return;
+        chosen.push({field:field, alias:alias, sites:sites});
+      });
+      if(!chosen.length) return null;
+
+      var edits=[];
+      var memberByLocal = (priorAlias && priorAlias.memberByLocal) ? Object.assign({}, priorAlias.memberByLocal) : {};
+      chosen.forEach(function(c){
+        memberByLocal[c.alias]=c.field;
+        c.sites.forEach(function(s){
+          edits.push({start:s.baseEnd, end:s.idEnd, name:'['+c.alias+']'});
+        });
+      });
+      var declNames = chosen.map(function(c){return c.alias;}).join(',');
+      var declVals  = chosen.map(function(c){return "'"+c.field+"'";}).join(',');
+      var candidate = 'local '+declNames+'='+declVals+' '+applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+
+      var newAlias={
+        byName:(priorAlias&&priorAlias.byName)||{},
+        memberByLocal:memberByLocal,
+        factorLocals:(priorAlias&&priorAlias.factorLocals)||[],
+        prefixFoldByLocal:Object.assign({},(priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+        stringAliasByLocal:Object.assign({},(priorAlias&&priorAlias.stringAliasByLocal)||{}),
+        chainAliasByLocal:Object.assign({},(priorAlias&&priorAlias.chainAliasByLocal)||{}),
+        transparentAliases:(priorAlias&&priorAlias.transparentAliases)||{},
+        dropLeading:((priorAlias&&priorAlias.dropLeading)||0)+1
+      };
+      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      assertParses(candidate, 'member-field/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, newAlias, 'member-field/等价', steps);
+      if(rec) rec('成员字段折叠(提交)', src.length, candidate.length, '折叠 '+chosen.length+' 个字段');
+      return {code:candidate, aliasMap:newAlias};
+    }
+
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);
