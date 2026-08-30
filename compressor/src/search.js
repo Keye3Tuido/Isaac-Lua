@@ -21,6 +21,7 @@
     var canonical = C.canonical;
     var luaValidate = C.luaValidate;
     var preprocess = C.preprocess;
+    var minimizeSpacing = C.minimizeSpacing;
     var lex = C.lex;
     var needSpace = C.needSpace;
     // 抽取类折叠（供 move 使用）：都是"只缩短才提交"的独立变换，返回 {code, aliasMap} 或 null。
@@ -621,6 +622,11 @@
       // 统一 originalLength/original 为顶层输入
       best.originalLength = input.length;
       if (origPre != null) best.original = origPre;
+      var _codeLen = null;
+      if (origPre != null) {
+        try { _codeLen = minimizeSpacing(origPre).length; } catch(e) { _codeLen = origPre.length; }
+      }
+      if (_codeLen != null) best.codeLength = _codeLen;
 
       // 幂等固定点：只要输出正文与输入不同，就在结果上继续搜，直到正文不变（严格收敛到最短）。
       // 等长但文本不同的"平局"也采纳并继续，保证输出文本稳定（否则 searchOptimize(s) 会得到不同但等长的结果）。
@@ -637,6 +643,7 @@
         if (deeper.bodyLength <= _fixedBest.bodyLength && deeper.output !== _fixedBest.output) {
           deeper.originalLength = input.length;
           if (origPre != null) deeper.original = origPre;
+          if (_codeLen != null) deeper.codeLength = _codeLen;
           _fixedBest = deeper;
           continue;
         }
@@ -705,6 +712,11 @@
         }
         best.originalLength = input.length;
         if(origPre != null) best.original = origPre;
+        var _codeLen = null;
+        if (origPre != null) {
+          try { _codeLen = minimizeSpacing(origPre).length; } catch(e) { _codeLen = origPre.length; }
+        }
+        if (_codeLen != null) best.codeLength = _codeLen;
 
         // 幂等固定点（与同步 searchOptimize 一致）：对 best 输出继续同步搜到收敛，
         // 否则分片路径停在中间态、与同步路径的最终结果不一致。
@@ -722,6 +734,7 @@
           if (deeper.bodyLength <= _fixedBest.bodyLength && deeper.output !== _fixedBest.output) {
             deeper.originalLength = input.length;
             if (origPre != null) deeper.original = origPre;
+            if (_codeLen != null) deeper.codeLength = _codeLen;
             _fixedBest = deeper;
             continue;
           }

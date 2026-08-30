@@ -380,6 +380,7 @@
           output:'l '+minPre,
           bodyLength:minPre.length,
           originalLength:input.length,
+          codeLength:minPre.length,
           rawInput:input,
           original:minPre,
           aliasMapInfo:null,
@@ -388,6 +389,7 @@
           renamedCount:0, aliasedCount:0, elisionUsed:false
         };
       }
+      bestResult.codeLength = minPre.length;
 
       return bestResult;
     }
