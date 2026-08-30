@@ -370,19 +370,20 @@
 
       if(!bestResult) throw new Error('所有阈值配置均压缩失败');
 
-      // 最终兜底：所有阈值配置均比输入更长（严格负收益）时返回原始裸代码，绝不输出比输入更长的结果。
-      // 别名化（全局/字段）在"出现次数少 + 独立声明"时可能负收益；严格变长才回退到原始。
-      // 等长（如分号→空格的无损重排）保留压缩结果。
-      if(bestResult.bodyLength > pre.length){
+      // 最终兜底：压缩结果比「单行化的输入」更长（严格负收益）时，返回单行化的原始裸代码。
+      // 基准用 minimizeSpacing(pre)（去换行/去前缀后同口径），否则多行输入会保留换行、输出两行。
+      var minPre;
+      try { minPre = minimizeSpacing(pre); } catch(e) { minPre = pre; }
+      if(bestResult.bodyLength > minPre.length){
         return {
           ok:true,
-          output:'l '+pre,
-          bodyLength:pre.length,
+          output:'l '+minPre,
+          bodyLength:minPre.length,
           originalLength:input.length,
           rawInput:input,
-          original:pre,
+          original:minPre,
           aliasMapInfo:null,
-          stages:[{name:'0-准备(剥 l/lua 前缀)', code:pre, len:pre.length}],
+          stages:[{name:'0-准备(剥 l/lua 前缀)', code:minPre, len:minPre.length}],
           steps:[], build:[],
           renamedCount:0, aliasedCount:0, elisionUsed:false
         };
