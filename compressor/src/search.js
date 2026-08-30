@@ -705,6 +705,30 @@
         }
         best.originalLength = input.length;
         if(origPre != null) best.original = origPre;
+
+        // 幂等固定点（与同步 searchOptimize 一致）：对 best 输出继续同步搜到收敛，
+        // 否则分片路径停在中间态、与同步路径的最终结果不一致。
+        var _fixedBest = best;
+        var _visited = new Set();
+        _visited.add(origPre);
+        while (Date.now() < deadline) {
+          var _fb = bodyOf(_fixedBest);
+          if (_visited.has(_fb)) break;
+          _visited.add(_fb);
+          var _deeperOpts = Object.assign({}, opts, {_deadline: deadline});
+          delete _deeperOpts.onStep; delete _deeperOpts._done; delete _deeperOpts._error;
+          var deeper = searchOptimize(_fb, _deeperOpts);
+          if (!deeper || !deeper.ok) break;
+          if (deeper.bodyLength <= _fixedBest.bodyLength && deeper.output !== _fixedBest.output) {
+            deeper.originalLength = input.length;
+            if (origPre != null) deeper.original = origPre;
+            _fixedBest = deeper;
+            continue;
+          }
+          break;
+        }
+        best = _fixedBest;
+
         if(onDone) onDone(best);
       }
 
