@@ -75,9 +75,9 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 213165,
-      "searchBytes": 213042,
-      "savedBytes": 123
+      "ruleBytes": 212207,
+      "searchBytes": 212200,
+      "savedBytes": 7
     },
     "bulk": {
       "ok": true,
@@ -102,9 +102,9 @@
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 448,
+      "parseCount": 538,
       "inputBytes": 14336,
-      "outputBytes": 13954
+      "outputBytes": 13949
     }
   }
 }

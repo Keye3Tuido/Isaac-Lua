@@ -128,8 +128,9 @@
       var transparentAliasBindings=new Map();
       var taSiteStmt=new Map(), taSiteIdx=new Map(), taInitNode=new Map();
       var topScopeId=info.topScope.id;
-      var globalCandNames=new Set();
-      globalCands.forEach(function(g){globalCandNames.add(g.name);});
+      // 透明别名追踪不依赖折叠阈值：用「全部只读全局」而非仅候选全局。
+      var globalReadOnlyNames=new Set();
+      groups.forEach(function(nodes, nm){globalReadOnlyNames.add(nm);});
       (function walkStmts(stmts){
         for(var si=0;si<stmts.length;si++){
           var st=stmts[si];
@@ -143,7 +144,7 @@
               var initBinding=info.varOf.get(initExpr);
               if(initBinding===null){
                 var globalName=initExpr.name;
-                if(!globalCandNames.has(globalName))continue;
+                if(!globalReadOnlyNames.has(globalName))continue;
                 transparentAliasBindings.set(b, globalName);
                 taSiteStmt.set(b, st); taSiteIdx.set(b, vi); taInitNode.set(b, initExpr);
               }else{
@@ -180,16 +181,12 @@
         if(ok && g!==null) candNames.set(name, g);
       });
       // 每条声明里的"透明候选变量"计数（仅统计通过 R1 的候选）
-      var cntPerStmt=new Map();
-      transparentAliasBindings.forEach(function(g, b){
-        if(!candNames.has(b.name)) return;
-        var st=taSiteStmt.get(b);
-        cntPerStmt.set(st, (cntPerStmt.get(st)||0)+1);
-      });
+      // R2（可安全删除声明项）：逐变量校验——该变量必须有自己的 init（非前向 nil），删除编辑才能精确对齐。
       function elidableBinding(b){
         var st=taSiteStmt.get(b);
-        if(!st || cntPerStmt.get(st)!==1) return false;          // R2: 单声明内只允许 1 个透明别名
-        if(!st.init || st.init.length!==st.variables.length) return false; // R2: 位置对齐
+        if(!st || !st.init) return false;
+        var vi=taSiteIdx.get(b);
+        if(vi===undefined || vi>=st.init.length) return false;   // 前向 nil（无 init）不可删
         return true;
       }
       var finalTA={};            // name -> global（最终消解集）
@@ -205,6 +202,33 @@
       }
       var forceFoldGlobals=new Set();          // 这些全局必须折叠（消解后别名使用都指向它）
       for(var fk in finalTA){ if(finalTA.hasOwnProperty(fk)) forceFoldGlobals.add(finalTA[fk]); }
+      // 把被透明别名消解指向、但未达折叠阈值的全局补进候选。折叠收益来自「直接引用被改写为短名」，
+      // 故仅当存在「不在别名声明里的直接引用」时才强制折叠；否则折叠与保留别名等价（中性），强制只会扰乱命名。
+      forceFoldGlobals.forEach(function(gn){
+        var gNodes = groups.get(gn);
+        if(!gNodes) return;
+        var directRewrites = gNodes.length;
+        elideBindings.forEach(function(b){
+          if(transparentAliasBindings.get(b) !== gn) return;
+          var init = taInitNode.get(b);
+          if(init && info.varOf.get(init)===null) directRewrites--;   // 别名声明里的全局 init 会被删，不被改写
+        });
+        if(directRewrites <= 0) return;
+        for(var gi=0; gi<globalCands.length; gi++){ if(globalCands[gi].name===gn) return; }
+        globalCands.push({name:gn, nodes:gNodes, k:gNodes.length, m:gn.length});
+      });
+      // 过滤：只保留「目标全局确实会折叠」的消解（折叠不划算的全局其别名退回普通局部，正常参与重命名）
+      var foldedGlobalNames=new Set();
+      globalCands.forEach(function(g){ foldedGlobalNames.add(g.name); });
+      var elideBindings2=new Set();
+      elideBindings.forEach(function(b){
+        var g=transparentAliasBindings.get(b);
+        if(g && foldedGlobalNames.has(g)) elideBindings2.add(b);
+      });
+      elideBindings=elideBindings2;
+      var finalTA2={};
+      for(var fkn in finalTA){ if(finalTA.hasOwnProperty(fkn) && foldedGlobalNames.has(finalTA[fkn])) finalTA2[fkn]=finalTA[fkn]; }
+      finalTA=finalTA2;
       var reservedElidedNames=new Set(Object.keys(finalTA)); // 禁止其它局部复用被消解的名字
       // 被消解 binding 的 init 节点：全局 init 用于在全局折叠编辑里跳过（落在删除区间内）；
       // 全部 init（含局部链式 init）用于在使用重定向里跳过（同样落在删除区间内）。
@@ -381,31 +405,50 @@
         }
       }
 
-      // (e2) 透明别名消解：把别名使用重定向到全局折叠别名，并删除别名声明项。
-      //   仅当目标全局确实拿到了折叠别名（aliasByName 有值）才执行；否则放弃该名的消解
-      //   （binding 已被排除出着色表 → 保持原名与原声明，仍然语义自洽）。
+      // (e2) 透明别名消解：把别名使用重定向到全局折叠别名，并按语句合并删除声明区间。
+      //   仅当目标全局确实拿到了折叠别名（aliasByName 有值）才执行。
       var emittedTA={};
+      var elideList=[];
       elideBindings.forEach(function(b){
         var g=transparentAliasBindings.get(b);
         var galias=aliasByName[g];
         if(!galias){ return; } // 目标全局未折叠成功：放弃此 binding 的消解
         emittedTA[b.name]=g;
-        // 使用点重定向（跳过落在被删声明项里的链式 init 读）
+        elideList.push(b);
         b.uses.forEach(function(u){
           if(allElidedInitNodes.has(u)) return;
           edits.push({start:u.range[0], end:u.range[1], name:galias});
         });
-        // 删除声明项
-        var st=taSiteStmt.get(b), vi=taSiteIdx.get(b);
-        var vars=st.variables, inits=st.init, n=vars.length;
-        if(n===1){
-          edits.push({start:st.range[0], end:st.range[1], name:''}); // 整条删除
-        }else if(vi===0){
-          edits.push({start:vars[0].range[0], end:vars[1].range[0], name:''});  // 删 "M,"
-          edits.push({start:inits[0].range[0], end:inits[1].range[0], name:''}); // 删 "val,"
-        }else{
-          edits.push({start:vars[vi-1].range[1], end:vars[vi].range[1], name:''});   // 删 ",M"
-          edits.push({start:inits[vi-1].range[1], end:inits[vi].range[1], name:''}); // 删 ",val"
+      });
+      // 按语句合并删除区间（同一语句内多处删除会重叠，须整段删）。
+      var elideByStmt=new Map();
+      elideList.forEach(function(b){
+        var st=taSiteStmt.get(b);
+        if(!elideByStmt.has(st)) elideByStmt.set(st, []);
+        elideByStmt.get(st).push(taSiteIdx.get(b));
+      });
+      elideByStmt.forEach(function(vis, st){
+        vis.sort(function(a,b){return a-b;});
+        var vars=st.variables, inits=st.init, n=vars.length, m=inits.length;
+        var i=0;
+        while(i<vis.length){
+          var j=i;
+          while(j+1<vis.length && vis[j+1]===vis[j]+1) j++;
+          var p=vis[i], q=vis[j];   // 连续删除区间 [p,q]（每个位置都有 init，故 q<m）
+          if((q-p+1)===n){
+            edits.push({start:st.range[0], end:st.range[1], name:''}); // 整条删除
+          }else{
+            // 删除变量名 [p..q]：p===0 删「v0..vq,」（含尾逗号）；p>0 删「,vp..vq」（含前导逗号）。
+            var vs=(p===0)?vars[0].range[0]:vars[p-1].range[1];
+            var ve=(p===0)?vars[q+1].range[0]:vars[q].range[1];
+            edits.push({start:vs, end:ve, name:''});
+            // 删除 init [p..q]：同理；若把全部 init 都删了（p===0 且 q===m-1），还要把 '=' 一起删。
+            var allInitsGone = (p===0 && q===m-1);
+            var is_=(p===0)?(allInitsGone ? vars[n-1].range[1] : inits[0].range[0]):inits[p-1].range[1];
+            var ie_=(p===0)?((q===m-1)?inits[m-1].range[1]:inits[q+1].range[0]):inits[q].range[1];
+            edits.push({start:is_, end:ie_, name:''});
+          }
+          i=j+1;
         }
       });
       // 仅保留真正消解成功的名字进 transparentAliases（供 canonical 双侧还原 + 删声明）

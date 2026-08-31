@@ -2307,6 +2307,16 @@
         })(ast.body);
         return found;
       }
+      // 扩展 globalByAlias：本地透明别名（local x=Global，只读单声明）也视为全局别名，
+      // 使整链 CSE 能把 a[b]（a=PickupVariant）展开为 PickupVariant.Field 并删除 a、b 两个别名。
+      info.bindings.forEach(function(b){
+        if(b.decls.length!==1) return;
+        if(globalByAlias.hasOwnProperty(b.name)) return;
+        var _ii=initInfo(b);
+        if(_ii && _ii.init && _ii.init.type==='Identifier' && info.varOf.get(_ii.init)===null){
+          globalByAlias[b.name]=_ii.init.name;
+        }
+      });
       // 从构造器沿字段名逐级追踪：中间各级必须是字面量表构造器（fresh 表）
       function traceLiteralPath(ctor, fields){
         var cur=ctor;
@@ -2376,7 +2386,7 @@
       var chainGroups=new Map(); // text -> [sites]
       (function collect(n){
         if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){for(var i=0;i<n.length;i++)collect(n[i]);return;}
+        if(Array.isArray(n)){for(let i=0;i<n.length;i++)collect(n[i]);return;}
         if(n.type==='FunctionDeclaration'){ collect(n.body); return; }   // 跳过标识符链
         if(n.type==='MemberExpression'&&n.indexer==='.'&&n.range&&n.identifier){
           if(writeTargets.has(n.range[0]+':'+n.range[1])) return;
@@ -2415,7 +2425,7 @@
           if(!chainGroups.has(chainText)) chainGroups.set(chainText,[]);
           chainGroups.get(chainText).push({range:n.range, root:n.base, fields:(fieldName!=null?[fieldName]:[]), rootAlias:globalByAlias.hasOwnProperty(n.base.name)?n.base.name:null, indexAlias:idxAlias});
         }
-        for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) collect(n[k]); }
+        for(let k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) collect(n[k]); }
       })(ast.body);
 
       // 已占用名字
@@ -2486,8 +2496,7 @@
 
       // 展开 byName 全局别名：若某整链的 root 是全局别名，且该别名所有使用都被这些整链覆盖
       // （提取后别名不再被引用），则整链直接用全局名、删除别名声明，避免两层别名。
-      // 仅处理"头部单变量声明"的别名：多变量 batched 声明的部分删除编辑太脆，保守跳过。
-      var consumedByAlias={};   // byName 别名名 -> 全局名（被完全消耗）
+      var consumedByAlias={};   // byName 别名名 -> 全局名（被完全消耗，用于整链文本展开）
       var dropN=(priorAlias&&priorAlias.dropLeading)||0;
       if(Object.keys(globalByAlias).length>0){
         var aliasTotalUses={}, aliasCoveredUses={};
@@ -2499,15 +2508,7 @@
         });
         for(var an in aliasTotalUses){
           if(!(aliasCoveredUses[an] && aliasCoveredUses[an]>=aliasTotalUses[an])) continue;
-          // 该别名必须是头部范围内的单变量声明，才可安全整条删除
-          for(var sti=0; sti<dropN && sti<ast.body.length; sti++){
-            var hst=ast.body[sti];
-            if(hst.type==='LocalStatement'&&hst.variables&&hst.variables.length===1
-               &&hst.variables[0].type==='Identifier'&&hst.variables[0].name===an){
-              consumedByAlias[an]=globalByAlias[an];
-              break;
-            }
-          }
+          consumedByAlias[an]=globalByAlias[an];
         }
         // 展开整链文本：root 别名换成全局名
         chosen.forEach(function(c){
@@ -2518,10 +2519,7 @@
       }
 
       // idxAlias 消耗：f[h] 反转成 f.Field 后，h 的声明可删（h 是 memberByLocal，或上一轮折叠留下的字符串别名）。
-      // 支持从 batched 声明里删项。
       var consumedIndexAlias={};
-      var removedDropLeading=0;
-      var delEdits=[];   // 删除被消耗别名（byName/indexAlias）的 edits
       var indexAliasCoveredUses={};
       chosen.forEach(function(c){
         if(c.indexAlias) indexAliasCoveredUses[c.indexAlias]=(indexAliasCoveredUses[c.indexAlias]||0)+c.sites.length;
@@ -2529,42 +2527,59 @@
       info.bindings.forEach(function(b){
         if(!b.name || !indexAliasCoveredUses.hasOwnProperty(b.name)) return;
         if(indexAliasCoveredUses[b.name] < b.uses.length) return;   // 不完全覆盖
-        for(var sti3=0; sti3<ast.body.length; sti3++){
-          var hst3=ast.body[sti3];
-          if(hst3.type!=='LocalStatement'||!hst3.variables) continue;
-          var foundIdx=-1;
-          for(var vi3=0; vi3<hst3.variables.length; vi3++){
-            if(hst3.variables[vi3].type==='Identifier' && hst3.variables[vi3].name===b.name){ foundIdx=vi3; break; }
-          }
-          if(foundIdx<0) continue;
-          consumedIndexAlias[b.name]=true;
-          var _vars=hst3.variables, _inits=hst3.init, _n=_vars.length;
-          if(_n===1){
-            delEdits.push({start:hst3.range[0], end:hst3.range[1], name:''});
-          } else if(foundIdx===0){
-            delEdits.push({start:_vars[0].range[0], end:_vars[1].range[0], name:''});
-            if(_inits && _inits.length>1) delEdits.push({start:_inits[0].range[0], end:_inits[1].range[0], name:''});
-          } else {
-            delEdits.push({start:_vars[foundIdx-1].range[1], end:_vars[foundIdx].range[1], name:''});
-            if(_inits && _inits.length>foundIdx) delEdits.push({start:_inits[foundIdx-1].range[1], end:_inits[foundIdx].range[1], name:''});
-          }
-          break;
-        }
+        consumedIndexAlias[b.name]=true;
       });
 
-      // 构造 edits：先删除被消耗的声明，再插入声明，再替换使用点
-      var edits=delEdits.slice(), chainAliasByLocal={};
-      // 删除被完全消耗的 byName 别名声明（头部单变量 local）
-      if(Object.keys(consumedByAlias).length>0){
-        for(var sti2=0; sti2<dropN && sti2<ast.body.length; sti2++){
-          var hst2=ast.body[sti2];
-          if(hst2.type==='LocalStatement'&&hst2.variables&&hst2.variables.length===1
-             &&hst2.variables[0].type==='Identifier'&&consumedByAlias.hasOwnProperty(hst2.variables[0].name)){
-            edits.push({start:hst2.range[0], end:hst2.range[1], name:''});
-            removedDropLeading++;
+      // 找到每个被消耗别名（byName + indexAlias）的声明位置，统一按语句合并删除区间（支持多变量 batched 声明）。
+      function findDeclSite(name){
+        for(var sti=0; sti<ast.body.length; sti++){
+          var st=ast.body[sti];
+          if(st.type!=='LocalStatement'||!st.variables) continue;
+          for(var vi=0; vi<st.variables.length; vi++){
+            if(st.variables[vi].type==='Identifier' && st.variables[vi].name===name) return {stmt:st, vi:vi, sti:sti};
           }
         }
+        return null;
       }
+      var consumedAliasDeletions=[]; // {stmt, vi, sti}
+      for(var an2 in consumedByAlias){ var s2=findDeclSite(an2); if(s2) consumedAliasDeletions.push(s2); }
+      for(var an3 in consumedIndexAlias){ var s3=findDeclSite(an3); if(s3) consumedAliasDeletions.push(s3); }
+
+      // 构造 edits：先删除被消耗的声明（按语句合并区间），再插入声明，再替换使用点
+      var removedDropLeading=0;
+      var delEdits=[];
+      var delByStmt=new Map();
+      consumedAliasDeletions.forEach(function(d){
+        if(!delByStmt.has(d.stmt)) delByStmt.set(d.stmt, []);
+        delByStmt.get(d.stmt).push({vi:d.vi, sti:d.sti});
+      });
+      delByStmt.forEach(function(items, st){
+        var vis=items.map(function(x){return x.vi;}).sort(function(a,b){return a-b;});
+        var sti=items[0].sti;
+        var vars=st.variables, inits=st.init, n=vars.length, m=inits.length;
+        var i=0;
+        while(i<vis.length){
+          var j=i;
+          while(j+1<vis.length && vis[j+1]===vis[j]+1) j++;
+          var p=vis[i], q=vis[j];   // 连续删除区间 [p,q]（每个位置都有 init，故 q<m）
+          if((q-p+1)===n){
+            delEdits.push({start:st.range[0], end:st.range[1], name:''}); // 整条删除
+            if(n===1 && sti<dropN) removedDropLeading++;
+          }else{
+            // 删除变量名 [p..q]：p===0 删「v0..vq,」；p>0 删「,vp..vq」。
+            var vs=(p===0)?vars[0].range[0]:vars[p-1].range[1];
+            var ve=(p===0)?vars[q+1].range[0]:vars[q].range[1];
+            delEdits.push({start:vs, end:ve, name:''});
+            // 删除 init [p..q]：同理；若把全部 init 删了（p===0 && q===m-1），把 '=' 一起删。
+            var allInitsGone=(p===0 && q===m-1);
+            var is_=(p===0)?(allInitsGone ? vars[n-1].range[1] : inits[0].range[0]):inits[p-1].range[1];
+            var ie_=(p===0)?((q===m-1)?inits[m-1].range[1]:inits[q+1].range[0]):inits[q].range[1];
+            delEdits.push({start:is_, end:ie_, name:''});
+          }
+          i=j+1;
+        }
+      });
+      var edits=delEdits.slice(), chainAliasByLocal={};
       // 先所有"插入声明"，再所有"替换使用点"：两者同起点时（如整链在代码开头、无头部声明），
       // 插入必须排在替换之前，否则会被 applyEdits 的重叠跳过。
       chosen.forEach(function(c){
