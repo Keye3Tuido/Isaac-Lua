@@ -75,8 +75,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 212941,
-      "searchBytes": 212936,
+      "ruleBytes": 212928,
+      "searchBytes": 212923,
       "savedBytes": 5
     },
     "bulk": {
@@ -91,18 +91,18 @@
     "snapshot": {
       "ok": true,
       "total": 505,
-      "changed": 5,
+      "changed": 0,
       "regress": 0,
-      "improve": 1,
+      "improve": 0,
       "lostOk": 0,
       "newOk": 0,
-      "sourceChanged": 1,
+      "sourceChanged": 0,
       "removed": 0
     },
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 424,
+      "parseCount": 845,
       "inputBytes": 14336,
       "outputBytes": 13954
     }
