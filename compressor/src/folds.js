@@ -1317,6 +1317,87 @@
     //   - 别名头必须存在（priorAlias.dropLeading>0）且是顶层第一条 local；
     //   - 待上提变量：单作用域（顶层）、未被闭包捕获、声明不在循环体内、
     //     该变量在【别名头之后 ~ 自身声明之前】区间从不被读（前向 nil 健全性，由 canonical 复核）。
+    // ---------- 前向 nil 内联（声明下沉）：local x=nil ... x=v  →  local x=v ... ----------
+    // foldDeclHoist 的逆变换：把"先声明 nil 再赋值"沉回声明处，使相邻 local 可被 foldLocals 合并。
+    // 安全条件（对应 canonical fwdNil 的 OUTPUT 版）：
+    //   - 声明 init 为 nil/缺省，声明与首次赋值在同一顶层块；
+    //   - 首次赋值是单目标简单赋值，声明与赋值之间该变量从不被读；
+    //   - 赋值 RHS 不引用【同一 local 声明里的任何变量】（它们在被赋值前仍为 nil）。
+    function foldFwdNilInline(src, priorAlias, steps, rec, originalCode){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+      var edits=[];
+      var consumed=new Set();
+
+      function refsAnyBinding(node, bindingSet){
+        var found=false;
+        (function w(n){
+          if(found||!n||typeof n!=='object')return;
+          if(Array.isArray(n)){for(var i=0;i<n.length;i++)w(n[i]);return;}
+          if(n.type==='Identifier'){ var b=info.varOf.get(n); if(b && bindingSet.has(b)) found=true; return; }
+          for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); }
+        })(node);
+        return found;
+      }
+      // b 在 [lo,hi) 区间内是否有读（用 b.uses 的读位置）
+      function readBetween(b, lo, hi){
+        for(var ui=0;ui<b.uses.length;ui++){ var u=b.uses[ui]; if(u.range[0]>lo && u.range[0]<hi) return true; }
+        return false;
+      }
+
+      var stmts=ast.body;
+      for(var i=0;i<stmts.length;i++){
+        var st=stmts[i];
+        if(st.type!=='LocalStatement' || !st.variables || !st.init || !st.init.length) continue; // 无 init 的纯 nil 声明暂不处理
+        var bindingSet=new Set();
+        for(var vi=0;vi<st.variables.length;vi++){ var v0=st.variables[vi]; if(v0.type==='Identifier'){ var b0=info.varOf.get(v0); if(b0) bindingSet.add(b0); } }
+        var mergeList=[]; // {rhsText, asg}
+        var localEnd=st.range[1];
+        for(var vi=0;vi<st.variables.length;vi++){
+          var vn=st.variables[vi];
+          if(vn.type!=='Identifier') continue;
+          var ie=(st.init && st.init[vi]) || null;
+          if(ie && ie.type!=='NilLiteral') continue;   // 非 nil
+          var b=info.varOf.get(vn);
+          if(!b || b.decls.length!==1) continue;
+          var asgIdx=-1;
+          for(var j=i+1;j<stmts.length;j++){
+            var s2=stmts[j];
+            if(s2.type==='AssignmentStatement' && s2.variables && s2.variables.length===1 && s2.init && s2.init.length===1){
+              var tv=s2.variables[0];
+              if(tv.type==='Identifier' && info.varOf.get(tv)===b){ asgIdx=j; break; }
+            }
+            if(readBetween(b, localEnd, s2.range[1])) break;   // 赋值前被读
+          }
+          if(asgIdx<0) continue;
+          var asg=stmts[asgIdx];
+          if(consumed.has(asg.range[0]+':'+asg.range[1])) continue;
+          var rhs=asg.init[0];
+          if(refsAnyBinding(rhs, bindingSet)) continue;   // RHS 引用同 local 变量
+          mergeList.push({ rhsText: src.slice(rhs.range[0], rhs.range[1]), asg: asg });
+          consumed.add(asg.range[0]+':'+asg.range[1]);
+        }
+        if(!mergeList.length) continue;
+        var lastInit=st.init[st.init.length-1];
+        var insertAt=lastInit.range[1];
+        var appendText=','+mergeList.map(function(m){return m.rhsText;}).join(',');
+        edits.push({start:insertAt, end:insertAt, name:appendText});
+        mergeList.forEach(function(m){ edits.push({start:m.asg.range[0], end:m.asg.range[1], name:''}); });
+      }
+
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(luaValidate && luaValidate(candidate)) return null;
+      var ok=false;
+      try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
+      if(!ok) return null;
+      assertParses(candidate, '阶段1.4c2/fwdnil/语法', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.4c2/fwdnil/等价', steps);
+      if(rec) rec('前向nil内联(提交)', src.length, candidate.length, '下沉 '+mergeList.length+' 个前向nil赋值到声明');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
     function foldDeclHoist(src, priorAlias, steps, rec, originalCode){
       var priorDrop=(priorAlias && priorAlias.dropLeading)||0;
       // 廉价前置：无别名头时，若整段少于 2 个 local 关键字，则绝无"首条 local 并入后续 local"的上提对象，
@@ -2709,6 +2790,6 @@
       return {code:candidate, aliasMap:newAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldFwdNilInline=foldFwdNilInline;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

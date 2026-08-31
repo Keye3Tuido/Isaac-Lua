@@ -75,8 +75,8 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 <script src="src/plan.js?v=4"></script>
 <script src="src/encode.js?v=2"></script>
 <script src="src/canonical.js?v=7"></script>
-<script src="src/folds.js?v=16"></script>
-<script src="src/compress.js?v=13"></script>
+<script src="src/folds.js?v=17"></script>
+<script src="src/compress.js?v=14"></script>
 <script src="src/search.js?v=11"></script>
 <script src="core.js?v=2"></script>
 <script>
@@ -220,10 +220,10 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
             : '搜索模式')
         : '';
       $badge.textContent='校验通过'+(modeTag?' ('+modeTag+', '+elapsed.toFixed(1)+'s)':' ('+elapsed.toFixed(1)+'s)');
-      var inLen=(rep.codeLength!=null)?rep.codeLength:rep.originalLength;
+      var codeLen=(rep.codeLength!=null)?rep.codeLength:rep.originalLength;
       var outLen=rep.bodyLength;
-      var pct=inLen? Math.round((inLen-outLen)/inLen*100):0;
-      $inStat.textContent='输入 '+inLen+' 字符';
+      var pct=codeLen? Math.round((codeLen-outLen)/codeLen*100):0;
+      $inStat.textContent='输入 '+$in.value.length+' 字符';
       $outStat.textContent='输出 '+outLen+' 字符　压缩比 '+pct+'%';
 
       if(rep.stages && rep.stages.length){

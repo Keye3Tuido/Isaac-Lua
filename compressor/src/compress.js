@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField, foldFwdNilInline=C.foldFwdNilInline;
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
@@ -255,6 +255,21 @@
           }
           report.stages.push({name:'1.7-变量复用', code:state.current, len:state.current.length});
         }); };
+        // 前向 nil 内联是「归一化」而非顺序敏感的抽取：把 `local a,t` + `t=init` 收拢为 `local a,t=init`。
+        // 它必须跑两遍才能一次收敛：
+        //   ① 输入归一（在 locals 合并之前）：先把输入自带的前向 nil 收进声明，让两个原本被
+        //      `d=...` 隔开的 local 变成相邻，foldLocals 才能直接合并；否则 foldDeclHoist 的
+        //      「头部 #init==#vars」前置会被输入前向 nil 卡住。
+        //   ② 上提收尾（在 foldDeclHoist 之后）：上提后续 local 时会制造前向 nil，须再收一遍。
+        function fwdNilInlineStage(label, reportName){
+          addStage(label, doRename, function(){
+            var fniRes = foldFwdNilInline(state.current, state.activeAliasMap, steps, rec, state.code);
+            if(fniRes) state.current = fniRes.code;
+            report.stages.push({name:reportName, code:state.current, len:state.current.length});
+          });
+        }
+        FOLD_DEFS.fwdNilInline = function(){ fwdNilInlineStage('前向nil内联(输入归一)', '1.4c2-前向nil内联'); };
+        FOLD_DEFS.fwdNilInlineFinal = function(){ fwdNilInlineStage('前向nil内联(上提收尾)', '1.7d-前向nil内联收尾'); };
         FOLD_DEFS.declHoist = function(){ addStage('前移声明', doRename && opts.reuse!==false, function(){
           var hoistRes = foldDeclHoist(state.current, state.activeAliasMap, steps, rec, state.code);
           if(hoistRes){
@@ -279,7 +294,7 @@
           }
         }); };
 
-        var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','tailSymbol'];
+        var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','tailSymbol'];
         var foldOrder = (opts.foldOrder && opts.foldOrder.length) ? opts.foldOrder : DEFAULT_FOLD_ORDER;
         for(var _fi=0; _fi<foldOrder.length; _fi++){
           var _fk = foldOrder[_fi];
