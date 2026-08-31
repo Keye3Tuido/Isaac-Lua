@@ -163,8 +163,8 @@
       // 规则 R1（按名归并防误判）：一个名字 N 仅当【AST 中所有名为 N 的 binding】都被识别为
       //   同一全局 G 的透明别名时，N 才可被消解。这保证 canonical 按名还原/删声明的操作是
       //   全局一致、可证等价的。
-      // 规则 R2（可安全删除声明项）：N 的每个 binding 所在 local 声明里只含 1 个透明别名变量，
-      //   且该声明 #init==#vars（位置对齐），否则放弃该名（其 binding 退回普通局部，正常重命名）。
+      // 规则 R2（可安全删除声明项）：逐变量校验——该变量必须有自己的 init（非前向 nil），删除编辑才能精确对齐；
+      //   同一声明内的多个透明别名各自独立判定，删除时按语句合并区间。
       var bindingsByName=new Map();
       info.bindings.forEach(function(b){
         if(!bindingsByName.has(b.name)) bindingsByName.set(b.name, []);
@@ -180,7 +180,6 @@
         }
         if(ok && g!==null) candNames.set(name, g);
       });
-      // 每条声明里的"透明候选变量"计数（仅统计通过 R1 的候选）
       // R2（可安全删除声明项）：逐变量校验——该变量必须有自己的 init（非前向 nil），删除编辑才能精确对齐。
       function elidableBinding(b){
         var st=taSiteStmt.get(b);
