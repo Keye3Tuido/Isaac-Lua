@@ -203,15 +203,18 @@
       for(var fk in finalTA){ if(finalTA.hasOwnProperty(fk)) forceFoldGlobals.add(finalTA[fk]); }
       // 把被透明别名消解指向、但未达折叠阈值的全局补进候选。折叠收益来自「直接引用被改写为短名」，
       // 故仅当存在「不在别名声明里的直接引用」时才强制折叠；否则折叠与保留别名等价（中性），强制只会扰乱命名。
+      // 预计算每个全局的「别名声明 init 数」（这些 init 会被删、不被改写），避免 O(全局数×别名数) 双重遍历。
+      var aliasDeclInitCount=new Map(); // global -> count
+      elideBindings.forEach(function(b){
+        var g=transparentAliasBindings.get(b);
+        if(!g) return;
+        var init=taInitNode.get(b);
+        if(init && info.varOf.get(init)===null) aliasDeclInitCount.set(g, (aliasDeclInitCount.get(g)||0)+1);
+      });
       forceFoldGlobals.forEach(function(gn){
         var gNodes = groups.get(gn);
         if(!gNodes) return;
-        var directRewrites = gNodes.length;
-        elideBindings.forEach(function(b){
-          if(transparentAliasBindings.get(b) !== gn) return;
-          var init = taInitNode.get(b);
-          if(init && info.varOf.get(init)===null) directRewrites--;   // 别名声明里的全局 init 会被删，不被改写
-        });
+        var directRewrites = gNodes.length - (aliasDeclInitCount.get(gn)||0);
         if(directRewrites <= 0) return;
         for(var gi=0; gi<globalCands.length; gi++){ if(globalCands[gi].name===gn) return; }
         globalCands.push({name:gn, nodes:gNodes, k:gNodes.length, m:gn.length});

@@ -2309,12 +2309,25 @@
       }
       // 扩展 globalByAlias：本地透明别名（local x=Global，只读单声明）也视为全局别名，
       // 使整链 CSE 能把 a[b]（a=PickupVariant）展开为 PickupVariant.Field 并删除 a、b 两个别名。
+      // 一次性收集所有 LocalStatement 的 binding→init 映射，避免每个 binding 都全 AST 扫一遍 initInfo。
+      var bindingInitMap=new Map();
+      (function collectBindingInit(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(let i=0;i<n.length;i++)collectBindingInit(n[i]);return;}
+        if(n.type==='LocalStatement'&&n.variables&&n.init){
+          for(var _bi=0;_bi<n.variables.length;_bi++){
+            var _bv=n.variables[_bi];
+            if(_bv.type==='Identifier'){ var _bb=info.varOf.get(_bv); if(_bb && !bindingInitMap.has(_bb)) bindingInitMap.set(_bb, n.init[_bi]||null); }
+          }
+        }
+        for(var _bk in n){ if(_bk==='range'||_bk==='loc'||_bk==='parent'||_bk==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,_bk)) collectBindingInit(n[_bk]); }
+      })(ast.body);
       info.bindings.forEach(function(b){
         if(b.decls.length!==1) return;
         if(globalByAlias.hasOwnProperty(b.name)) return;
-        var _ii=initInfo(b);
-        if(_ii && _ii.init && _ii.init.type==='Identifier' && info.varOf.get(_ii.init)===null){
-          globalByAlias[b.name]=_ii.init.name;
+        var _init=bindingInitMap.get(b);
+        if(_init && _init.type==='Identifier' && info.varOf.get(_init)===null){
+          globalByAlias[b.name]=_init.name;
         }
       });
       // 从构造器沿字段名逐级追踪：中间各级必须是字面量表构造器（fresh 表）
