@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'folds', install:function(C){
-    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess;
+    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess, lex=C.lex;
 
     function canCommit(originalCode, candidate, aliasMap){
       if(luaValidate && luaValidate(candidate)) return false;
@@ -1319,6 +1319,16 @@
     //     该变量在【别名头之后 ~ 自身声明之前】区间从不被读（前向 nil 健全性，由 canonical 复核）。
     function foldDeclHoist(src, priorAlias, steps, rec, originalCode){
       var priorDrop=(priorAlias && priorAlias.dropLeading)||0;
+      // 廉价前置：无别名头时，若整段少于 2 个 local 关键字，则绝无"首条 local 并入后续 local"的上提对象，
+      // 直接跳过 parse+analyze（保守：真实上提必然有 ≥2 个 local；误判只会多 parse，不会漏上提）。
+      if(priorDrop<=0){
+        var _toks; try { _toks = lex(src); } catch(e) { _toks = null; }
+        if(_toks){
+          var _lc = 0;
+          for(var _li=0; _li<_toks.length; _li++){ if(_toks[_li].value === 'local') _lc++; }
+          if(_lc < 2) return null;
+        }
+      }
       var ast; try{ ast=parse(src); }catch(e){ return null; }
       if(!ast.body || !ast.body.length) return null;
 
