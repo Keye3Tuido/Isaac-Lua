@@ -57,8 +57,8 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l,s,c,a,b)a=LevelSta
 --12. 从游戏中移除卡牌73(XVII-星星?)、魂石92(莉莉丝的魂石)。
 l local b,Y,F,G={73,92},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
 
---12. 从游戏中移除饰品138('M)。
-l local G,F,b=32768,Isaac.AddCallback,{138}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
+--12. 从游戏中移除饰品138('M)、饰品154(骰子袋)。
+l local G,F,b=32768,Isaac.AddCallback,{138,154}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
 
 --13. 一分钟内停留在首层，且未击败首层boss自动重开。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l)l=Game():GetLevel()if not l:IsAscent()and 3>l:GetStageType()and LevelStage.STAGE1_1==l:GetStage()and 1800<Game():GetFrameCount()and not l:GetRooms():Get(l:GetLastBossRoomListIndex()).Clear then Isaac.ExecuteCommand'restart'end end)
