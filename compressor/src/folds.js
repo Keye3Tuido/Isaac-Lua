@@ -2386,44 +2386,46 @@
       var chainGroups=new Map(); // text -> [sites]
       (function collect(n){
         if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){for(let i=0;i<n.length;i++)collect(n[i]);return;}
-        if(n.type==='FunctionDeclaration'){ collect(n.body); return; }   // 跳过标识符链
+        if(n.type==='FunctionDeclaration'){ /* skip identifier chain */ }
         if(n.type==='MemberExpression'&&n.indexer==='.'&&n.range&&n.identifier){
-          if(writeTargets.has(n.range[0]+':'+n.range[1])) return;
-          var rf=rootAndFields(n);
-          if(!rf) return;
-          var text=src.slice(n.range[0],n.range[1]);
-          var rootAlias=globalByAlias.hasOwnProperty(rf.root.name) ? rf.root.name : null;
-          if(!chainGroups.has(text)) chainGroups.set(text,[]);
-          chainGroups.get(text).push({range:n.range, root:rf.root, fields:rf.fields, rootAlias:rootAlias});
-        } else if(n.type==='IndexExpression'&&n.range&&n.base&&n.base.type==='Identifier'&&indexIsStringAlias(n.index)){
-          if(writeTargets.has(n.range[0]+':'+n.range[1])) return;
-          var itext=src.slice(n.range[0],n.range[1]);
-          // 展开：索引是 memberByLocal/字符串别名时，f[h] 等价于点访问 f.Field，可用整链文本 f.Field 收集，
-          // 让整链 CSE 反转"字段折叠"（h='AddCallback' + f[h] → c=f.AddCallback + c）。
-          var idxAlias=null, fieldName=null;
-          if(n.index.type==='StringLiteral'){
-            fieldName=strContent(n.index);
-          } else if(n.index.type==='Identifier'){
-            var ib=info.varOf.get(n.index);
-            if(ib && priorAlias){
-              if(priorAlias.memberByLocal && priorAlias.memberByLocal.hasOwnProperty(ib.name)){
-                idxAlias=ib.name; fieldName=priorAlias.memberByLocal[ib.name];
-              } else if(priorAlias.stringAliasByLocal && priorAlias.stringAliasByLocal.hasOwnProperty(ib.name)){
-                idxAlias=ib.name; fieldName=priorAlias.stringAliasByLocal[ib.name];
-              }
-            }
-            // 自己识别字符串别名：local x='X' 的 x（上一轮字段折叠留下的字符串别名）
-            if(fieldName==null && ib && ib.decls.length===1){
-              var _ii=initInfo(ib);
-              if(_ii && _ii.init && _ii.init.type==='StringLiteral'){
-                idxAlias=ib.name; fieldName=strContent(_ii.init);
-              }
+          if(!writeTargets.has(n.range[0]+':'+n.range[1])){
+            var rf=rootAndFields(n);
+            if(rf){
+              var text=src.slice(n.range[0],n.range[1]);
+              var rootAlias=globalByAlias.hasOwnProperty(rf.root.name) ? rf.root.name : null;
+              if(!chainGroups.has(text)) chainGroups.set(text,[]);
+              chainGroups.get(text).push({range:n.range, root:rf.root, fields:rf.fields, rootAlias:rootAlias});
             }
           }
-          var chainText=(fieldName!=null) ? (n.base.name+'.'+fieldName) : itext;
-          if(!chainGroups.has(chainText)) chainGroups.set(chainText,[]);
-          chainGroups.get(chainText).push({range:n.range, root:n.base, fields:(fieldName!=null?[fieldName]:[]), rootAlias:globalByAlias.hasOwnProperty(n.base.name)?n.base.name:null, indexAlias:idxAlias});
+        } else if(n.type==='IndexExpression'&&n.range&&n.base&&n.base.type==='Identifier'&&indexIsStringAlias(n.index)){
+          if(!writeTargets.has(n.range[0]+':'+n.range[1])){
+            var itext=src.slice(n.range[0],n.range[1]);
+            // 展开：索引是 memberByLocal/字符串别名时，f[h] 等价于点访问 f.Field，可用整链文本 f.Field 收集，
+            // 让整链 CSE 反转"字段折叠"（h='AddCallback' + f[h] → c=f.AddCallback + c）。
+            var idxAlias=null, fieldName=null;
+            if(n.index.type==='StringLiteral'){
+              fieldName=strContent(n.index);
+            } else if(n.index.type==='Identifier'){
+              var ib=info.varOf.get(n.index);
+              if(ib && priorAlias){
+                if(priorAlias.memberByLocal && priorAlias.memberByLocal.hasOwnProperty(ib.name)){
+                  idxAlias=ib.name; fieldName=priorAlias.memberByLocal[ib.name];
+                } else if(priorAlias.stringAliasByLocal && priorAlias.stringAliasByLocal.hasOwnProperty(ib.name)){
+                  idxAlias=ib.name; fieldName=priorAlias.stringAliasByLocal[ib.name];
+                }
+              }
+              // 自己识别字符串别名：local x='X' 的 x（上一轮字段折叠留下的字符串别名）
+              if(fieldName==null && ib && ib.decls.length===1){
+                var _ii=initInfo(ib);
+                if(_ii && _ii.init && _ii.init.type==='StringLiteral'){
+                  idxAlias=ib.name; fieldName=strContent(_ii.init);
+                }
+              }
+            }
+            var chainText=(fieldName!=null) ? (n.base.name+'.'+fieldName) : itext;
+            if(!chainGroups.has(chainText)) chainGroups.set(chainText,[]);
+            chainGroups.get(chainText).push({range:n.range, root:n.base, fields:(fieldName!=null?[fieldName]:[]), rootAlias:globalByAlias.hasOwnProperty(n.base.name)?n.base.name:null, indexAlias:idxAlias});
+          }
         }
         for(let k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) collect(n[k]); }
       })(ast.body);
@@ -2585,7 +2587,7 @@
       chosen.forEach(function(c){
         chainAliasByLocal[c.alias]=c.text;
         // 插入位置若紧跟标识符（如头部 local b=Isaac 的结尾），需前置空格，否则粘连成非法标识符
-        var sep=(c.insertPos>0 && isNamePart(src[c.insertPos-1])) ? ' ' : '';
+        var sep=(c.insertPos>0) ? ' ' : '';   // 统一前置空格：删除别名项后插入点前的字符可能变成标识符，靠空格断开
         edits.push({start:c.insertPos, end:c.insertPos, name:sep+'local '+c.alias+'='+c.text+' '});
       });
       chosen.forEach(function(c){
@@ -2619,7 +2621,9 @@
         transparentAliases:(priorAlias&&priorAlias.transparentAliases)||{},
         dropLeading:Math.max(0,((priorAlias&&priorAlias.dropLeading)||0)-removedDropLeading)
       };
-      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      if(!canCommit(originalCode, candidate, newAlias)){
+        return null;
+      }
       assertParses(candidate, 'member-chain/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, 'member-chain/等价', steps);
       if(rec) rec('成员链冗余消除(提交)', src.length, candidate.length, '提取 '+chosen.length+' 条纯成员链');
