@@ -344,31 +344,63 @@
         for(var i=0;i<pipeline.stages.length;i++) pipeline.stages[i].run();
         return pipeline.finish();
       }
-      // 多阈值取短策略：尝试多个全局折叠预筛选阈值，选择最短结果。
-      // 对每个阈值，先跑启用 elision 的流水线；若触发了消解，再跑禁用版对比。
-      var thresholds = opts.thresholds || [2,8];
-      var bestResult = null;
+      // 多阈值取短：尝试多个全局折叠预筛选阈值，选最短结果；等长平局时取「更少全局别名」的规范形态。
+      function pickBest(p){
+        var thresholds = opts.thresholds || [2,8];
+        var bestResult = null;
+        var lastError = null;
 
-      for(var ti=0; ti<thresholds.length; ti++){
-        var T = thresholds[ti];
-        try {
-          var repElide = runPipeline(true, T);
-          var candidate = repElide;
+        for(var ti=0; ti<thresholds.length; ti++){
+          var T = thresholds[ti];
+          try {
+            var repElide = runPipeline(true, T);
+            var candidate = repElide;
 
-          if(doRename && repElide.elisionUsed){
-            var repPlain = runPipeline(false, T);
-            if(repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
+            if(doRename && repElide.elisionUsed){
+              var repPlain = runPipeline(false, T);
+              if(repPlain.bodyLength < repElide.bodyLength) candidate = repPlain;
+            }
+
+            if(!bestResult || candidate.bodyLength < bestResult.bodyLength){
+              bestResult = candidate;
+            } else if(candidate.bodyLength === bestResult.bodyLength){
+              // 等长平局：取「更少全局别名」的规范形态，避免 break-even 别名在两种形态间来回翻转。
+              var candAlias = candidate.aliasedCount || 0;
+              var bestAlias = bestResult.aliasedCount || 0;
+              if(candAlias < bestAlias) bestResult = candidate;
+            }
+          } catch(e) {
+            if(!lastError) lastError = e;
+            continue;
           }
-
-          if(!bestResult || candidate.bodyLength < bestResult.bodyLength){
-            bestResult = candidate;
-          }
-        } catch(e) {
-          continue;
         }
+
+        if(!bestResult) throw new Error('所有阈值配置均压缩失败' + (lastError ? ('：' + (lastError.message || lastError)) : ''));
+        return bestResult;
       }
 
-      if(!bestResult) throw new Error('所有阈值配置均压缩失败');
+      // 定点迭代：把输出再压一遍直到稳定。只比较最终输出、不在中间过程做特判——
+      // break-even 别名可作为中间跳板存在，最终经「更少别名」规范平局收敛到唯一稳定点。
+      var bestResult = pickBest(pre);
+      var FP_MAX = 12;
+      for(var fp=0; fp<FP_MAX; fp++){
+        var nextPre;
+        try { nextPre = preprocess(bestResult.output); } catch(e) { break; }
+        if(!/\S/.test(nextPre)) break;
+        var next;
+        try { next = pickBest(nextPre); } catch(e) { break; }
+        if(next.bodyLength < bestResult.bodyLength){
+          bestResult = next;                        // 还能更短，继续迭代
+        } else if(next.bodyLength === bestResult.bodyLength){
+          if(next.output !== bestResult.output && (next.aliasedCount || 0) < (bestResult.aliasedCount || 0)){
+            bestResult = next;                      // 等长但别名更少：取更规范形态，再确认一次
+            continue;
+          }
+          break;                                    // 等长且形态已最规范 → 收敛
+        } else {
+          break;                                    // 变长 → 已是最短
+        }
+      }
 
       // 最终兜底：压缩结果比「单行化的输入」更长（严格负收益）时，返回单行化的原始裸代码。
       // 基准用 minimizeSpacing(pre)（去换行/去前缀后同口径），否则多行输入会保留换行、输出两行。
