@@ -372,6 +372,7 @@
       //   (P5) 首次赋值语句自身的 RHS 不读 v（自引用读到 nil，不等价）。
       var fwdNilBindings=new Set();       // 可消除的 forward-nil binding
       var fwdNilDeclVarNode=new Map();    // binding -> 其在声明语句里的变量 Identifier 节点
+      var fwdNilAssignInit=new Map();     // binding -> 其首次赋值语句的 RHS 节点（供链别名前向 nil 归一使用）
       (function detectFwdNil(){
         // 引用计数辅助：统计某 binding 在给定节点子树内的引用次数（decls 不算引用，uses 算）
         function refCountIn(node, b){
@@ -432,6 +433,7 @@
                 // 通过全部前提 → 标记消除
                 fwdNilBindings.add(b);
                 fwdNilDeclVarNode.set(b, vnode);
+                fwdNilAssignInit.set(b, (asg.init&&asg.init[assignTargetPos])||null);
               }
             }
             // 递归进入嵌套块（但 forward-nil 只在【同块】配对，嵌套块自成一作用域）
@@ -499,6 +501,26 @@
             }
           }
           for(var k in node){if(k==='range'||k==='loc'||k==='parent'||k==='scope')continue;if(Object.prototype.hasOwnProperty.call(node,k))detectChainAlias(node[k]);}
+        })(ast.body);
+        // 前向 nil 链别名：local v=nil ... v=a.b.c（v 是链别名，foldDeclHoist 上提后形成）。
+        // fwdNil 已证明该形态与 local v=a.b.c 等价；此处把首次赋值的 RHS（成员/索引访问）
+        // 注册进 autoLitByBinding，使读 v ≡ 读 a.b.c，与未上提形态收敛同形。
+        (function detectFwdChainAlias(node){
+          if(!node||typeof node!=='object')return;
+          if(Array.isArray(node)){for(var di2=0;di2<node.length;di2++)detectFwdChainAlias(node[di2]);return;}
+          if(node.type==='LocalStatement'&&node.variables){
+            for(var dj2=0;dj2<node.variables.length;dj2++){
+              var vv2=node.variables[dj2];
+              if(!vv2||vv2.type!=='Identifier') continue;
+              if(!chainAliasNames.has(vv2.name)) continue;
+              var cb2=varOf.get(vv2);
+              if(!cb2||!fwdNilBindings.has(cb2)) continue;
+              var ainit=fwdNilAssignInit.get(cb2);
+              if(!ainit||(ainit.type!=='MemberExpression'&&ainit.type!=='IndexExpression')) continue;
+              autoLitByBinding.set(cb2, normExpr(ainit));
+            }
+          }
+          for(var k in node){if(k==='range'||k==='loc'||k==='parent'||k==='scope')continue;if(Object.prototype.hasOwnProperty.call(node,k))detectFwdChainAlias(node[k]);}
         })(ast.body);
       }
 

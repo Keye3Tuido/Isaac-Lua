@@ -1319,12 +1319,13 @@
     //     该变量在【别名头之后 ~ 自身声明之前】区间从不被读（前向 nil 健全性，由 canonical 复核）。
     function foldDeclHoist(src, priorAlias, steps, rec, originalCode){
       var priorDrop=(priorAlias && priorAlias.dropLeading)||0;
-      if(priorDrop<=0) return null;
       var ast; try{ ast=parse(src); }catch(e){ return null; }
-      if(!ast.body || ast.body.length<=priorDrop) return null;
+      if(!ast.body || !ast.body.length) return null;
 
-      // 别名头：顶层前 priorDrop 条语句中的最后一条 batched local（注入点）
-      var headerStmt=ast.body[priorDrop-1];
+      // 注入点：有别名头(priorDrop>0)则注入到最后一条头部语句；无别名头则注入到首条语句。
+      // 后者允许把后续 local 上提并入首条 local（如 memberChain 反转后紧邻首条 local 的整链别名），省一个 'local '。
+      var headerIdx = priorDrop>0 ? priorDrop-1 : 0;
+      var headerStmt=ast.body[headerIdx];
       if(!headerStmt || headerStmt.type!=='LocalStatement' || !headerStmt.variables || !headerStmt.variables.length) return null;
       // 头部 #init==#vars 才能安全在尾部追加 nil 占位（追加的 name 无对应 init → 自动 nil，
       // 但若头部本身 #init<#vars 已有尾随 nil，我们仍可在最末追加 name；为简单起见要求 #init==#vars）。
@@ -1351,7 +1352,7 @@
       // 收集每条顶层 LocalStatement（在 header 之后）及其变量绑定。
       var hoistVars=[];   // {binding, varNode, stmt, posInStmt}
       var stmtSet=new Set();
-      for(var si=priorDrop; si<ast.body.length; si++){
+      for(var si=headerIdx+1; si<ast.body.length; si++){
         var st=ast.body[si];
         if(st.type!=='LocalStatement' || !st.variables || !st.init) continue;
         if(st.init.length!==st.variables.length) continue;     // 多/少值截断，跳过整条
@@ -1362,14 +1363,17 @@
           var b=info.varOf.get(vn);
           if(!b) continue;
           if(b.scope.id!==topId) continue;       // 仅顶层
-          if(b.captured) continue;               // 被闭包捕获不上提（捕获语义复杂）
+          // 被闭包捕获的变量通常不上提（上提会把它从只读变重赋值，破坏后续只读内联/死纯折叠）。
+          // 但「成员链别名」例外：它们由 canonical 还原为整链访问，不依赖只读状态，
+          // 上提后可并入首条 local（如 f[h] 反转后的 l,m），故允许。
+          var _isChainAlias = priorAlias && priorAlias.chainAliasByLocal && priorAlias.chainAliasByLocal.hasOwnProperty(b.name);
+          if(b.captured && !_isChainAlias) continue;
           if(b.decls.length!==1) continue;
           hoistVars.push({binding:b, varNode:vn, stmt:st, posInStmt:vi});
           stmtSet.add(st);
         }
       }
       if(!hoistVars.length) return null;
-      if(process.env.LUAMIN_DEBUG_DH) console.error('[dh] headerIdx='+headerIdx+' hoistVars='+hoistVars.map(function(h){return h.binding.name;}).join(','));
 
       // 为避免与别名头重名：收集头部现有名字 + 全局名（保守）。上提的变量名都来自既有局部，
       // 它们已与头部别名经过 planAll 的统一着色不冲突，这里仅防御性检查不重复追加同名。
