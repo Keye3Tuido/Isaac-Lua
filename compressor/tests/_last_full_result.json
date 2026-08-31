@@ -75,8 +75,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 212310,
-      "searchBytes": 212303,
+      "ruleBytes": 212301,
+      "searchBytes": 212294,
       "savedBytes": 7
     },
     "bulk": {
@@ -96,7 +96,7 @@
       "improve": 0,
       "lostOk": 0,
       "newOk": 0,
-      "sourceChanged": 0,
+      "sourceChanged": 1,
       "removed": 0
     },
     "performance": {
