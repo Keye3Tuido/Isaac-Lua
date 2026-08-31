@@ -24,6 +24,8 @@
         if((m-1)*k > (m+threshold)) globalCands.push({name:nm, nodes:nodes, k:k, m:m});
       });
 
+      // 记录"成员链 root 的全局名"（其使用都是 obj.Field 的 base），供唯一别名回退判断间接收益。
+      var memberBaseGlobalNames=new Set();
       // (a0) 根源跳过"单一整链 base 全局"：noMetatable 且无 setmetatable 时全局成员链必纯。
       // 若某全局 G 的所有出现都是同一条完整成员链 G.Field… 的 root，则整链会被 memberChain 提取，
       // 提取后 G 只在整链声明里出现 1 次，单独别名化 G 反而多一层（全局别名 + 整链别名）。
@@ -71,6 +73,7 @@
                 _cur=_cur.base;
               }
               if(_cur&&_cur.type==='Identifier'&&_cur.range&&info.varOf.get(_cur)===null){
+                memberBaseGlobalNames.add(_cur.name);
                 var _key=_cur.range[0]+':'+_cur.range[1];
                 var _txt=_flds.join('.');
                 if(!_baseChain.has(_key)) _baseChain.set(_key,_txt);
@@ -351,7 +354,8 @@
       }
 
       // (e) 汇总输出
-      var edits=[];          // identNode -> 新名 的 token 级替换
+      var renameEdits=[], aliasEdits=[];   // 局部重命名 edits 与别名化 edits 分开，便于唯一别名负收益回退
+      var aliasTotalSave=0;                // 别名化总替换收益（字符）
 
       var aliasByName={};
       var memberByLocal={};
@@ -360,26 +364,67 @@
         var nd2=nodes[i], nm2=assigned[i];
         if(nd2.kind==='L'){
           if(nm2===nd2.b.name) continue; // 未改名
-          nd2.b.decls.forEach(function(d){edits.push({start:d.range[0],end:d.range[1],name:nm2});});
-          nd2.b.uses.forEach(function(u){edits.push({start:u.range[0],end:u.range[1],name:nm2});});
+          nd2.b.decls.forEach(function(d){renameEdits.push({start:d.range[0],end:d.range[1],name:nm2});});
+          nd2.b.uses.forEach(function(u){renameEdits.push({start:u.range[0],end:u.range[1],name:nm2});});
         }else if(nd2.kind==='G'){
           if(nm2===null) continue; // 未折叠
           aliasByName[nd2.g.name]=nm2;
           declNames.push(nm2); declVals.push(nd2.g.name);
           nd2.g.nodes.forEach(function(node){
             if(aliasInitNodes.has(node)) return; // 该全局读位于被删除的透明别名声明里，跳过
-            edits.push({start:node.range[0],end:node.range[1],name:nm2});
+            aliasEdits.push({start:node.range[0],end:node.range[1],name:nm2});
           });
+          aliasTotalSave += (nd2.g.m - nm2.length) * nd2.g.k;
         }else{ // M：成员字段
           if(nm2===null) continue;
           memberByLocal[nm2]=nd2.mc.field;
           declNames.push(nm2); declVals.push("'"+nd2.mc.field+"'");
           // 每个使用点：把 ".Field"（base 末尾→identifier 末尾）替换为 "[alias]"
           nd2.mc.sites.forEach(function(s){
-            edits.push({start:s.baseEnd, end:s.idEnd, name:'['+nm2+']'});
+            aliasEdits.push({start:s.baseEnd, end:s.idEnd, name:'['+nm2+']'});
           });
+          aliasTotalSave += (nd2.mc.m - nm2.length - 1) * nd2.mc.k;
         }
       }
+
+      // 唯一别名回退：仅 1 个全局/字段别名、且无法并入已有顶层 local 声明时，该别名是
+      // "独立声明"（`local U=G` 成本 = 名长+值长+8）。出现次数少（如 print×2）时独立成本 >
+      // 替换收益，而着色阶段用的是"并入 batched local"的边际成本（名长+值长+2）故误判为正。
+      // 若首条语句就是可合并的顶层 local（foldLocals 会把别名头并入它），边际成本成立，无需回退。
+      var _firstIsMergeable=false;
+      if(ast.body && ast.body.length){
+        var _fst=ast.body[0];
+        if(_fst.type==='LocalStatement' && _fst.variables && _fst.variables.length){
+          _firstIsMergeable=true;
+          for(var _fv=0;_fv<_fst.variables.length;_fv++){
+            if(_fst.variables[_fv].type!=='Identifier'){ _firstIsMergeable=false; break; }
+          }
+        }
+      }
+      if(declNames.length===1 && !_firstIsMergeable){
+        // 定位该唯一别名对应的着色节点。仅回退「全局别名」(kind G)：print 这类负收益全局。
+        // 成员字段别名(M)的成本模型不同（值带引号、摆尾空格可省），且着色闸门已正确，不能套用全局成本。
+        // 成员链 root 全局：后续 memberChain 整链 CSE 会带来未计入 aliasTotalSave 的间接收益
+        // （noMetatable 下才有），回退会丢失该收益。
+        var _aliasNode=null;
+        for(var _ai=0;_ai<N;_ai++){
+          if(assigned[_ai]===declNames[0]){ _aliasNode=nodes[_ai]; break; }
+        }
+        if(_aliasNode!==null && _aliasNode.kind==='G' && !memberBaseGlobalNames.has(_aliasNode.g.name)){
+          var _taSave=0;
+          elideBindings.forEach(function(b){
+            var _g=transparentAliasBindings.get(b);
+            if(_g && aliasByName[_g]){
+              var _st=taSiteStmt.get(b);
+              _taSave += (_st.variables.length===1) ? (_st.range[1]-_st.range[0]) : 4;
+            }
+          });
+          if(aliasTotalSave + _taSave <= declNames[0].length + declVals[0].length + 8){
+            aliasByName={}; memberByLocal={}; declNames=[]; declVals=[];
+          }
+        }
+      }
+      var edits = (declNames.length>0) ? renameEdits.concat(aliasEdits) : renameEdits;
 
       // (e2) 透明别名消解：把别名使用重定向到全局折叠别名，并删除别名声明项。
       //   仅当目标全局确实拿到了折叠别名（aliasByName 有值）才执行；否则放弃该名的消解

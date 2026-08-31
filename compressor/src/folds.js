@@ -1369,6 +1369,7 @@
         }
       }
       if(!hoistVars.length) return null;
+      if(process.env.LUAMIN_DEBUG_DH) console.error('[dh] headerIdx='+headerIdx+' hoistVars='+hoistVars.map(function(h){return h.binding.name;}).join(','));
 
       // 为避免与别名头重名：收集头部现有名字 + 全局名（保守）。上提的变量名都来自既有局部，
       // 它们已与头部别名经过 planAll 的统一着色不冲突，这里仅防御性检查不重复追加同名。
@@ -2265,6 +2266,12 @@
             if(priorAlias.memberByLocal && priorAlias.memberByLocal.hasOwnProperty(ib.name)) return true;
             if(priorAlias.stringAliasByLocal && priorAlias.stringAliasByLocal.hasOwnProperty(ib.name)) return true;
           }
+          // 自己识别"字符串别名"：local x='X' 的 x（init 是字符串字面量），
+          // 使 f[x]（x='Field'）能反转成 f.Field 整链（即使字段折叠发生在上一轮压缩）。
+          if(ib && ib.decls.length===1){
+            var _ii=initInfo(ib);
+            if(_ii && _ii.init && _ii.init.type==='StringLiteral') return true;
+          }
         }
         return false;
       }
@@ -2287,8 +2294,31 @@
         } else if(n.type==='IndexExpression'&&n.range&&n.base&&n.base.type==='Identifier'&&indexIsStringAlias(n.index)){
           if(writeTargets.has(n.range[0]+':'+n.range[1])) return;
           var itext=src.slice(n.range[0],n.range[1]);
-          if(!chainGroups.has(itext)) chainGroups.set(itext,[]);
-          chainGroups.get(itext).push({range:n.range, root:n.base, fields:[]});
+          // 展开：索引是 memberByLocal/字符串别名时，f[h] 等价于点访问 f.Field，可用整链文本 f.Field 收集，
+          // 让整链 CSE 反转"字段折叠"（h='AddCallback' + f[h] → c=f.AddCallback + c）。
+          var idxAlias=null, fieldName=null;
+          if(n.index.type==='StringLiteral'){
+            fieldName=strContent(n.index);
+          } else if(n.index.type==='Identifier'){
+            var ib=info.varOf.get(n.index);
+            if(ib && priorAlias){
+              if(priorAlias.memberByLocal && priorAlias.memberByLocal.hasOwnProperty(ib.name)){
+                idxAlias=ib.name; fieldName=priorAlias.memberByLocal[ib.name];
+              } else if(priorAlias.stringAliasByLocal && priorAlias.stringAliasByLocal.hasOwnProperty(ib.name)){
+                idxAlias=ib.name; fieldName=priorAlias.stringAliasByLocal[ib.name];
+              }
+            }
+            // 自己识别字符串别名：local x='X' 的 x（上一轮字段折叠留下的字符串别名）
+            if(fieldName==null && ib && ib.decls.length===1){
+              var _ii=initInfo(ib);
+              if(_ii && _ii.init && _ii.init.type==='StringLiteral'){
+                idxAlias=ib.name; fieldName=strContent(_ii.init);
+              }
+            }
+          }
+          var chainText=(fieldName!=null) ? (n.base.name+'.'+fieldName) : itext;
+          if(!chainGroups.has(chainText)) chainGroups.set(chainText,[]);
+          chainGroups.get(chainText).push({range:n.range, root:n.base, fields:(fieldName!=null?[fieldName]:[]), rootAlias:globalByAlias.hasOwnProperty(n.base.name)?n.base.name:null, indexAlias:idxAlias});
         }
         for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) collect(n[k]); }
       })(ast.body);
@@ -2341,7 +2371,7 @@
         var chainLen=text.length;
         var saving=sites.length*(chainLen-1)-(8+chainLen);
         if(saving<=0) return;
-        cands.push({text:text, sites:sites, chainLen:chainLen, saving:saving, insertPos:insertPosOf(sites[0].root), rootAlias:sites[0].rootAlias, root:sites[0].root, fields:sites[0].fields});
+        cands.push({text:text, sites:sites, chainLen:chainLen, saving:saving, insertPos:insertPosOf(sites[0].root), rootAlias:sites[0].rootAlias, root:sites[0].root, fields:sites[0].fields, indexAlias:sites[0].indexAlias});
       });
       if(!cands.length) return null;
       cands.sort(function(a,b){ return b.saving-a.saving; });
@@ -2392,10 +2422,44 @@
         });
       }
 
-      // 构造 edits：在第一处前插入 local v=<chain>，所有处替换为 v
-      var edits=[], chainAliasByLocal={};
-      // 删除被完全消耗的 byName 别名声明（头部单变量 local）
+      // idxAlias 消耗：f[h] 反转成 f.Field 后，h 的声明可删（h 是 memberByLocal，或上一轮折叠留下的字符串别名）。
+      // 支持从 batched 声明里删项。
+      var consumedIndexAlias={};
       var removedDropLeading=0;
+      var delEdits=[];   // 删除被消耗别名（byName/indexAlias）的 edits
+      var indexAliasCoveredUses={};
+      chosen.forEach(function(c){
+        if(c.indexAlias) indexAliasCoveredUses[c.indexAlias]=(indexAliasCoveredUses[c.indexAlias]||0)+c.sites.length;
+      });
+      info.bindings.forEach(function(b){
+        if(!b.name || !indexAliasCoveredUses.hasOwnProperty(b.name)) return;
+        if(indexAliasCoveredUses[b.name] < b.uses.length) return;   // 不完全覆盖
+        for(var sti3=0; sti3<ast.body.length; sti3++){
+          var hst3=ast.body[sti3];
+          if(hst3.type!=='LocalStatement'||!hst3.variables) continue;
+          var foundIdx=-1;
+          for(var vi3=0; vi3<hst3.variables.length; vi3++){
+            if(hst3.variables[vi3].type==='Identifier' && hst3.variables[vi3].name===b.name){ foundIdx=vi3; break; }
+          }
+          if(foundIdx<0) continue;
+          consumedIndexAlias[b.name]=true;
+          var _vars=hst3.variables, _inits=hst3.init, _n=_vars.length;
+          if(_n===1){
+            delEdits.push({start:hst3.range[0], end:hst3.range[1], name:''});
+          } else if(foundIdx===0){
+            delEdits.push({start:_vars[0].range[0], end:_vars[1].range[0], name:''});
+            if(_inits && _inits.length>1) delEdits.push({start:_inits[0].range[0], end:_inits[1].range[0], name:''});
+          } else {
+            delEdits.push({start:_vars[foundIdx-1].range[1], end:_vars[foundIdx].range[1], name:''});
+            if(_inits && _inits.length>foundIdx) delEdits.push({start:_inits[foundIdx-1].range[1], end:_inits[foundIdx].range[1], name:''});
+          }
+          break;
+        }
+      });
+
+      // 构造 edits：先删除被消耗的声明，再插入声明，再替换使用点
+      var edits=delEdits.slice(), chainAliasByLocal={};
+      // 删除被完全消耗的 byName 别名声明（头部单变量 local）
       if(Object.keys(consumedByAlias).length>0){
         for(var sti2=0; sti2<dropN && sti2<ast.body.length; sti2++){
           var hst2=ast.body[sti2];
@@ -2422,16 +2486,22 @@
       var candidate=applyEdits(src, edits);
       if(candidate.length>=src.length) return null;
 
-      // byName 移除被整链消耗的别名；dropLeading 减去被删除的头部声明数
+      // byName 移除被整链消耗的别名；memberByLocal 移除被反转消耗的别名；dropLeading 减去被删除的头部声明数
       var newByName={};
       if(priorAlias && priorAlias.byName){
         for(var gbn in priorAlias.byName){
           if(priorAlias.byName.hasOwnProperty(gbn) && !consumedByAlias.hasOwnProperty(priorAlias.byName[gbn])) newByName[gbn]=priorAlias.byName[gbn];
         }
       }
+      var newMemberByLocal={};
+      if(priorAlias && priorAlias.memberByLocal){
+        for(var mbl in priorAlias.memberByLocal){
+          if(priorAlias.memberByLocal.hasOwnProperty(mbl) && !consumedIndexAlias.hasOwnProperty(mbl)) newMemberByLocal[mbl]=priorAlias.memberByLocal[mbl];
+        }
+      }
       var newAlias={
         byName:newByName,
-        memberByLocal:(priorAlias&&priorAlias.memberByLocal)||{},
+        memberByLocal:newMemberByLocal,
         factorLocals:(priorAlias&&priorAlias.factorLocals)||[],
         prefixFoldByLocal:Object.assign({},(priorAlias&&priorAlias.prefixFoldByLocal)||{}),
         stringAliasByLocal:Object.assign({},(priorAlias&&priorAlias.stringAliasByLocal)||{}),

@@ -91,7 +91,7 @@
     "snapshot": {
       "ok": true,
       "total": 505,
-      "changed": 1,
+      "changed": 5,
       "regress": 0,
       "improve": 1,
       "lostOk": 0,
