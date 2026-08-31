@@ -2386,7 +2386,8 @@
       var chainGroups=new Map(); // text -> [sites]
       (function collect(n){
         if(!n||typeof n!=='object')return;
-        if(n.type==='FunctionDeclaration'){ /* skip identifier chain */ }
+        if(Array.isArray(n)){for(let i=0;i<n.length;i++)collect(n[i]);return;}
+        if(n.type==='FunctionDeclaration'){ collect(n.body); return; }   // 跳过标识符链
         if(n.type==='MemberExpression'&&n.indexer==='.'&&n.range&&n.identifier){
           if(!writeTargets.has(n.range[0]+':'+n.range[1])){
             var rf=rootAndFields(n);
