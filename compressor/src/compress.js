@@ -379,28 +379,9 @@
         return bestResult;
       }
 
-      // 定点迭代：把输出再压一遍直到稳定。只比较最终输出、不在中间过程做特判——
-      // break-even 别名可作为中间跳板存在，最终经「更少别名」规范平局收敛到唯一稳定点。
+      // 多阈值 + 平局取「更少全局别名」的规范形态，即已保证幂等（见 tests 幂等探针：全语料两遍压缩 0 不幂等）。
+      // 无需再额外做"定点循环"（其重压缩在所有语料上均不改变输出，纯属浪费一倍 parse）。
       var bestResult = pickBest(pre);
-      var FP_MAX = 12;
-      for(var fp=0; fp<FP_MAX; fp++){
-        var nextPre;
-        try { nextPre = preprocess(bestResult.output); } catch(e) { break; }
-        if(!/\S/.test(nextPre)) break;
-        var next;
-        try { next = pickBest(nextPre); } catch(e) { break; }
-        if(next.bodyLength < bestResult.bodyLength){
-          bestResult = next;                        // 还能更短，继续迭代
-        } else if(next.bodyLength === bestResult.bodyLength){
-          if(next.output !== bestResult.output && (next.aliasedCount || 0) < (bestResult.aliasedCount || 0)){
-            bestResult = next;                      // 等长但别名更少：取更规范形态，再确认一次
-            continue;
-          }
-          break;                                    // 等长且形态已最规范 → 收敛
-        } else {
-          break;                                    // 变长 → 已是最短
-        }
-      }
 
       // 最终兜底：压缩结果比「单行化的输入」更长（严格负收益）时，返回单行化的原始裸代码。
       // 基准用 minimizeSpacing(pre)（去换行/去前缀后同口径），否则多行输入会保留换行、输出两行。
