@@ -61,7 +61,7 @@ l local b,Y,F,G={73,92},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,
 l local G,F,b=32768,Isaac.AddCallback,{138,154}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
 
 --13. 一分钟内停留在首层，且未击败首层boss自动重开。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l)l=Game():GetLevel()if not l:IsAscent()and 3>l:GetStageType()and LevelStage.STAGE1_1==l:GetStage()and 1800<Game():GetFrameCount()and not l:GetRooms():Get(l:GetLastBossRoomListIndex()).Clear then Isaac.ExecuteCommand'restart'end end)
+l local a,d,A=ModCallbacks,Isaac.AddCallback d({},a.MC_POST_UPDATE,function(l)l=Game():GetLevel()A=A or l:GetRooms():Get(l:GetLastBossRoomListIndex()).Clear if not l:IsAscent()and 3>l:GetStageType()and LevelStage.STAGE1_1==l:GetStage()and 1800<Game():GetFrameCount()and not A then Isaac.ExecuteCommand'restart'end end)d({},a.MC_POST_GAME_STARTED,function(_,c)if not c then A=nil end end)
 
 --14. 每局新游戏开始时，所有玩家失去一个炸弹。
 l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(_,c)if not c then Isaac.GetPlayer():AddBombs(-Game():GetNumPlayers())end end)
