@@ -10,6 +10,8 @@ textures, and generation prompts are excluded to keep the deployed repository sm
 | `basement-panel.webp` | Scalable Basement menu/card borders |
 | `challenge-page-background.webp` | Challenge-page paper surface with separated Hero Menu doodles |
 | `challenge-sheet.webp` | Scalable central challenge sheet |
+| `challenge-divider.webp` | Native white-set completion marks arranged as the challenge action/content divider |
+| `content-divider.webp` | Faded, uneven paper-outline stroke between challenge content sections |
 | `paper-surface.webp` | Challenge-page fallback paper texture |
 | `repentance-logo.png` | Homepage and compressor logo |
 | `menu-cursor.png` | Isaac menu cursor |
