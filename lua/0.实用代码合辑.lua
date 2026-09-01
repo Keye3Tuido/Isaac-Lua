@@ -185,8 +185,8 @@ l for _=1,1e3 do Game():End(0)end
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(i,p)i=p.QueuedItem.Item if not p:IsItemQueueEmpty()and i:IsCollectible()and not i:HasTags(ItemConfig.TAG_QUEST)then p:UseActiveItem(706)end end)
 
 --58. 角色的面板属性发生轮换：
--- 控制台输入lua STATS_SWITCH={...}可以指定轮换次序，输入lua STATS_SWITCH=nil 可以取消轮换次序
--- [A] = B 表示用序号B代表的属性替换序号A的属性
+-- 控制台输入lua STATS_SWITCH='123456'可以指定轮换次序，输入lua STATS_SWITCH=nil 可以取消轮换次序
+-- STATS_SWITCH='234561' 表示将属性面板从上到下，依次替换为第2、3、4、5、6、1个属性
 -- 移速(1) <> 攻击(3)
 -- 射程(4) <> 射速(2)
 -- 弹速(5) <> 幸运(6)
