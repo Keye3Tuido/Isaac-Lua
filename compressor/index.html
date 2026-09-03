@@ -184,18 +184,27 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
   function updateInStat(){ $inStat.textContent='输入 '+$in.value.length+' 字符'; }
   $in.addEventListener('input', updateInStat);
 
-  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $outStat.textContent=''; $badge.innerHTML=''; $badge.className='badge'; clearMsg(); updateInStat(); $stagesCard.style.display='none'; $stages.innerHTML=''; };
+  document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $outStat.textContent=''; $badge.innerHTML=''; $badge.className='badge'; clearMsg(); updateInStat(); resetCopyBtn(); $stagesCard.style.display='none'; $stages.innerHTML=''; };
+
+  function resetCopyBtn(){
+    var b=document.getElementById('copy');
+    if(b._copyT){ clearTimeout(b._copyT); b._copyT=null; }
+    b.textContent='复制结果';
+  }
 
   document.getElementById('copy').onclick=function(){
     if(!$out.value) return;
     navigator.clipboard.writeText($out.value).then(function(){
-      var b=document.getElementById('copy'); var old=b.textContent; b.textContent='已复制'; setTimeout(function(){b.textContent=old;},1200);
+      var b=document.getElementById('copy');
+      if(b._copyT) clearTimeout(b._copyT);
+      b.textContent='已复制';
+      b._copyT=setTimeout(function(){ b._copyT=null; b.textContent='复制结果'; },1200);
     });
   };
 
   document.getElementById('run').onclick=function(){
     clearMsg(); $badge.innerHTML=''; $stagesCard.style.display='none'; $stages.innerHTML='';
-    $out.value=''; $outStat.textContent='';
+    $out.value=''; $outStat.textContent=''; resetCopyBtn();
     var input=$in.value;
     if(!/\S/.test(input)){ setMsg('err','输入为空。'); return; }
 

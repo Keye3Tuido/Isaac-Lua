@@ -3,7 +3,7 @@
   "suites": {
     "unit": {
       "ok": true,
-      "pass": 89,
+      "pass": 101,
       "fail": 0
     },
     "edge": {
@@ -75,8 +75,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 212207,
-      "searchBytes": 212200,
+      "ruleBytes": 212186,
+      "searchBytes": 212179,
       "savedBytes": 7
     },
     "bulk": {
@@ -102,7 +102,7 @@
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 538,
+      "parseCount": 540,
       "inputBytes": 14336,
       "outputBytes": 13949
     }

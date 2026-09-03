@@ -2823,6 +2823,57 @@
       return {code:candidate, aliasMap:newAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldFwdNilInline=foldFwdNilInline;
+    // ---------- 全局表访问折叠（Global.Field → _G[alias].Field，alias='Global'） ----------
+    // 当某个全局名 G 已被提取为字符串别名 s（memberByLocal/stringAliasByLocal: s='G'），
+    // 且 G 作为全局表被点访问（G.Field...），改写为 _G[s].Field...（借用 _G 全局表，省下全局名长度）。
+    // 前提：G 确为全局（非局部/参数）、_G 未被局部遮蔽、_G 从未被赋值、G.name !== '_G'。
+    // canonical 的"全局表访问归一"（_G.X ≡ X，_G 只读且非遮蔽）保证等价校验通过。
+    function foldGlobalViaG(src, priorAlias, steps, rec, originalCode){
+      if(!priorAlias) return null;
+      var aliasStr={};
+      if(priorAlias.memberByLocal) for(var _gk in priorAlias.memberByLocal) if(priorAlias.memberByLocal.hasOwnProperty(_gk)) aliasStr[_gk]=priorAlias.memberByLocal[_gk];
+      if(priorAlias.stringAliasByLocal) for(var _gk2 in priorAlias.stringAliasByLocal) if(priorAlias.stringAliasByLocal.hasOwnProperty(_gk2)) aliasStr[_gk2]=priorAlias.stringAliasByLocal[_gk2];
+      var strToAlias={};
+      for(var _ga in aliasStr){ if(aliasStr.hasOwnProperty(_ga) && !strToAlias.hasOwnProperty(aliasStr[_ga])) strToAlias[aliasStr[_ga]]=_ga; }
+      if(!Object.keys(strToAlias).length) return null;
+
+      // 廉价预筛：源码里根本没出现任何候选全局名（连子串都没有）就无需 parse。
+      var _gkeys=Object.keys(strToAlias), _ghas=false;
+      for(var _gki=0; _gki<_gkeys.length; _gki++){ if(src.indexOf(_gkeys[_gki])>=0){ _ghas=true; break; } }
+      if(!_ghas) return null;
+
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+      if(info.assignedGlobals && info.assignedGlobals.has('_G')) return null;   // _G 被赋值 → 不再是全局表
+      for(var _gbi=0; _gbi<info.bindings.length; _gbi++){                        // _G 被局部遮蔽 → 保守放弃
+        if(info.bindings[_gbi].name==='_G') return null;
+      }
+
+      var edits=[];
+      (function walk(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)walk(n[i]);return;}
+        if(n.type==='MemberExpression' && n.indexer==='.' && n.base && n.base.type==='Identifier' && n.base.range){
+          var G=n.base;
+          if(info.varOf.get(G)===null && G.name!=='_G' && strToAlias.hasOwnProperty(G.name)){
+            var alias=strToAlias[G.name];
+            if(G.name.length > 4+alias.length){   // 仅当 _G[alias] 比全局名短
+              edits.push({start:G.range[0], end:G.range[1], name:'_G['+alias+']'});
+            }
+          }
+        }
+        for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'global-via-g/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'global-via-g/等价', steps);
+      if(rec) rec('全局表访问折叠(提交)', src.length, candidate.length, '改写 '+edits.length+' 处 Global.Field→_G[alias].Field');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

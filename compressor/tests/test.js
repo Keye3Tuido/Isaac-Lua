@@ -182,5 +182,27 @@ tryCompress('real-item', real3);
   if(r){ const body=r.output.replace(/^l /,''); ok('multiret/keepsParens', body.indexOf('g()')>=0, body); }
 })();
 
+// ---- 全局表访问折叠（Global.Field → _G[alias].Field，alias='Global'）----
+(function(){
+  // 正例：全局名作为字段被别名化（t.SomeGlobalName → t[d]），再作为全局表点访问 → _G[d].Field
+  const r=tryCompress('global-via-g', "local a=t.SomeGlobalName local b=t.SomeGlobalName local c=SomeGlobalName.Field return a,b,c");
+  if(r){
+    const body=r.output.replace(/^l /,'');
+    ok('global-via-g/rewrite', body.indexOf('_G[')>=0, body);
+  }
+  // 反例：_G 被赋值（不再是全局表）→ 不得改写
+  const r2=tryCompress('global-via-g-reassign', "_G=x local a=t.SomeGlobalName local b=t.SomeGlobalName local c=SomeGlobalName.Field return a,b,c");
+  if(r2){
+    const body2=r2.output.replace(/^l /,'');
+    ok('global-via-g-reassign/no-rewrite', body2.indexOf('_G[')<0, body2);
+  }
+  // 反例：无字符串别名 → 不得改写（等价校验由 tryCompress 保证）
+  const r3=tryCompress('global-via-g-noalias', "local c=SomeGlobalName.Field return c");
+  if(r3){
+    const body3=r3.output.replace(/^l /,'');
+    ok('global-via-g-noalias/no-rewrite', body3.indexOf('_G[')<0, body3);
+  }
+})();
+
 console.log('\n=== 测试结果: '+pass+' 通过, '+fail+' 失败 ===');
 process.exit(fail?1:0);

@@ -533,9 +533,19 @@
         // 长字符串 [[...]] 在 Lua 里不处理转义，与 '...' / "..." 内容含义不同，不归一化。
         return null;
       }
+      // 全局表访问归一：_G.X ≡ X（X 为全局名）——前提是 _G 是全局表且从未被赋值。
+      // 两侧一致施加，使"全局名 Global"与"经 _G 的全局表访问 _G[alias]"（alias='Global'）收敛同一标准形，
+      // 从而 foldGlobalViaG 把 Global.Field 缩短为 _G[alias].Field 可被严格验证。
+      // 若 _G 被赋值过（_G=…），_G 不再是全局表，规则不成立，必须关闭。
+      var G_REASSIGNED = !!(info.assignedGlobals && info.assignedGlobals.has && info.assignedGlobals.has('_G'));
       function normAccess(base, fieldName, keyExprNode){
-        if(fieldName!=null) return {type:'Access', base:normExpr(base), key:{field:fieldName}};
-        return {type:'Access', base:normExpr(base), key:{expr:normExpr(keyExprNode)}};
+        var nb=normExpr(base);
+        if(fieldName!=null){
+          if(nb && nb.type==='Identifier' && nb.kind==='global' && nb.name==='_G' && !G_REASSIGNED)
+            return {type:'Identifier', kind:'global', name:fieldName};
+          return {type:'Access', base:nb, key:{field:fieldName}};
+        }
+        return {type:'Access', base:nb, key:{expr:normExpr(keyExprNode)}};
       }
 
       // ---- 常量折叠归一（constant-folding 标准形）----
