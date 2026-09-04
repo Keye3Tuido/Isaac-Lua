@@ -19,7 +19,7 @@ l local G,F,b=32768,Isaac.AddCallback,{63}F({},31,function(_,p)for _,i in pairs(
 l local f,g,k,a,b,c,h,j=Isaac,ModCallbacks,pairs,Vector.Zero,EntityType.ENTITY_BOMB,BombVariant.BOMB_GOLDENTROLL h=f.AddCallback j=f.FindByType h({},g.MC_POST_UPDATE,function(e,t,p)if Game():GetFrameCount()%30<1 then for _,v in k(j(b,c))do v:ToBomb().Flags=TearFlags.TEAR_NORMAL end end for i=1,Game():GetNumPlayers()do p=f.GetPlayer(i)e=p:FireBomb(a,a)t=(t or e.Flags)|e.Flags e:Remove()end while 3>#j(b,c)do f.Spawn(b,c,0,f.GetRandomPosition(),a,p)end for _,v in k(j(b,c))do v:ToBomb():AddTearFlags(t)end end)h({},g.MC_PRE_BOMB_COLLISION,function(_,_,t)if t.FrameCount<1 then return true end end,c)
 
 --4. 玩家会自动举起接触到的金色即爆炸弹。
-l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_BOMB_COLLISION,function(a,b,p)p=p:ToPlayer()a=p and p:GetData()[c]if a and a<0 then p:TryHoldEntity(b)end end,BombVariant.BOMB_GOLDENTROLL)d[f]({},e.MC_POST_PLAYER_UPDATE,function(a,p)a=p:GetData()if p:IsHoldingItem()then a[c]=30 else a[c]=(a[c]or 0)-1 end end)
+l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_BOMB_COLLISION,function(a,b,p)p=p:ToPlayer()a=p and p:GetData()[c]if a and a<0 and p:AreControlsEnabled()then p:TryHoldEntity(b)end end,BombVariant.BOMB_GOLDENTROLL)d[f]({},e.MC_POST_PLAYER_UPDATE,function(a,p)a=p:GetData()if p:IsHoldingItem()then a[c]=30 else a[c]=(a[c]or 0)-1 end end)
 
 --5. 强制给予玩家：道具108(圣饼)、道具220(悲伤炸弹)
 -- 主动道具数量不够时，强制锁门，房间内生成对应道具
