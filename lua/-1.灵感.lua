@@ -49,4 +49,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_UPDATE,function(p,t,s)s='
 --16. 生成的道具被替换为道具17、18、32、190、628中的一个，其中出现628的概率为0.5%，且道具628的贴图会被替换为17、18、32、190中的一个。
 l local b,t=Isaac.AddCallback,{17,18,32,190,628}b({},63,function(_,_,_,_,d)return t[d%1e5//24875+1]end)b({},34,function(s,p)if p.SubType==t[5]then s=p:GetSprite()s:ReplaceSpritesheet(1,Isaac.GetItemConfig():GetCollectible(t[(p.InitSeed%1e5+1)//25e3+1]).GfxFileName)s:LoadGraphics()end end,100)
 
+--17. 眼泪可以伤害角色。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)for _,t in pairs(Isaac.FindByType(EntityType.ENTITY_TEAR))do if t.Size+p.Size>=2*t.Position:Distance(p.Position)then return p:TakeDamage(1,0,EntityRef(t),30)end end end)
+
 --.
