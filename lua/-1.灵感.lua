@@ -54,7 +54,7 @@ l local b,t=Isaac.AddCallback,{17,18,32,190,628}b({},63,function(_,_,_,_,d)retur
 -- 灵感来源:bilibili@AAA笑脸批发商,uid:379358804
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)for _,t in pairs(Isaac.FindByType(EntityType.ENTITY_TEAR))do if t.Size+p.Size>=2*t.Position:Distance(p.Position)then return p:TakeDamage(1,0,EntityRef(t),30)end end end)
 
---16. 当房间内(除去墙和门)障碍物的数量占房间总障碍物数量的比例小于30%时，在房间四个角各生成一个窥眼刺块。
+--16. 当房间内(除去墙和门)障碍物的面积占房间面积的比例小于30%时，在房间四个角各生成一个窥眼刺块。
 -- 灵感来源:bilibili@Aguid_Einzebern,uid:398102143
 l local a=GridEntityType Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(r,s,c,w,h,p,q,g,d)r=Game():GetRoom()c=0 s=r:GetGridSize()c=0 w=r:GetGridWidth()h=s/w s=0 g={}for i=1,h do for j=1,w do p=j+w*(i-1)q=r:GetGridPosition(p)d=r:GetGridEntity(p)d=d and d:GetType()if r:IsPositionInRoom(q,0)and not(d and(d==a.GRID_WALL or d==a.GRID_DOOR))then s=s+1 if d then c=c+1 else for k,v in ipairs{{1,1},{w,1},{1,h},{w,h}}do d=(v[1]-j)^2+(v[2]-i)^2 if not g[k]or g[k].d>d then g[k]={d=d,p=q}end end end end end end if c/s<.3 then for _,v in pairs(g)do if v then Isaac.Spawn(EntityType.ENTITY_GRUDGE,0,0,v.p,Vector.Zero,nil)end end end end)
 
