@@ -16,15 +16,16 @@ l if not(REPENTOGON or _CBH)then local D,E,F,I,J,O,P,Y,W,A,B,C,G,H,K,L,Q,R=requi
 if not(REPENTOGON or _MEC)then
     _MEC = true
     local MECED = false
-    local function wrapper(f)
+    local function wrapper(f,mod)
         return function(...)
             local ret=table.pack(pcall(f,...))
             if ret[1]then return table.unpack(ret,2,ret.n)end
+            Isaac.ConsoleOutput(string.format('Error:%s@%s\n',mod and mod.Name or'Anonymous',ret[2]))
         end
     end
     local trans , count = {} , {}
-    local function add(fn)
-        local tfn = trans[fn] or wrapper(fn)
+    local function add(fn,mod)
+        local tfn = trans[fn] or wrapper(fn,mod)
         trans[tfn] = fn
         trans[fn] = tfn
         count[fn] = (count[fn]or 0) + 1
@@ -32,7 +33,7 @@ if not(REPENTOGON or _MEC)then
     end
     local rawAdd , rawRem = Isaac.AddPriorityCallback , Isaac.RemoveCallback
     local function Add(mod,cid,priority,fn,param)
-        rawAdd(mod,cid,priority,add(fn),param)
+        rawAdd(mod,cid,priority,add(fn,mod),param)
     end
     local function Rem(mod,cid,fn)
         if count[fn]then
@@ -65,7 +66,7 @@ if not(REPENTOGON or _MEC)then
             for _,cid in pairs(ModCallbacks)do
                 local cbs = Isaac.GetCallbacks(cid)
                 for _,cb in pairs(cbs)do
-                    cb.Function = add(cb.Function)
+                    cb.Function = add(cb.Function, cb.Mod)
                 end
             end
             MECED = true
@@ -89,6 +90,6 @@ if not(REPENTOGON or _MEC)then
 end
 ------------------------------------
 ---2.2 压缩代码
-l local g,a,b,h,d,e,i,c=table,Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local n,t,l,j,p=false,function(f)return function(...)local k=g.pack(pcall(f,...))if k[1]then return g.unpack(k,2,k.n)end end end,{},{}p=function(f)local k=l[f]or t(f)l[k]=f l[f]=k j[f]=(j[f]or 0)+1 return k end local q,o,u=a[d],a[e]u=function(f,k,m,r,s)q(f,k,m,p(r),s)end local function w(r,s,f)if j[f]then o(r,s,l[f])j[f]=j[f]-1 if 1>j[f]then local m={}for k,v in b(j)do if k~=f then m[k]=v end end j=m m={}for k,v in b(l)do if k~=f and v~=f then m[k]=v end end l=m end else o(r,s,f)end end function MEC()if not n then a[d]=u a[e]=w for _,k in b(h)do _=a[i](k)for _,f in b(_)do f[c]=p(f[c])end end n=true end end function DEMEC()if n then a[d]=q a[e]=o for _,k in b(h)do _=a[i](k)for _,f in b(_)do f[c]=l[f[c]]or f[c]end end l={}j={}n=false end end end
+l local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end
 
 --.
