@@ -23,36 +23,39 @@ l Hail,HailNum=0.1,3;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_UPDATE,
 l local Dist=3;local H,G,P,T=GetPtrHash,40,'Position',{}Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,...)local h,p,q=H(e),Game():GetRandomPlayer(Vector.Zero,0)if not T[h]and e:IsEnemy()then q=(p[P]-e[P]):Length()-G*Dist if q>0 then T[h]=true e:TakeDamage(G*a/(G+q),...)T[h]=nil return false end end end)
 
 --8. 胎儿博士的炸弹被替换为金色即爆炸弹，兼容特效、伤害和爆炸范围。
+-- 灵感来源:bilibili@妖狐みれい,uid:3493076226017574
 l local I,V,a,c=Isaac,BombVariant.BOMB_GOLDENTROLL,'ExplosionDamage','RadiusMultiplier'I.AddCallback({},ModCallbacks.MC_POST_BOMB_UPDATE,function(f,b,d,r)if b.IsFetus then f=b.Flags d=b[a]r=b[c]if b.Variant~=V then b:Remove()b=I.Spawn(b.Type,V,b.SubType,b.Position,b.Velocity,b.SpawnerEntity):ToBomb()b:AddTearFlags(f)b[a],b[c]=d,r end end end)
 
 --9. 实体“我的影子”追随准星。
+-- 灵感来源:bilibili@妖狐みれい,uid:3493076226017574
 l local b,c,a=Isaac,GetPtrHash,'Position'b.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)for k,v in pairs(b.FindByType(1e3))do if(v.Variant==30 or v.Variant==153)and c(v.SpawnerEntity)==c(f.Player)then f:FollowPosition(v[a])f:AddVelocity(v[a]-f[a])end end end,131)
 
---10. 每进入一个新房间，移动键随机互换、攻击键随机互换、功能键随机互换。(灵感来源:bilibili@月半之大_0813,uid:400635734)
+--10. 每进入一个新房间，移动键随机互换、攻击键随机互换、功能键随机互换。
+-- 灵感来源:bilibili@月半之大_0813,uid:400635734
 l local A,B,C,D,E,F,Z=Input,Isaac,ModCallbacks,{},{},{'A','D','W','S','<','>','^','v','E','Space','Q','Ctrl'}Z=B.AddCallback for k=0,11 do D[k]=k end Z(E,C.MC_POST_NEW_ROOM,function(a)for i=0,8,4 do for j=i+3,i+1,-1 do a=math.random(i,j)D[j],D[a]=D[a],D[j]end end end)Z(E,C.MC_INPUT_ACTION,function(a,e,h,b)a,e=InputHook,e and e:ToPlayer()b=D[b]if e and b then if h==a.IS_ACTION_PRESSED then h=A.IsActionPressed elseif h==a.IS_ACTION_TRIGGERED then h=A.IsActionTriggered else h=A.GetActionValue end return h(b,e.ControllerIndex)end end)Z(E,C.MC_POST_RENDER,function(a,b,c,p)c=Vector p=c(B.GetScreenWidth()/3,.9*B.GetScreenHeight())a=function(z,y,x,...)B.RenderScaledText(z,y.X-x*B.GetTextWidth(z)/2,y.Y,x,x,...)end for k,v in ipairs{-180,0,-90,90}do b=8*c.FromAngle(v)a(F[D[k-1]+1],p+b,.8,0,1,0,1)a(F[D[k+3]+1],p+2*b,1,1,0,0,1)end p.X=2*p.X for k,v in pairs{Bomb=-12,Active=-4,Card=4,Drop=12}do a(k..': '..F[D[(v+12)//8+8]+1],p+c(0,v),.8,1,1,0,1)end end)
 
---11. 没捡到闪烁的硬币时，所有角色受伤一次，不忽略无敌帧。(灵感来源:bilibili@AAA笑脸批发商,uid:379358804)
+--11. 没捡到闪烁的硬币时，所有角色受伤一次，不忽略无敌帧。
+-- 灵感来源:bilibili@AAA笑脸批发商,uid:379358804
 l local A,B,C,E,F,G=Isaac.AddCallback,ModCallbacks,PickupVariant.PICKUP_COIN,GetPtrHash,{},{}A(G,B.MC_POST_PICKUP_UPDATE,function(h,p)h=E(p)if p.Timeout>=0 and not F[h]then F[h]=1 end end,C)A(G,B.MC_PRE_PICKUP_COLLISION,function(h,p,c)h=E(p)if c:ToPlayer()and F[h]then F[h]=2 end end,C)A(G,B.MC_PRE_PLAYER_COLLISION,function(h,p,c)h=E(c)if c:ToPickup()and F[h]then F[h]=3 end end)A(G,B.MC_POST_ENTITY_REMOVE,function(h,e)h=E(e)if 1==F[h]then for i=1,Game():GetNumPlayers()do Isaac.GetPlayer(i-1):TakeDamage(1,0,EntityRef(e),60)end end if F[h]then h,F[h]={}for k,v in pairs(F)do if v then h[k]=v end end F=h e:Remove()end end,EntityType.ENTITY_PICKUP)
 
---12. 角色每次发射眼泪时，原地生成一个可拾取的炸弹。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_THROWABLEBOMB,0,t.Position,Vector.Zero,nil)end)
-
---13. 游戏随机卡顿、删除角色眼泪、删除掉落物。(灵感来源:bilibili@AAA笑脸批发商,uid:379358804)
+--12. 游戏随机卡顿、删除角色眼泪、删除掉落物。
+-- 灵感来源:bilibili@AAA笑脸批发商,uid:379358804
 l local c,d,A,B,Z=Random,pairs,Isaac,EntityType Z=A.FindByType A.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(a,b)a=c()%1e3 if a<8 then for _=1,1e5 do A.GetRoomEntities()end b={}for _,v in d{'HEART','COIN','KEY','BOMB','POOP','GRAB_BAG','PILL','LIL_BATTERY','TAROTCARD','TRINKET'}do a=Z(B.ENTITY_PICKUP,PickupVariant['PICKUP_'..v])table.move(a,1,#a,#b+1,b)end elseif a<24 then b=Z(B.ENTITY_TEAR)end for _,v in d(b or{})do if c()%100<20 then v:Remove()end end end)
 
---14. 敌人的碰撞箱大小和贴图大小随血量变化。(灵感来源:bilibili@Aguid_Einzebern,uid:398102143)
-l Isaac.AddCallback({},ModCallbacks.MC_POST_NPC_RENDER,function(s,n,o,d,v,e,f)d=n:GetData()v='Visible'e='InitSeed'f=n[e]if n:IsVulnerableEnemy()and n:IsActiveEnemy(false)and not d[f]then s=(1.9*n.HitPoints/n.MaxHitPoints+.1)*Vector.One n.SpriteScale,n.SizeMulti=s,s n[v]=true d[f]=s n:Render(o)n[v],d[f]=false end end)
-
---15. 角色半径1格内的投射物会被冻结，效果类似道具“爸爸的戒指”。(灵感来源:bilibili@月半之大_0813,uid:400635734)
+--13. 角色半径1格内的投射物会被冻结，效果类似道具“爸爸的戒指”。
+-- 灵感来源:bilibili@月半之大_0813,uid:400635734
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_UPDATE,function(p,t,s)s='Position'p=Game():GetNearestPlayer(t[s])if 40+t.Size/2>=t[s]:Distance(p[s])then t:AddFreeze(EntityRef(p),1)end end)
 
---16. 生成的道具被替换为道具17、18、32、190、628中的一个，其中出现628的概率为0.5%，且道具628的贴图会被替换为17、18、32、190中的一个。(灵感来源:bilibili@赫腊梅,uid:646846635)
+--14. 生成的道具被替换为道具17、18、32、190、628中的一个，其中出现628的概率为0.5%，且道具628的贴图会被替换为17、18、32、190中的一个。
+-- 灵感来源:bilibili@赫腊梅,uid:646846635
 l local b,t=Isaac.AddCallback,{17,18,32,190,628}b({},63,function(_,_,_,_,d)return t[d%1e5//24875+1]end)b({},34,function(s,p)if p.SubType==t[5]then s=p:GetSprite()s:ReplaceSpritesheet(1,Isaac.GetItemConfig():GetCollectible(t[(p.InitSeed%1e5+1)//25e3+1]).GfxFileName)s:LoadGraphics()end end,100)
 
---17. 眼泪可以伤害角色。(灵感来源:bilibili@AAA笑脸批发商,uid:379358804)
+--15. 眼泪可以伤害角色。
+-- 灵感来源:bilibili@AAA笑脸批发商,uid:379358804
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)for _,t in pairs(Isaac.FindByType(EntityType.ENTITY_TEAR))do if t.Size+p.Size>=2*t.Position:Distance(p.Position)then return p:TakeDamage(1,0,EntityRef(t),30)end end end)
 
---18. 当房间内(除去墙和门)障碍物的数量占房间总障碍物数量的比例小于30%时，在房间四个角各生成一个窥眼刺块。(灵感来源:bilibili@Aguid_Einzebern,uid:398102143)
+--16. 当房间内(除去墙和门)障碍物的数量占房间总障碍物数量的比例小于30%时，在房间四个角各生成一个窥眼刺块。
+-- 灵感来源:bilibili@Aguid_Einzebern,uid:398102143
 l local a=GridEntityType Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(r,s,c,w,h,p,q,g,d)r=Game():GetRoom()c=0 s=r:GetGridSize()c=0 w=r:GetGridWidth()h=s/w s=0 g={}for i=1,h do for j=1,w do p=j+w*(i-1)q=r:GetGridPosition(p)d=r:GetGridEntity(p)d=d and d:GetType()if r:IsPositionInRoom(q,0)and not(d and(d==a.GRID_WALL or d==a.GRID_DOOR))then s=s+1 if d then c=c+1 else for k,v in ipairs{{1,1},{w,1},{1,h},{w,h}}do d=(v[1]-j)^2+(v[2]-i)^2 if not g[k]or g[k].d>d then g[k]={d=d,p=q}end end end end end end if c/s<.3 then for _,v in pairs(g)do if v then Isaac.Spawn(EntityType.ENTITY_GRUDGE,0,0,v.p,Vector.Zero,nil)end end end end)
 
 --.
