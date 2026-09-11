@@ -58,4 +58,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)for _,t i
 -- 灵感来源:bilibili@Aguid_Einzebern,uid:398102143
 l local a=GridEntityType Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(r,s,c,w,h,p,q,g,d)r=Game():GetRoom()c=0 s=r:GetGridSize()c=0 w=r:GetGridWidth()h=s/w s=0 g={}for i=1,h do for j=1,w do p=j+w*(i-1)q=r:GetGridPosition(p)d=r:GetGridEntity(p)d=d and d:GetType()if r:IsPositionInRoom(q,0)and not(d and(d==a.GRID_WALL or d==a.GRID_DOOR))then s=s+1 if d then c=c+1 else for k,v in ipairs{{1,1},{w,1},{1,h},{w,h}}do d=(v[1]-j)^2+(v[2]-i)^2 if not g[k]or g[k].d>d then g[k]={d=d,p=q}end end end end end end if c/s<.3 then for _,v in pairs(g)do if v then Isaac.Spawn(EntityType.ENTITY_GRUDGE,0,0,v.p,Vector.Zero,nil)end end end end)
 
+--17. 玩家的眼泪可以给怪物降级。
+l Isaac.AddCallback({},ModCallbacks.MC_POST_FIRE_TEAR,function(_,t)t:AddTearFlags(TearFlags.TEAR_REROLL_ENEMY)end)
+
 --.
