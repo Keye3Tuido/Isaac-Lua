@@ -13,7 +13,7 @@ l local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCall
 l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
 
 --2. 玩家使用道具跳跃教程时，起跳时触发塔米猫的头，落地时触发棉豆？
-l local b,a,f,g,h=ModCallbacks,CollectibleType,UseFlag.USE_NOANIM,Isaac.AddCallback,'COLLECTIBLE_'g({},b.MC_USE_ITEM,function(_,_,_,p)p:UseActiveItem(a[h..'TAMMYS_HEAD'],f)p:GetData().H2J=14+Game():GetFrameCount()end,a[h..'HOW_TO_JUMP'])g({},b.MC_POST_PLAYER_UPDATE,function(d,p)d=p:GetData()if d.H2J and d.H2J<=Game():GetFrameCount()then p:UseActiveItem(a[h..'BUTTER_BEAN'],f)d.H2J=nil end end)
+l local b,a,f,g,h=ModCallbacks,CollectibleType,UseFlag.USE_NOANIM,Isaac.AddCallback,'COLLECTIBLE_'g({},b.MC_USE_ITEM,function(_,_,_,p)p:UseActiveItem(a[h..'BUTTER_BEAN'],f)p:GetData().H2J=14+Game():GetFrameCount()end,a[h..'HOW_TO_JUMP'])g({},b.MC_POST_PLAYER_UPDATE,function(d,p)d=p:GetData()if d.H2J and d.H2J<=Game():GetFrameCount()then p:UseActiveItem(a[h..'TAMMYS_HEAD'],f)d.H2J=nil end end)
 
 --3. 强制给予玩家：道具282(跳跃教程)
 -- 主动道具数量不够时，强制锁门，房间内生成对应道具
