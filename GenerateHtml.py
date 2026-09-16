@@ -1,6 +1,5 @@
 import os
 import json
-import re
 
 # ========== 配置 ==========
 LUA_DIR = "lua"
@@ -25,24 +24,34 @@ def clean_code(s):
     )
 
 # ========== 收集 Lua 文件元数据 ==========
-def is_challenge_id(num_str):
-    return bool(re.match(r'^\d+$', num_str))
+# 目录即分类：lua/challenges → 挑战，lua/utils → 其他
+CATEGORY_DIRS = [("challenges", True), ("utils", False)]
 
 lua_entries = []
-for fname in sorted(os.listdir(LUA_DIR)):
-    if not fname.endswith('.lua') or fname.startswith('$'):
+for subdir, is_challenge in CATEGORY_DIRS:
+    dir_path = os.path.join(LUA_DIR, subdir)
+    if not os.path.isdir(dir_path):
         continue
-    num = fname[:-4].split('.', 1)[0]
-    title = (fname[:-4].split('.', 1) + [""])[1]
-    raw = open(os.path.join(LUA_DIR, fname), encoding="utf-8").read()
-    lua_entries.append({
-        "id": num,
-        "title": title,
-        "fname": fname,
-        "isChallenge": is_challenge_id(num),
-        "raw": raw,
-        "cleaned": clean_code(raw),
-    })
+    for fname in sorted(os.listdir(dir_path)):
+        if not fname.endswith('.lua') or fname.startswith('$'):
+            continue
+        num = fname[:-4].split('.', 1)[0]
+        title = (fname[:-4].split('.', 1) + [""])[1]
+        raw = open(os.path.join(dir_path, fname), encoding="utf-8").read()
+        lua_entries.append({
+            "id": num,
+            "title": title,
+            "fname": fname,
+            "isChallenge": is_challenge,
+            "raw": raw,
+            "cleaned": clean_code(raw),
+        })
+
+# lua/ 根目录直接放置的文件不归属任何分类，提醒以免漏移
+stray = [f for f in os.listdir(LUA_DIR)
+         if f.endswith('.lua') and os.path.isfile(os.path.join(LUA_DIR, f))]
+if stray:
+    print("警告：以下文件直接位于 lua/ 根目录，不会被收录：" + ", ".join(stray))
 
 # 挑战在前、非挑战在后；挑战按数值排序，非挑战按字符串排序
 def _sort_key(e):
@@ -139,10 +148,10 @@ html = f"""<!DOCTYPE html>
             <header class="detail-hero">
                 <div class="detail-paper"><h1 id="detailTitle"></h1></div>
             </header>
-            <div class="button-group">
-                <button onclick="copyAllCode(event)" class="copy-btn">复制代码</button>
+            <div class="button-group" id="buttonGroup">
+                <button onclick="copyAllCode(event)" class="copy-btn" id="copyCodeBtn">复制代码</button>
                 <button onclick="copyLink(event)" class="copy-btn">复制链接</button>
-                <button onclick="downloadZip(event)" class="download-btn">下载模组文件</button>
+                <button onclick="downloadZip(event)" class="download-btn" id="downloadBtn">下载模组文件</button>
                 <a href="#" onclick="goBackToList(event)" class="back-btn">返回挑战列表</a>
             </div>
             <div class="code-area" id="codeArea"></div>

@@ -109,6 +109,12 @@ function showDetailView(fileId, secId) {
     subLegend.textContent = f.fname + ' - @Keye3Tuido';
     document.title = f.title + ' - 以撒代码挑战';
 
+    // 「其他」类（lua/utils）页面不提供整页复制和模组下载
+    document.getElementById('copyCodeBtn').style.display = f.isChallenge ? '' : 'none';
+    document.getElementById('downloadBtn').style.display = f.isChallenge ? '' : 'none';
+    // 只剩 2 个按钮时加 utils-group 类，让它们在原 4 列网格中居中
+    document.getElementById('buttonGroup').classList.toggle('utils-group', !f.isChallenge);
+
     renderSections(f);
     if (secId) scrollToSection(secId);
     else window.scrollTo(0, 0);
