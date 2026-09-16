@@ -8,19 +8,7 @@ require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 const { listRepoLuaFiles } = require('./repo-lua-files');
 
-function removeComments(src) {
-  try {
-    const tokens = LuaMin._lex(src);
-    const ranges = [];
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type === 'Comment') ranges.push({ s: tokens[i].start, e: tokens[i].end });
-    }
-    if (!ranges.length) return src;
-    let out = src;
-    for (let i = ranges.length - 1; i >= 0; i--) out = out.slice(0, ranges[i].s) + out.slice(ranges[i].e);
-    return out;
-  } catch (e) { return src; }
-}
+const { removeComments } = require('./_helpers');
 
 function canonicalEq(a, b, aliasMap) {
   try { return LuaMin._canonical(a) === (aliasMap ? LuaMin._canonical(b, aliasMap) : LuaMin._canonical(b)); }
@@ -46,7 +34,7 @@ for (const file of files) {
     segs.push(line);
     segCount++;
 
-    const cleaned = removeComments(line);
+    const cleaned = removeComments(LuaMin, line);
     let baseline, search;
 
     try { baseline = LuaMin.compress(cleaned); } catch (e) { continue; }

@@ -95,14 +95,14 @@
     },
     "snapshot": {
       "ok": true,
-      "total": 512,
-      "changed": 1,
+      "total": 857,
+      "changed": 0,
       "regress": 0,
       "improve": 0,
       "lostOk": 0,
-      "newOk": 7,
-      "sourceChanged": 46,
-      "removed": 0
+      "newOk": 352,
+      "sourceChanged": 0,
+      "removed": 345
     },
     "performance": {
       "ok": true,

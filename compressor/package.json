@@ -1,8 +1,8 @@
 {
   "name": "isaac-lua",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Lua code compressor for The Binding of Isaac console",
+  "main": "core.js",
   "scripts": {
     "test": "node tests/full_regression.js",
     "test:search": "node tests/test_search_compare.js",
@@ -13,16 +13,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SoarCaxton/Isaac-Lua.git"
+    "url": "git+https://github.com/Keye3Tuido/Isaac-Lua.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/SoarCaxton/Isaac-Lua/issues"
+    "url": "https://github.com/Keye3Tuido/Isaac-Lua/issues"
   },
-  "homepage": "https://github.com/SoarCaxton/Isaac-Lua#readme",
+  "homepage": "https://github.com/Keye3Tuido/Isaac-Lua#readme",
   "dependencies": {
     "fengari": "^0.1.5",
     "fengari-web": "^0.1.4",

@@ -52,7 +52,6 @@
             }
           }
           if(tk.value===';'){
-            var inTable = stack.length>0 && stack[stack.length-1]==='{';
             if(inTable){ kept.push(tk); continue; }       // 表内字段分隔符：保留
             // 语句分隔 ';'：仅当其后是 '(' 才保留（载荷），否则删除
             var nj=ti+1;
@@ -77,7 +76,8 @@
       return out;
     }
 
-    // 旧的 applyEncoding（去注释 + 间隔符最小化 + 单行）- 保留用于向后兼容
+    // applyEncoding：去注释 + 间隔符最小化 + 单行（不做分号消除）。
+    // 实际用途：folds.js「多赋值拆分」用它做编码层长度模拟比较（bodyCur/bodyCand）。
     function applyEncoding(src){
       var toks=lex(src).filter(function(t){return t.type!=='Comment'&&t.type!=='EOF';});
       var out='';

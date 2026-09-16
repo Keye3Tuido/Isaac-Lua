@@ -1,6 +1,17 @@
 // ========== DATA（由 Python 构建时注入） ==========
 const ALL_FILES = __ALL_FILES__;
 
+// 前端派生 cleaned：与 Python 端 clean_code 逐字节等价
+// （splitlines + 逐行剥掉 "l " 前缀 + "\n" join；\r\n 归一为 \n，单个结尾换行被吸收）
+function cleanCode(s) {
+    const lines = s.split(/\r\n|\r|\n/);
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    return lines.map(l => l.startsWith('l ') ? l.slice(2) : l).join('\n');
+}
+for (const id in ALL_FILES) {
+    ALL_FILES[id].cleaned = cleanCode(ALL_FILES[id].raw);
+}
+
 // ========== DOM 引用 ==========
 const listView = document.getElementById('listView');
 const detailView = document.getElementById('detailView');
@@ -378,17 +389,26 @@ function copyLink(e) {
 
 // ========== 下载 ZIP ==========
 let jsZipPromise;
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('script load failed: ' + src));
+        document.head.appendChild(script);
+    });
+}
 function ensureJsZip() {
     if (window.JSZip) return Promise.resolve(window.JSZip);
     if (!jsZipPromise) {
-        jsZipPromise = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-            script.async = true;
-            script.onload = () => resolve(window.JSZip);
-            script.onerror = () => reject(new Error('JSZip load failed'));
-            document.head.appendChild(script);
-        });
+        // 本地优先（vendor 在仓库根目录的 jszip.min.js），失败时回退 cdnjs
+        jsZipPromise = loadScript('jszip.min.js')
+            .catch(() => loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'))
+            .then(() => {
+                if (!window.JSZip) throw new Error('JSZip load failed');
+                return window.JSZip;
+            });
     }
     return jsZipPromise;
 }

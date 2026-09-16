@@ -8,7 +8,7 @@
 
 **Node.js 使用**：
 ```javascript
-const luaparse = require('./node_modules/luaparse');
+const luaparse = require('luaparse');
 const fengari = require('./node_modules/fengari');
 require('./core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
@@ -21,7 +21,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - ✓ 纯静态，`file://` 直接运行，无需服务器/构建/联网
 - ✓ 每个优化阶段后都做语法+语义等价校验，**不等价则拒绝输出**
 - ✓ 支持多段输入（每行可带 `l`/`lua` 前缀），自动合并为单段
-- ✓ 测试覆盖：基础 101 + 边界 40 + 幂等(逆向回代) 50 项；仓库 41 个 Lua 文件 / 345 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
+- ✓ 测试覆盖：基础 101 + 边界 40 + 幂等(逆向回代) 50 项；仓库 41 个 Lua 文件 / 352 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
 
 ---
 

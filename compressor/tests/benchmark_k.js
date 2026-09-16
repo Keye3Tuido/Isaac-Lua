@@ -21,19 +21,7 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--ks' && args[i + 1]) { ks = args[i + 1].split(',').map(Number); i++; }
 }
 
-function removeComments(src) {
-  try {
-    const tokens = LuaMin._lex(src);
-    const ranges = [];
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type === 'Comment') ranges.push({ s: tokens[i].start, e: tokens[i].end });
-    }
-    if (!ranges.length) return src;
-    let out = src;
-    for (let i = ranges.length - 1; i >= 0; i--) out = out.slice(0, ranges[i].s) + out.slice(ranges[i].e);
-    return out;
-  } catch (e) { return src; }
-}
+const { removeComments } = require('./_helpers');
 
 // 收集全部段（去注释）
 const segs = [];
@@ -43,7 +31,7 @@ for (const file of listRepoLuaFiles()) {
   const lines = text.split(/\r?\n/);
   for (let li = 0; li < lines.length; li++) {
     if (!/^\s*(?:lua|l)\s+\S/.test(lines[li])) continue;
-    segs.push({ key: file.rel.replace(/\\/g, '/') + '#' + li, src: removeComments(lines[li]) });
+    segs.push({ key: file.rel.replace(/\\/g, '/') + '#' + li, src: removeComments(LuaMin, lines[li]) });
   }
 }
 const runSegs = segs.slice(0, limit);

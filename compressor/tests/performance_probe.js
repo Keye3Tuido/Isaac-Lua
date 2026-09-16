@@ -18,19 +18,7 @@ const countedParser = Object.assign({}, baseParser, {
 require('../core.js');
 const LuaMin = globalThis.LuaMin.create(countedParser, fengari);
 
-function removeComments(src) {
-  try {
-    const tokens = LuaMin._lex(src);
-    const ranges = [];
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type === 'Comment') ranges.push({ s: tokens[i].start, e: tokens[i].end });
-    }
-    if (!ranges.length) return src;
-    let out = src;
-    for (let i = ranges.length - 1; i >= 0; i--) out = out.slice(0, ranges[i].s) + out.slice(ranges[i].e);
-    return out;
-  } catch (e) { return src; }
-}
+const { removeComments } = require('./_helpers');
 
 // 逐段抽取：每行 `l`/`lua` 前缀是一段，各自去注释后单独作为探针样本。
 const samples = [];
@@ -38,7 +26,7 @@ for (const file of listRepoLuaFiles()) {
   const lines = fs.readFileSync(file.abs, 'utf8').split(/\r?\n/);
   for (let li = 0; li < lines.length; li++) {
     if (!/^\s*(?:lua|l)\s+\S/.test(lines[li])) continue;
-    samples.push({ key: file.rel.replace(/\\/g, '/') + '#' + li, source: removeComments(lines[li]) });
+    samples.push({ key: file.rel.replace(/\\/g, '/') + '#' + li, source: removeComments(LuaMin, lines[li]) });
   }
 }
 samples.sort((a, b) => b.source.length - a.source.length || a.key.localeCompare(b.key));

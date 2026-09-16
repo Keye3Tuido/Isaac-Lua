@@ -35,6 +35,10 @@ jobs:
         working-directory: compressor
         run: npm ci
 
+      - name: Run compressor tests
+        working-directory: compressor
+        run: npm run test:local
+
       - name: Generate site HTML
         run: python GenerateHtml.py
 
@@ -45,7 +49,7 @@ jobs:
           rm -rf _site
           mkdir -p _site/assets _site/compressor/src
 
-          cp index.html kb.json favicon.svg CNAME _site/
+          cp index.html kb.json favicon.svg CNAME jszip.min.js _site/
           cp \
             assets/basement-panel.webp \
             assets/basement-room.webp \
@@ -92,6 +96,7 @@ jobs:
           compressor/src/search.js
           favicon.svg
           index.html
+          jszip.min.js
           kb.json
           EOF
 

@@ -16,17 +16,7 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--budget' && args[i + 1]) { budget = parseInt(args[i + 1], 10); i++; }
 }
 
-function removeComments(src) {
-  try {
-    const t = LuaMin._lex(src);
-    const r = [];
-    for (let i = 0; i < t.length; i++) if (t[i].type === 'Comment') r.push({ s: t[i].start, e: t[i].end });
-    if (!r.length) return src;
-    let o = src;
-    for (let i = r.length - 1; i >= 0; i--) o = o.slice(0, r[i].s) + o.slice(r[i].e);
-    return o;
-  } catch (e) { return src; }
-}
+const { removeComments } = require('./_helpers');
 
 function walk(dir, out) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -49,7 +39,7 @@ for (const p of files) {
   let src;
   try { src = fs.readFileSync(p, 'utf8'); } catch (e) { continue; }
   if (src.length < 10 || src.includes('\0') || src.startsWith('#!')) continue;
-  const c = removeComments(src);
+  const c = removeComments(LuaMin, src);
   let rule, search;
   try { rule = LuaMin.compress(c); } catch (e) { skip++; continue; }
   try { search = LuaMin.searchOptimize(c, { beamWidth: K, budget }); } catch (e) { search = null; }

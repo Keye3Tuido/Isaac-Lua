@@ -63,7 +63,6 @@ function metricsFor(run) {
     case 'unit':
       parsed = numbers(o, /测试结果:\s*(\d+)\s*通过,\s*(\d+)\s*失败/, ['pass', 'fail']); break;
     case 'edge':
-    case 'pipelineParity':
     case 'validationCache':
     case 'chunkedSearch':
     case 'memberChain':

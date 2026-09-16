@@ -10,15 +10,7 @@ const fengari = require('fengari');
 require('../core.js');
 const L = globalThis.LuaMin.create(luaparse, fengari);
 
-function removeComments(src){
-  try{
-    const t=L._lex(src); const cr=[];
-    for(let i=0;i<t.length;i++) if(t[i].type==='Comment') cr.push({start:t[i].start,end:t[i].end});
-    if(!cr.length) return src;
-    let o=src; for(let i=cr.length-1;i>=0;i--) o=o.slice(0,cr[i].start)+o.slice(cr[i].end);
-    return o;
-  }catch(e){ return src; }
-}
+const { removeComments } = require('./_helpers');
 function sha(s){ return crypto.createHash('sha256').update(s,'utf8').digest('hex').slice(0,16); }
 
 const ROOT = path.join(__dirname, '..', '..');           // Isaac-Lua repo root
@@ -78,13 +70,13 @@ const repoFiles = walkLua(ROOT, ROOT, []).filter(f=>!f.rel.startsWith('compresso
 for(const f of repoFiles){
   let raw; try{ raw=fs.readFileSync(f.full,'utf8'); }catch(e){ continue; }
   const segs = extractSegments(raw);
-  segs.forEach((seg,i)=>{ record('repo-seg:'+f.rel+'#'+i, removeComments(seg)); });
+  segs.forEach((seg,i)=>{ record('repo-seg:'+f.rel+'#'+i, removeComments(L, seg)); });
 }
 
 // 3. Remote cache whole files.
 walkLua(REMOTE, REMOTE, []).forEach(f=>{
   let raw; try{ raw=fs.readFileSync(f.full,'utf8'); }catch(e){ return; }
-  record('remote:'+f.rel, removeComments(raw));
+  record('remote:'+f.rel, removeComments(L, raw));
 });
 
 // 4. Bulk repos whole files (the big corpus).
@@ -96,7 +88,7 @@ if(fs.existsSync(BULK)){
     walkLua(luaDir, dir, []).forEach(f=>{
       let raw; try{ raw=fs.readFileSync(f.full,'utf8'); }catch(e){ return; }
       if(raw.length<10||raw.includes('\0')||raw.startsWith('#!')) return;
-      record('bulk:'+name+'/'+f.rel, removeComments(raw));
+      record('bulk:'+name+'/'+f.rel, removeComments(L, raw));
     });
   }
 }
