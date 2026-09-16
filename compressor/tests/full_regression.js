@@ -23,6 +23,7 @@ const specs = [
   ['incremental', 'test_incremental.js', []],
   ['idempotency', 'test_idempotency.js', []],
   ['memberChain', 'test_member_chain.js', []],
+  ['fwdNilMerge', 'test_fwdnil_merge.js', []],
   ['chunkedSearch', 'test_chunked_search.js', []],
   ['remote', 'remotetest.js', []],
   ['search', 'test_search_compare.js', []],
@@ -66,6 +67,7 @@ function metricsFor(run) {
     case 'validationCache':
     case 'chunkedSearch':
     case 'memberChain':
+    case 'fwdNilMerge':
       parsed = numbers(o, /(\d+)\s*pass,\s*(\d+)\s*fail/i, ['pass', 'fail']); break;
     case 'semicolon':
     case 'transparent':

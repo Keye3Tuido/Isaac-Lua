@@ -69,10 +69,20 @@ const cases = [
 ];
 
 // 追加真实语料：ver2 可读源码 + 用户 930 压缩版
+// 按标记行定位（语料文件会被编辑，硬编码行号会漂移）：
+//   '--2.1 源代码' 之后、纯 '-' 分隔行之前 = ver2 可读源码；
+//   '--2.2 压缩代码' 之后第一条 'l ' 开头的行 = 930 压缩版。
 try {
-  const lines = fs.readFileSync(path.join(__dirname, '../../lua/DEBUG1.安全包装.lua'), 'utf8').split(/\r?\n/);
-  cases.push({ name: 'ver2 可读源码', code: lines.slice(15, 89).join('\n') });
-  cases.push({ name: '930 压缩版', code: lines[91] });
+  const lines = fs.readFileSync(path.join(__dirname, '../../lua/utils/DEBUG1.安全包装.lua'), 'utf8').split(/\r?\n/);
+  const srcMark = lines.findIndex((l) => l.indexOf('--2.1') === 0 && l.indexOf('源代码') >= 0);
+  const zipMark = lines.findIndex((l) => l.indexOf('---2.2') === 0 && l.indexOf('压缩代码') >= 0);
+  if (srcMark >= 0 && zipMark > srcMark) {
+    let srcEnd = zipMark;
+    for (let i = srcMark + 1; i < zipMark; i++) { if (/^-+\s*$/.test(lines[i])) { srcEnd = i; break; } }
+    cases.push({ name: 'ver2 可读源码', code: lines.slice(srcMark + 1, srcEnd).join('\n') });
+    const l930 = lines.slice(zipMark + 1).find((l) => /^l\s/.test(l));
+    if (l930) cases.push({ name: '930 压缩版', code: l930 });
+  }
 } catch (e) { /* 语料缺失不阻断 */ }
 
 let pass = 0, fail = 0;

@@ -13,8 +13,8 @@
     },
     "real": {
       "ok": true,
-      "totalSegments": 345,
-      "passSegments": 345,
+      "totalSegments": 352,
+      "passSegments": 352,
       "failSegments": 0
     },
     "validationCache": {
@@ -34,7 +34,7 @@
     },
     "forwardNil": {
       "ok": true,
-      "pass": 11,
+      "pass": 18,
       "fail": 0
     },
     "ifNot": {
@@ -62,6 +62,11 @@
       "pass": 8,
       "fail": 0
     },
+    "fwdNilMerge": {
+      "ok": true,
+      "pass": 7,
+      "fail": 0
+    },
     "chunkedSearch": {
       "ok": true,
       "pass": 4,
@@ -75,8 +80,8 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 212186,
-      "searchBytes": 212179,
+      "ruleBytes": 221198,
+      "searchBytes": 221191,
       "savedBytes": 7
     },
     "bulk": {
@@ -90,19 +95,19 @@
     },
     "snapshot": {
       "ok": true,
-      "total": 505,
-      "changed": 0,
+      "total": 512,
+      "changed": 1,
       "regress": 0,
       "improve": 0,
       "lostOk": 0,
-      "newOk": 0,
-      "sourceChanged": 0,
+      "newOk": 7,
+      "sourceChanged": 46,
       "removed": 0
     },
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 540,
+      "parseCount": 539,
       "inputBytes": 14336,
       "outputBytes": 13949
     }

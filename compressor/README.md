@@ -21,7 +21,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - ✓ 纯静态，`file://` 直接运行，无需服务器/构建/联网
 - ✓ 每个优化阶段后都做语法+语义等价校验，**不等价则拒绝输出**
 - ✓ 支持多段输入（每行可带 `l`/`lua` 前缀），自动合并为单段
-- ✓ 测试覆盖：基础 89 + 边界 40 + 幂等(逆向回代) 44 项；仓库 43 个 Lua 文件 / 335 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
+- ✓ 测试覆盖：基础 101 + 边界 40 + 幂等(逆向回代) 50 项；仓库 41 个 Lua 文件 / 345 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
 
 ---
 
@@ -133,7 +133,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 **局部规范化**（阶段 1.1b~1.1h）：
 - **括号转点** — `obj["Field"]` → `obj.Field`（关键词字段如 `t["end"]` 除外，避免非法语法）
 - **只读内联** — 只读字面量/常量别名 copy-propagation（`local t=1000000` 读处还原为字面量）+ 死纯局部消除
-- **成员链冗余消除（CSE）** — 把重复出现的**纯点访问链** `base.f1.f2…` 提取为局部别名（`print(t.a.b.c) print(t.a.b.c)` → `local v=t.a.b.c print(v) print(v)`）。安全性：safe 模式下要求 base 是可证明无 `__index`/`__newindex` 元表的局部（字面量表构造、从不重赋值/写成员/逃逸、全程无 `setmetatable`），深链逐级经字面量表构造；`noMetatable` 模式（opts）假定所有变量（含全局）无元表，只保留"从不写/重赋值"的稳定性要求。`canonical` 的整链别名（`chainAliasByLocal`）双侧还原验证等价
+- **成员链冗余消除（CSE）** — 把重复出现的**纯点访问链** `base.f1.f2…` 提取为局部别名（`print(t.a.b.c) print(t.a.b.c)` → `local v=t.a.b.c print(v) print(v)`）。安全性：safe 模式下要求 base 是可证明无 `__index`/`__newindex` 元表的局部（字面量表构造、从不重赋值/写成员/逃逸、全程无 `setmetatable`），深链逐级经字面量表构造；`noMetatable` 模式（opts）假定所有变量（含全局）无元表，只保留"从不写/重赋值"的稳定性要求。`canonical` 的整链别名（`chainAliasByLocal`）双侧还原验证等价。后续任何构造新 aliasMap 的折叠 pass（method 折叠/字段前缀/字面量内联/字符串因子等）都必须原样传播 `chainAliasByLocal` 与 `transparentAliases`，否则其 canonical 等价校验会恒失败而永远不敢提交
 - **尾值符号收尾** — 多值赋值 `local a,b='hello',1 …` 把以符号（引号/花括号）结尾的纯字面量值排到最后 → `local b,a=1,'hello'…`，使后续关键字前可省一个空格。仅重排纯字面量（求值顺序无关），`canonical` 的只读字面量别名归一验证等价
 - **常量折叠** — 整数 `±`、字符串 `..`、`not` 布尔；**递归求值**折叠嵌套常量（`1+2*3` → `7` 一次到位，保证幂等）；折叠后必须更短才提交
 - **常量条件折叠** — `if true/false then A else B end` → `A`/`B`（分支无局部声明时直接展开）；分支含局部声明时才用 `do..end` 包裹保留作用域；空分支直接删除；`canonical` 的 IfStatement 归一 + 空 Do 块展开验证等价
@@ -154,6 +154,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 - **if-not 二择** — `if not C then A else B end` → `if C then B else A end`，省 `not`（约 4 字）；`canonical` 内置归一验证
 - **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；支持循环体内复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`）；SSA 等价校验
 - **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证
+- **前向 nil 内联（声明下沉）** — 声明上提的逆变换：`local a,f,g=X f,g=Y,Z`（f,g 为 nil 占位）按位并回 `local a,f,g=X,Y,Z`；支持多目标赋值整体下沉（全部目标均为同条 local 的 nil 占位、赋值前不被读写、RHS 不引用同条 local 变量时整条并入），省 ` f,g=`；canonical fwdNil 归一验证
 - **重复声明删除（禁用）** — 文本相同不能证明求值时机和副作用相同；安全模式保留重复 `local` 声明
 
 **编码优化**（阶段 1.8~1.10）：
@@ -204,12 +205,13 @@ node tests/test_chunked_search.js       # 分片搜索（浏览器 onStep 路径
 node tests/test_validation_cache.js      # canonical 缓存隔离、命中与语义一致性
 node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度（逐段、去注释）
 node tests/test_transparent_elision.js  # 透明别名消解专项
-node tests/test_canonical_fwdnil.js     # 死前向声明归一专项
+node tests/test_canonical_fwdnil.js     # 死前向声明归一专项（含多目标赋值形态）
+node tests/test_fwdnil_merge.js         # 前向nil多目标下沉 + 链别名映射传播回归（noMetatable 路径）
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 89/89、边界 40/40、仓库真实语料 335/335 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 44/44、分片搜索一致性 4/4、缓存安全 5/5、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 391，输出 13954 字节。
+**当前状态**：基础 101/101、边界 40/40、仓库真实语料 345/345 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 539，输出 13949 字节。
 
 **语料测试口径**：仓库真实代码按「每条 `l` 段单独压缩」进行——不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐条测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 

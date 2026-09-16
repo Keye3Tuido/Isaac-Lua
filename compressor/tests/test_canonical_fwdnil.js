@@ -44,6 +44,14 @@ pos('unrelated between', "local x,z=1 print(x) print(x) z=9 print(z)", "local x=
 // Reassigned multiple times after first assignment (still equivalent).
 pos('reassign after', "local x,y=0 f(x) y=1 y=2 g(y)", "local x=0 f(x) local y=1 y=2 g(y)");
 
+// ---------- Multi-target assignment (x,y=v,w) forward-nil ----------
+// Both nil placeholders assigned by one multi-assign == declaring them in place.
+pos('multi basic', "local a,x,y=1 f(a) x,y=2,3 g(x,y)", "local a=1 f(a) local x,y=2,3 g(x,y)");
+// Multi-assign riding a batched local with unrelated reads between.
+pos('multi batched ride', "local a,b,x,y=1,2 use(a,b) x,y=3,4 use(x,y)", "local a,b=1,2 use(a,b) local x,y=3,4 use(x,y)");
+// Member-chain alias style (the 1.7b hoist + sink round trip shape).
+pos('multi chain-alias shape', "local b,a,f,g=M,C f,g=U.N,I.A g(b,f)", "local b,a=M,C local f,g=U.N,I.A g(b,f)");
+
 // ---------- NEGATIVE cases (must stay distinct) ----------
 // y IS read between forward-nil-decl and assignment → reads nil, not equivalent.
 neg('read between', "local x,y=1 f(y) y=2 g(y)", "local x=1 f(y) local y=2 g(y)");
@@ -57,6 +65,16 @@ neg('no assignment', "local x,y=1 g(x)", "local x=1 g(x) local y=2");
 neg('different value', "local x,y=1 f(x) y=2 g(y)", "local x=1 f(x) local y=3 g(y)");
 // y read between via nested block.
 neg('read in nested if', "local x,y=1 if cond then h(y) end y=2 g(y)", "local x=1 if cond then h(y) end local y=2 g(y)");
+
+// ---------- Multi-target NEGATIVE cases ----------
+// One target read between decl and multi-assign → reads nil, not equivalent.
+neg('multi read between', "local a,x,y=1 f(x) x,y=2,3 g(x,y)", "local a=1 f(x) local x,y=2,3 g(x,y)");
+// RHS references a nil placeholder of the same decl (reads nil locally, global in the sunk form).
+neg('multi rhs refs placeholder', "local a,x,y=1 x,y=y,3 g(x,y)", "local a=1 local x,y=y,3 g(x,y)");
+// Swapped values are a different program.
+neg('multi swapped values', "local a,x,y=1 x,y=2,3 g(x,y)", "local a=1 local x,y=3,2 g(x,y)");
+// One target captured by a closure created before the multi-assign.
+neg('multi captured before', "local a,x,y=1 local fn=function() return y end x,y=2,3 fn()", "local a=1 local fn=function() return y end local x,y=2,3 fn()");
 
 console.log('\n=== canonical forward-nil guard: ' + pass + ' pass, ' + fail + ' fail ===');
 process.exit(fail ? 1 : 0);

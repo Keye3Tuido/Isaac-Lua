@@ -114,6 +114,8 @@
         factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
         prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
+        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
+        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + 1   // 多了一条 local 声明
       };
       if(!canCommit(originalCode, candidate, newAlias)) return null;
@@ -452,6 +454,8 @@
         factorLocals: ((priorAlias&&priorAlias.factorLocals)||[]).concat(Object.keys(newPrefixMap)),
         prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}, newPrefixMap),
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
+        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
+        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
         // 注入到现有 batched local 时不产生新的 local 语句，dropLeading 不增；
         // 退路独立 local 时 +1
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
@@ -635,6 +639,8 @@
         factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
         prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}, newStringMap),
+        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
+        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
         dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
       };
       if(!canCommit(originalCode, candidate, newAlias)) return null;
@@ -762,6 +768,8 @@
         factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
         prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}, newFactorMap),
+        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
+        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
         dropLeading: priorDrop+1
       };
       if(!canCommit(originalCode, candidate, newAlias)) return null;
@@ -1321,8 +1329,11 @@
     // foldDeclHoist 的逆变换：把"先声明 nil 再赋值"沉回声明处，使相邻 local 可被 foldLocals 合并。
     // 安全条件（对应 canonical fwdNil 的 OUTPUT 版）：
     //   - 声明 init 为 nil/缺省，声明与首次赋值在同一顶层块；
-    //   - 首次赋值是单目标简单赋值，声明与赋值之间该变量从不被读；
+    //   - 首次赋值是简单赋值（单目标 x=v，或多目标 x,y=v,w 且全部目标都是同条 local 的 nil 占位），
+    //     声明与赋值之间这些变量从不被读/写（uses 含赋值目标，覆盖写）；
     //   - 赋值 RHS 不引用【同一 local 声明里的任何变量】（它们在被赋值前仍为 nil）。
+    // 多目标示例：local b,a,f,g=MC,CT f,g=UF,IAC → local b,a,f,g=MC,CT,UF,IAC
+    //（1.7b 声明上提把后续 local 降级为多目标赋值后，本 pass 把它按位并回头部，省 ` f,g=`）。
     function foldFwdNilInline(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
       var info=analyze(ast);
@@ -1339,7 +1350,7 @@
         })(node);
         return found;
       }
-      // b 在 [lo,hi) 区间内是否有读（用 b.uses 的读位置）
+      // b 在 [lo,hi) 区间内是否有读/写（b.uses 经 resolve 收集，含赋值目标）
       function readBetween(b, lo, hi){
         for(var ui=0;ui<b.uses.length;ui++){ var u=b.uses[ui]; if(u.range[0]>lo && u.range[0]<hi) return true; }
         return false;
@@ -1351,9 +1362,45 @@
         if(st.type!=='LocalStatement' || !st.variables || !st.init || !st.init.length) continue; // 无 init 的纯 nil 声明暂不处理
         var bindingSet=new Set();
         for(var vi=0;vi<st.variables.length;vi++){ var v0=st.variables[vi]; if(v0.type==='Identifier'){ var b0=info.varOf.get(v0); if(b0) bindingSet.add(b0); } }
-        var mergeList=[]; // {rhsText, asg}
         var localEnd=st.range[1];
+        // valueOf: 变量下标 -> {rhsText, asg}，按声明里的变量位置对齐（防止错位赋值）
+        var valueOf=new Map();
+
+        // ① 多目标赋值整体下沉：全部目标都是本 local 的 nil 占位变量时才可整条删除并并入声明
+        for(var j=i+1;j<stmts.length;j++){
+          var s2=stmts[j];
+          if(s2.type!=='AssignmentStatement'||!s2.variables||s2.variables.length<2||!s2.init) continue;
+          if(consumed.has(s2.range[0]+':'+s2.range[1])) continue;
+          if(s2.init.length!==s2.variables.length) continue;   // 多/少值截断，保守跳过
+          var okMulti=true;
+          var touched=[];   // {vi, rhs}
+          var seenVi=new Set();
+          for(var ti=0;ti<s2.variables.length&&okMulti;ti++){
+            var tv=s2.variables[ti];
+            if(tv.type!=='Identifier'){ okMulti=false; break; }
+            var tb=info.varOf.get(tv);
+            if(!tb||!bindingSet.has(tb)||tb.decls.length!==1){ okMulti=false; break; }
+            var tvi=-1;
+            for(var vi2=0;vi2<st.variables.length;vi2++){ if(info.varOf.get(st.variables[vi2])===tb){ tvi=vi2; break; } }
+            if(tvi<0||seenVi.has(tvi)){ okMulti=false; break; }
+            var tie=st.init[tvi]||null;
+            if(tie&&tie.type!=='NilLiteral'){ okMulti=false; break; }        // 非 nil 占位
+            if(readBetween(tb, localEnd, s2.range[0])){ okMulti=false; break; } // 赋值前被读/写
+            if(refsAnyBinding(s2.init[ti], bindingSet)){ okMulti=false; break; } // RHS 引用同 local 变量
+            seenVi.add(tvi);
+            touched.push({vi:tvi, rhs:s2.init[ti]});
+          }
+          if(!okMulti||!touched.length) continue;
+          for(var ti2=0;ti2<touched.length;ti2++){
+            var t0=touched[ti2];
+            valueOf.set(t0.vi, {rhsText:src.slice(t0.rhs.range[0], t0.rhs.range[1]), asg:s2});
+          }
+          consumed.add(s2.range[0]+':'+s2.range[1]);
+        }
+
+        // ② 单目标赋值下沉（逐变量找首个单目标简单赋值）
         for(var vi=0;vi<st.variables.length;vi++){
+          if(valueOf.has(vi)) continue;
           var vn=st.variables[vi];
           if(vn.type!=='Identifier') continue;
           var ie=(st.init && st.init[vi]) || null;
@@ -1361,28 +1408,42 @@
           var b=info.varOf.get(vn);
           if(!b || b.decls.length!==1) continue;
           var asgIdx=-1;
-          for(var j=i+1;j<stmts.length;j++){
-            var s2=stmts[j];
-            if(s2.type==='AssignmentStatement' && s2.variables && s2.variables.length===1 && s2.init && s2.init.length===1){
-              var tv=s2.variables[0];
-              if(tv.type==='Identifier' && info.varOf.get(tv)===b){ asgIdx=j; break; }
+          for(var j2=i+1;j2<stmts.length;j2++){
+            var s3=stmts[j2];
+            if(s3.type==='AssignmentStatement' && s3.variables && s3.variables.length===1 && s3.init && s3.init.length===1){
+              var tv2=s3.variables[0];
+              if(tv2.type==='Identifier' && info.varOf.get(tv2)===b){ asgIdx=j2; break; }
             }
-            if(readBetween(b, localEnd, s2.range[1])) break;   // 赋值前被读
+            if(readBetween(b, localEnd, s3.range[1])) break;   // 赋值前被读/写
           }
           if(asgIdx<0) continue;
           var asg=stmts[asgIdx];
           if(consumed.has(asg.range[0]+':'+asg.range[1])) continue;
           var rhs=asg.init[0];
           if(refsAnyBinding(rhs, bindingSet)) continue;   // RHS 引用同 local 变量
-          mergeList.push({ rhsText: src.slice(rhs.range[0], rhs.range[1]), asg: asg });
+          valueOf.set(vi, { rhsText: src.slice(rhs.range[0], rhs.range[1]), asg: asg });
           consumed.add(asg.range[0]+':'+asg.range[1]);
         }
-        if(!mergeList.length) continue;
+        if(!valueOf.size) continue;
+        // 追加的值按位填入声明 init 末尾的 nil 占位：必须从 st.init.length 起连续，
+        // 否则值会错位赋给中间仍为 nil 的变量（语义改变）。
+        var merged=[];
+        for(var vi3=st.init.length; vi3<st.variables.length; vi3++){
+          if(!valueOf.has(vi3)) break;
+          merged.push(valueOf.get(vi3));
+        }
+        if(!merged.length) continue;
         var lastInit=st.init[st.init.length-1];
         var insertAt=lastInit.range[1];
-        var appendText=','+mergeList.map(function(m){return m.rhsText;}).join(',');
+        var appendText=','+merged.map(function(m){return m.rhsText;}).join(',');
         edits.push({start:insertAt, end:insertAt, name:appendText});
-        mergeList.forEach(function(m){ edits.push({start:m.asg.range[0], end:m.asg.range[1], name:''}); });
+        var deleted=new Set();
+        merged.forEach(function(m){
+          var key=m.asg.range[0]+':'+m.asg.range[1];
+          if(deleted.has(key)) return;
+          deleted.add(key);
+          edits.push({start:m.asg.range[0], end:m.asg.range[1], name:''});
+        });
       }
 
       if(!edits.length) return null;
@@ -1394,7 +1455,7 @@
       if(!ok) return null;
       assertParses(candidate, '阶段1.4c2/fwdnil/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.4c2/fwdnil/等价', steps);
-      if(rec) rec('前向nil内联(提交)', src.length, candidate.length, '下沉 '+mergeList.length+' 个前向nil赋值到声明');
+      if(rec) rec('前向nil内联(提交)', src.length, candidate.length, '下沉 '+edits.filter(function(e){return e.name==='';}).length+' 条前向nil赋值到声明');
       return {code:candidate, aliasMap:priorAlias};
     }
 
