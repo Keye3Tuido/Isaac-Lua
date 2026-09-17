@@ -509,8 +509,12 @@ function goBackToList(e) {
 }
 
 // ========== 列表搜索 ==========
+let searchTjTimer;
 function handleSearch() {
     const t = searchInput.value.toLowerCase();
+    // 防抖上报搜索词（截断防超长）；空串不报
+    clearTimeout(searchTjTimer);
+    if (t) searchTjTimer = setTimeout(() => tjEvent('search', t.slice(0, 50)), 800);
     let shown = 0;
     document.querySelectorAll('.file-list').forEach(list => {
         let listShown = 0;

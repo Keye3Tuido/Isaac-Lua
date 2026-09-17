@@ -23,6 +23,20 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 @media(max-width:520px){.game-logo{width:min(285px,74vw)}h1{font-size:1.8rem}.card{min-height:470px;padding:16px 10px 20px;border-width:22px}.row{align-items:stretch}.row button{flex:1}textarea{height:290px}.stage-header{align-items:flex-start;flex-direction:column}#msg{border-width:18px;padding:12px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important}}
 </style>
+<script>
+/* 百度统计：按域名选择站点 ID；本地文件/localhost 预览不加载 */
+var _hmt = _hmt || [];
+window.tjEvent = function(action, label){ if (window._hmt) _hmt.push(['_trackEvent', 'compressor', action, label || '']); };
+(function() {
+    if (location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+    var tjId = {"rep.keye3tuido.site":"fd1c95208e5bac55d3f660fca016d48d","isaac.keye3tuido.site":"e6ad5c0ca12c28654a8fcc3f6f4dc9dd","isaaclua.keye3tuido.site":"4f04defafe97ea3b8a9997d1152002a1"}[location.hostname];
+    if (!tjId) return;
+    var hm = document.createElement('script');
+    hm.src = 'https://hm.baidu.com/hm.js?' + tjId;
+    var s = document.getElementsByTagName('script')[0];
+    s.parentNode.insertBefore(hm, s);
+})();
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -195,6 +209,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
   document.getElementById('copy').onclick=function(){
     if(!$out.value) return;
     navigator.clipboard.writeText($out.value).then(function(){
+      tjEvent('copy_result');
       var b=document.getElementById('copy');
       if(b._copyT) clearTimeout(b._copyT);
       b.textContent='已复制';
@@ -229,6 +244,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
             : '搜索模式')
         : '';
       $badge.textContent='校验通过'+(modeTag?' ('+modeTag+', '+elapsed.toFixed(1)+'s)':' ('+elapsed.toFixed(1)+'s)');
+      tjEvent('compress_ok', useSearch ? 'search' : 'basic');
       var codeLen=(rep.codeLength!=null)?rep.codeLength:rep.originalLength;
       var outLen=rep.bodyLength;
       var pct=codeLen? Math.round((codeLen-outLen)/codeLen*100):0;
@@ -305,6 +321,7 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 
     function doError(e){
       setRunning(false);
+      tjEvent('compress_fail');
       $out.value=''; $badge.className='badge err'; $badge.textContent='已拒绝'; $outStat.textContent='';
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
     }
