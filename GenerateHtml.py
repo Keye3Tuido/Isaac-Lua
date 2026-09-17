@@ -5,6 +5,14 @@ import json
 LUA_DIR = "lua"
 TITLE = "以撒代码挑战 - Keye3Tuido"
 
+# 百度统计站点 ID：按访问域名选择，各域名数据进各自报表（后台分开）。
+# 留空字典则生成的页面不含统计脚本，本地/未配置时完全无影响。
+BAIDU_TJ_IDS = {
+    "rep.keye3tuido.site": "fd1c95208e5bac55d3f660fca016d48d",
+    "isaac.keye3tuido.site": "e6ad5c0ca12c28654a8fcc3f6f4dc9dd",
+    "isaaclua.keye3tuido.site": "4f04defafe97ea3b8a9997d1152002a1",
+}
+
 # 目录即分类：lua/challenges → 挑战，lua/utils → 其他
 CATEGORY_DIRS = [("challenges", True), ("utils", False)]
 
@@ -88,6 +96,26 @@ def build_all_files(lua_entries):
 
 
 # ========== 生成 index.html ==========
+def _baidu_tj_snippet():
+    if not BAIDU_TJ_IDS:
+        return ""
+    # 按当前域名选择对应站点的统计 ID；本地文件/localhost 预览不加载，避免污染数据
+    ids_json = json.dumps(BAIDU_TJ_IDS, ensure_ascii=False)
+    return """    <script>
+var _hmt = _hmt || [];
+(function() {
+    if (location.protocol === 'file:' || /^(localhost|127\\.0\\.0\\.1)$/.test(location.hostname)) return;
+    var tjId = """ + ids_json + """[location.hostname];
+    if (!tjId) return;
+    var hm = document.createElement('script');
+    hm.src = 'https://hm.baidu.com/hm.js?' + tjId;
+    var s = document.getElementsByTagName('script')[0];
+    s.parentNode.insertBefore(hm, s);
+})();
+</script>
+"""
+
+
 def build_html(style_css, js, challenge_count, other_count):
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -98,7 +126,7 @@ def build_html(style_css, js, challenge_count, other_count):
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="prefetch" href="assets/challenge-sheet.webp" as="image">
     <link rel="prefetch" href="assets/challenge-page-background.webp" as="image">
-    <style>{style_css}</style>
+{_baidu_tj_snippet()}    <style>{style_css}</style>
 </head>
 <body class="home-page">
 

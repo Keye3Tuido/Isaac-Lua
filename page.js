@@ -12,6 +12,14 @@ for (const id in ALL_FILES) {
     ALL_FILES[id].cleaned = cleanCode(ALL_FILES[id].raw);
 }
 
+// ========== 百度统计埋点（未配置统计时 window._hmt 不存在，全部为静默空操作） ==========
+function tjPage() {
+    if (window._hmt) window._hmt.push(['_trackPageview', location.pathname + location.hash]);
+}
+function tjEvent(action, label) {
+    if (window._hmt) window._hmt.push(['_trackEvent', 'challenge', action, label || '']);
+}
+
 // ========== DOM 引用 ==========
 const listView = document.getElementById('listView');
 const detailView = document.getElementById('detailView');
@@ -48,14 +56,19 @@ function downloadKb() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    tjEvent('download_kb');
     showListView();
 }
 
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', function() {
+    route();
+    tjPage();   // hash 路由切换不会产生新 PV，手动上报（含 #kb 下载入口）
+});
 window.addEventListener('DOMContentLoaded', function() {
     buildListUI();
     route();
     prewarmShortProbe();
+    if (location.hash) tjPage();   // 从分享链接直达详情时，补记带 hash 的 PV
 });
 
 // ========== 列表视图 ==========
@@ -379,11 +392,13 @@ function copyBlock(text, count, e) {
 function copyAllCode(e) {
     const f = ALL_FILES[currentFileId];
     if (!f) return;
+    tjEvent('copy_code', currentFileId);
     return copyTextWithToast(f.raw, '已复制代码到剪贴板', e);
 }
 
 function copyLink(e) {
     // 按钮始终复制文件级链接 #cN，不依赖地址栏 hash（多条展开时 hash 可能指向最后点击的条目）
+    tjEvent('copy_link', currentFileId);
     return copyShareLink(e, '#c' + currentFileId);
 }
 
@@ -435,6 +450,7 @@ async function downloadZip(e) {
         a.download = filename;
         a.click();
         URL.revokeObjectURL(a.href);
+        tjEvent('download_mod', currentFileId);
         showToastAt('已下载模组文件; 将文件解压至游戏mods目录下即可进行游戏', e.clientX, e.clientY);
     } catch (err) {
         showToastAt('下载失败: ' + err, e.clientX, e.clientY);
