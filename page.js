@@ -17,7 +17,11 @@ function tjPage() {
     if (window._hmt) window._hmt.push(['_trackPageview', location.pathname + location.hash]);
 }
 function tjEvent(action, label) {
-    if (window._hmt) window._hmt.push(['_trackEvent', 'challenge', action, label || '']);
+    if (!window._hmt) return;
+    window._hmt.push(['_trackEvent', 'challenge', action, label || '']);
+    // 事件分析是付费功能：同步发虚拟 PV，让关键行为在免费版「受访页面」报表可见（/event/ 前缀便于区分）
+    // search 量太大不转 PV，避免淹没受访页面报表
+    if (action !== 'search') window._hmt.push(['_trackPageview', '/event/' + action + (label ? '/' + label : '')]);
 }
 
 // ========== DOM 引用 ==========

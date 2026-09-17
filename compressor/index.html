@@ -26,7 +26,12 @@ button:focus-visible,textarea:focus-visible,.home-btn:focus-visible,.search-togg
 <script>
 /* 百度统计：按域名选择站点 ID；本地文件/localhost 预览不加载 */
 var _hmt = _hmt || [];
-window.tjEvent = function(action, label){ if (window._hmt) _hmt.push(['_trackEvent', 'compressor', action, label || '']); };
+window.tjEvent = function(action, label){
+    if (!window._hmt) return;
+    _hmt.push(['_trackEvent', 'compressor', action, label || '']);
+    // 事件分析是付费功能：同步发虚拟 PV，让关键行为在免费版「受访页面」报表可见
+    _hmt.push(['_trackPageview', '/event/compressor/' + action + (label ? '/' + label : '')]);
+};
 (function() {
     if (location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
     var tjId = {"rep.keye3tuido.site":"fd1c95208e5bac55d3f660fca016d48d","isaac.keye3tuido.site":"e6ad5c0ca12c28654a8fcc3f6f4dc9dd","isaaclua.keye3tuido.site":"4f04defafe97ea3b8a9997d1152002a1"}[location.hostname];
