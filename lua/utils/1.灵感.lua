@@ -150,8 +150,6 @@ l local a=GridEntityType Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,func
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.TearFlags=p.TearFlags|TearFlags.TEAR_REROLL_ENEMY end,CacheFlag.CACHE_TEARFLAG)
 
----- 挑战专属类模板（自 lua/challenges/ 提取；参数位置为 P1..Pn 占位符，默认值替换后与原代码逐字节一致）----
-
 --[[
 作为模板: true
 模板id: room-wind
@@ -248,5 +246,14 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()for _,v in pairs{P1
   进入新房间时，自动开启地图全部房间和红房间，并移除所有房间的红色标签。
 ]]
 l Isaac.AddCallback({},19,function()local l,r,s,t,f,g,x,e,o,n,a,m=Game():GetLevel(),{},'SafeGridIndex','Data','Flags','GetRooms','GetRoomByIdx'l:SetCanSeeEverything(true)e,o=function(c,k,d)c[f],d,k=~(1<<10)&c[f],c[t]and c[t].Doors,c[s]if k<0 then return end for j=0,7 do if not d or d&1>0 then l:MakeRedRoomDoor(k,j)l:UncoverHiddenDoor(k,j)end d=d and d>>1 end r[k]=1 end,l[g](l)n=#o e(l[x](l,l:GetCurrentRoomDesc()[s]))while a~=n do a=n for j=1,n do m=l[x](l,o:Get(j-1)[s])if not r[m[s]]then e(m)end end o=l[g](l)n=#o end end)
+
+--[[
+作为模板: true
+模板id: invincible-stone-eye
+说明: |-
+  在房间中心生成一个永远激活的石眼(Stone Eye)
+  灵感来源:bilibili@莉雅liyar,uid:158295392
+]]
+l local a,c,g,b,h,i=Isaac,ModCallbacks,EntityType.ENTITY_STONE_EYE,'GetGridPosition'h,i=a.AddCallback,a.FindByType h({},c.MC_POST_UPDATE,function(r)r=Game():GetRoom()if 1>#i(g)then a.Spawn(g,0,0,a.GetFreeNearPosition((r[b](r,r:GetGridSize()-1)+r[b](r,0))/2,0),Vector.Zero,nil)end end)h({},c.MC_NPC_UPDATE,function(_,e)if i(g)[1].InitSeed==e.InitSeed then e.State=4 end end,g)
 
 --.
