@@ -81,23 +81,28 @@ def _copy(src_rel, dest_path):
     return _rel(dest_path)
 
 
+def _missing_vendor_libs():
+    """返回当前缺失（候选源都不存在）的第三方库发布名列表。"""
+    return [dest for dest, cands in VENDOR_LIBS if _resolve_source(None, cands) is None]
+
+
 def ensure_compressor_deps():
     """压缩器第三方库缺失时用 npm 安装（构建自足，平台无需单独配置安装命令）。"""
-    missing = [c for _, cands in VENDOR_LIBS if _resolve_source(None, cands) is None]
+    missing = _missing_vendor_libs()
     if not missing:
         return
-    print(f"压缩器依赖缺失，安装中：npm ci（compressor/，缺少 {len(missing)} 项）")
+    print(f"压缩器依赖缺失，安装中：npm ci（compressor/，缺少 {len(missing)} 项：{'、'.join(missing)}）")
     npm = shutil.which("npm")
     if not npm:
         raise SystemExit(
-            "错误：未找到 npm，无法安装压缩器依赖。请先执行 npm ci（在 compressor/ 目录），"
-            "或在平台构建配置里添加该安装命令。"
+            "错误：未找到 npm，无法安装压缩器依赖（缺少 " + "、".join(missing) + "）。"
+            "请先执行 npm ci（在 compressor/ 目录），或在平台构建配置里添加该安装命令。"
         )
     try:
         subprocess.run([npm, "--prefix", "compressor", "ci"], cwd=REPO_ROOT, check=True)
     except subprocess.CalledProcessError as exc:
         raise SystemExit(f"错误：npm ci（compressor/）失败（退出码 {exc.returncode}）。")
-    still = [c for _, cands in VENDOR_LIBS if _resolve_source(None, cands) is None]
+    still = _missing_vendor_libs()
     if still:
         raise SystemExit(f"错误：安装后仍缺少第三方库：{still}")
 

@@ -375,6 +375,35 @@ class TestPublishBuild(unittest.TestCase):
         # 仓库 assets/ 里不得留下未被页面引用的资源
         self.assertEqual(self.unused, [])
 
+    def test_missing_vendor_libs_without_npm(self):
+        # 回归：缺第三方库分支曾写成 [c for _, cands in ...]（表达式变量名不存在），
+        # 本机因 node_modules 已存在而走不到该分支，只在缺依赖的平台上炸 NameError。
+        B = self.B
+        orig_libs, orig_which = B.VENDOR_LIBS, B.shutil.which
+        try:
+            B.VENDOR_LIBS = [("compressor/nope.js", ["compressor/definitely-missing.js"])]
+            B.shutil.which = lambda _name: None
+            with self.assertRaises(SystemExit) as cm:
+                B.ensure_compressor_deps()
+            self.assertIn("未找到 npm", str(cm.exception))
+            self.assertIn("nope.js", str(cm.exception))
+        finally:
+            B.VENDOR_LIBS, B.shutil.which = orig_libs, orig_which
+
+    def test_missing_vendor_libs_after_install(self):
+        # 安装命令跑完仍缺库时，同样要给出明确报错（覆盖 another 分支）
+        B = self.B
+        orig_libs, orig_which, orig_run = B.VENDOR_LIBS, B.shutil.which, B.subprocess.run
+        try:
+            B.VENDOR_LIBS = [("compressor/nope.js", ["compressor/definitely-missing.js"])]
+            B.shutil.which = lambda _name: "/fake/npm"
+            B.subprocess.run = lambda *a, **k: None
+            with self.assertRaises(SystemExit) as cm:
+                B.ensure_compressor_deps()
+            self.assertIn("仍缺少", str(cm.exception))
+        finally:
+            B.VENDOR_LIBS, B.shutil.which, B.subprocess.run = orig_libs, orig_which, orig_run
+
 
 class TestCategoryKeys(unittest.TestCase):
     """编号在两类目录内各自独立：challenges/1 与 utils/1 可共存（键 c1 / u1）。"""
