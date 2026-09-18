@@ -28,7 +28,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install Python dependencies
-        run: pip install pyyaml
+        run: pip install -r requirements.txt
 
       - uses: actions/setup-node@v4
         with:
@@ -38,81 +38,37 @@ jobs:
         working-directory: compressor
         run: npm ci
 
+      - name: Export compression-test corpus
+        # 压缩测试语料 = 构建期默认参数替换后的最终代码（逐块），不是仓库里的原始 l 行
+        run: python scripts/export_segments.py
+
       - name: Run compressor tests
         working-directory: compressor
         run: npm run test:local
 
-      - name: Generate site HTML
-        run: python GenerateHtml.py
+      - name: Build and assemble publish directory
+        run: python scripts/build_site.py
 
-      - name: Assemble deploy directory
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf _site
-          mkdir -p _site/assets _site/compressor/src
-
-          cp index.html kb.json favicon.svg CNAME jszip.min.js _site/
-          cp \
-            assets/basement-panel.webp \
-            assets/basement-room.webp \
-            assets/challenge-page-background.webp \
-            assets/challenge-sheet.webp \
-            assets/inconsolata-bold.ttf \
-            assets/isaac-pixel-subset.woff2 \
-            assets/menu-cursor.png \
-            assets/paper-surface.webp \
-            assets/repentance-logo.png \
-            _site/assets/
-
-          cp compressor/index.html compressor/core.js _site/compressor/
-          cp compressor/src/*.js _site/compressor/src/
-          cp compressor/node_modules/luaparse/luaparse.js _site/compressor/luaparse.js
-          cp compressor/node_modules/fengari-web/dist/fengari-web.js _site/compressor/fengari-web.js
-
-      - name: Audit deploy contents
+      - name: Audit publish contents
         shell: bash
         run: |
           set -euo pipefail
 
-          cat > "$RUNNER_TEMP/pages-expected.txt" <<'EOF'
-          CNAME
-          assets/basement-panel.webp
-          assets/basement-room.webp
-          assets/challenge-page-background.webp
-          assets/challenge-sheet.webp
-          assets/inconsolata-bold.ttf
-          assets/isaac-pixel-subset.woff2
-          assets/menu-cursor.png
-          assets/paper-surface.webp
-          assets/repentance-logo.png
-          compressor/core.js
-          compressor/fengari-web.js
-          compressor/index.html
-          compressor/luaparse.js
-          compressor/src/analyze.js
-          compressor/src/canonical.js
-          compressor/src/compress.js
-          compressor/src/encode.js
-          compressor/src/folds.js
-          compressor/src/plan.js
-          compressor/src/search.js
-          favicon.svg
-          index.html
-          jszip.min.js
-          kb.json
-          EOF
-
-          find _site -type f -printf '%P\n' | LC_ALL=C sort > "$RUNNER_TEMP/pages-actual.txt"
-          LC_ALL=C sort -o "$RUNNER_TEMP/pages-expected.txt" "$RUNNER_TEMP/pages-expected.txt"
-          diff -u "$RUNNER_TEMP/pages-expected.txt" "$RUNNER_TEMP/pages-actual.txt"
-
-          if find _site -type l -print -quit | grep -q .; then
-            echo 'Deployment directory must not contain symbolic links.' >&2
+          # 发布目录只应包含构建产物与运行时资源：不得出现源码/测试/文档/依赖
+          if find _site \( -name '*.py' -o -name '*.lua' -o -name '*.md' \
+               -o -name 'node_modules' -o -name 'package.json' -o -name 'package-lock.json' \) \
+               -print -quit | grep -q .; then
+            echo 'Publish directory must not contain source, tests, docs or dependencies.' >&2
             exit 1
           fi
 
-          echo 'Deployment manifest verified: only required website files will be uploaded.'
+          if find _site -type l -print -quit | grep -q .; then
+            echo 'Publish directory must not contain symbolic links.' >&2
+            exit 1
+          fi
+
+          find _site -type f -printf '%P\n' | LC_ALL=C sort
+          echo 'Publish manifest verified: only required website files will be uploaded.'
 
       - uses: actions/configure-pages@v5
 

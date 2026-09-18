@@ -75,7 +75,7 @@ body.challenge-page::before {
 .detail-paper { padding:0 12px; }
 .detail-paper h1 { margin:9px 0 7px; color:var(--ink); font:400 clamp(1.7rem,4vw,2.75rem)/1.15 var(--display); letter-spacing:.03em; }
 .button-group { position:relative; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; max-width:790px; margin:17px auto 38px; padding:13px 10px; border-top:2px solid rgba(84,64,68,.42); }
-/* 「其他」类页面只有 2 个按钮可见：把它们放到中间两列，整组保持居中 */
+/* 「库」类页面只有 2 个按钮可见：把它们放到中间两列，整组保持居中 */
 .button-group.utils-group > :nth-child(2) { grid-column:2; }
 .button-group.utils-group > :nth-child(4) { grid-column:3; }
 .button-group::after { content:''; position:absolute; left:-5%; right:-5%; bottom:-31px; height:40px; background:url('__ASSET__/challenge-divider.webp') center/100% 100% no-repeat; filter:none; opacity:.78; transform:rotate(-.15deg); }

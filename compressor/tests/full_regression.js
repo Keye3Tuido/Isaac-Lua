@@ -79,7 +79,8 @@ function metricsFor(run) {
     case 'idempotency':
       parsed = numbers(o, /幂等\(逆向回代\)测试:\s*(\d+)\s*pass,\s*(\d+)\s*fail/, ['pass', 'fail']); break;
     case 'real': {
-      parsed = numbers(o, /l 段总数:\s*(\d+)\s+成功:\s*(\d+)\s+失败\/拒绝:\s*(\d+)/, ['totalSegments', 'passSegments', 'failSegments']); break;
+      // realtest 输出的段数统计（语料 = 构建期默认参数替换后的最终代码，逐块）
+      parsed = numbers(o, /段总数:\s*(\d+)\s+成功:\s*(\d+)\s+失败\/拒绝:\s*(\d+)/, ['totalSegments', 'passSegments', 'failSegments']); break;
     }
     case 'remote':
       parsed = numbers(o, /远程测试:\s*(\d+)\s*通过,\s*(\d+)\s*失败\s*\(共\s*(\d+)\)/, ['pass', 'fail', 'total']); break;

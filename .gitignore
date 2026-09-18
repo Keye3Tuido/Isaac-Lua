@@ -2,10 +2,12 @@
 # Node 依赖（本地开发/测试需要）
 compressor/node_modules/
 
-# Vendored 库文件已恢复入库（EdgeOne Pages 等直接同步仓库的部署需要）
+# 压缩器第三方库：发布时由 scripts/build_site.py 从 node_modules 拷贝进发布目录，不入库
+compressor/luaparse.js
+compressor/fengari-web.js
 
 # ==================== 构建产物 ====================
-# 由 GitHub Actions 用 GenerateHtml.py 生成，不入库
+# 由 GenerateHtml.py 生成，不入库
 /index.html
 /kb.json
 
@@ -19,10 +21,13 @@ compressor/tests/.remote-cache/
 # 批量测试克隆的第三方仓库（bulktest.js 自动下载）
 compressor/tests/_bulk_test_repos/
 
+# 压缩测试语料导出（scripts/export_segments.py 生成：默认参数替换后的逐块最终代码）
+compressor/tests/_repo_segments.json
+
 # ==================== 快照基线（保留用于回归测试）====================
 # snapshot.js 生成的压缩结果基线，用于检测意外变化
 # 已移除忽略，现在入库以便团队共享基线
 
-# GitHub Pages 部署目录（工作流临时组装，不入库）
+# 发布目录（scripts/build_site.py 组装：只含构建产物与运行时资源，不入库）
 /_site/
 

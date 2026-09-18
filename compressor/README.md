@@ -196,14 +196,14 @@ npm run test:local                       # 本地快速回归（完整提交前�
 npm run test:baseline                    # 仅在明确接受新基线时重建“重构前基线”
 node tests/test.js                      # 基础：作用域/遮蔽/全局保护/拒绝边界
 node tests/edge.js                      # 边界：数字-关键字-运算符、goto、varargs、:method
-node tests/realtest.js                  # 真实：递归扫描仓库 .lua 的全部 l 段，每条单独压缩（去注释后）
+node tests/realtest.js                  # 真实：仓库每个代码块（构建期默认参数替换后的最终代码）单独压缩（去注释后）
 node tests/remotetest.js                # 远程：4 个真实模组 main.lua（首次联网缓存）
 node tests/bulktest.js                  # 批量：19 个开源 Lua 项目（>150 文件）
 node tests/test_incremental.js          # 增量压缩（单条vs合并）
 node tests/test_idempotency.js          # 幂等（逆向回代）：压缩结果再回代必须不变 + 等价
 node tests/test_chunked_search.js       # 分片搜索（浏览器 onStep 路径）与同步路径结果一致性
 node tests/test_validation_cache.js      # canonical 缓存隔离、命中与语义一致性
-node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度（逐段、去注释）
+node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度（逐块、去注释）
 node tests/test_transparent_elision.js  # 透明别名消解专项
 node tests/test_canonical_fwdnil.js     # 死前向声明归一专项（含多目标赋值形态）
 node tests/test_fwdnil_merge.js         # 前向nil多目标下沉 + 链别名映射传播回归（noMetatable 路径）
@@ -211,9 +211,9 @@ node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 101/101、边界 40/40、仓库真实语料 345/345 段（逐条单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大 `l` 段）parse 次数 539，输出 13949 字节。
+**当前状态**：基础 101/101、边界 40/40、仓库真实语料 525/525 块（逐块单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大块）parse 次数 641，输出 15479 字节。
 
-**语料测试口径**：仓库真实代码按「每条 `l` 段单独压缩」进行——不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐条测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
+**语料测试口径**：仓库真实代码按「每个代码块单独压缩」进行——语料取**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出，与站点 / kb.json 同口径），不是仓库文件里的原始 `l` 行：模板引用块在源文件里没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句。既不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐块测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 
 **注**：测试结果默认只输出到控制台；仓库仅保留快照、重构前基线和上一次通过结果这三类回归所需数据。
 

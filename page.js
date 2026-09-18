@@ -2,12 +2,14 @@
 const ALL_FILES = __ALL_FILES__;
 const TEMPLATES = __ALL_TEMPLATES__;
 
-// ALL_FILES 条目结构：{id,title,fname,isChallenge,header:[注释行...],blocks:[{num,comment,code,region?,deps?,name?} 或
+// ALL_FILES 以文件键 key 索引：挑战 c<编号>、工具 u<编号>（即 URL 锚点 #c1 / #u1），
+// 两类目录各自独立编号，故 id 可重号、key 全局唯一。
+// 条目结构：{id,key,title,fname,isChallenge,header:[注释行...],blocks:[{num,comment,code,region?,deps?,name?} 或
 //   {…,tpl,values}（模板引用）或 {…,tplDef}（模板定义）或 {…,params,values,body,commentTpl}（块内参数）]}
 // num 为字符串编号：挑战前置 0、I、II…，正文 1、2、3…，后置继前置续罗马数字；utils 为整数序号
 // TEMPLATES 结构：{模板id:{body:"含P1..Pn的代码",说明:"含{P1}插值槽的说明",params:{P1:{说明,性质,默认}}}}
-for (const id in ALL_FILES) {
-    if (!ALL_FILES[id].id) ALL_FILES[id].id = id;
+for (const key in ALL_FILES) {
+    if (!ALL_FILES[key].id) ALL_FILES[key].id = key;
 }
 
 // 前端派生 cleaned：与 Python 端 clean_code 逐字节等价
@@ -114,19 +116,30 @@ const searchCount = document.getElementById('searchCount');
 const noResult = document.getElementById('noResult');
 
 // ========== 状态 ==========
+// 当前文件键：挑战 c<编号>、工具 u<编号>，即 URL 锚点里 # 之后的那段
 let currentFileId = null;
 // 当前详情页各代码块的实时状态（模板面板当前值），复制/下载由此现场生成内容
 let currentBlocks = [];
 
 // ========== 路由 ==========
+// 锚点：<键>s<段> / <键>l<行号>；键 = c<编号>（挑战）或 u<编号>（工具）。
+// 编号可能以 s/l+数字结尾（如 util1），故先把整串当文件键，不中再剥掉段锚点。
+function parseHash(body) {
+    if (ALL_FILES[body]) return { fileId: body, secId: null };
+    const m = body.match(/^([cu].+?)(s(?:-?\d+|[IVXLCDM]+)|l\d+)$/);
+    if (m && ALL_FILES[m[1]]) return { fileId: m[1], secId: m[2] };
+    return null;
+}
+
 function route() {
     const hash = location.hash;
     if (hash === '#kb') { downloadKb(); return; }   // #kb → 下载知识库 kb.json
     if (!hash || hash === '#') { showListView(); return; }
-    // 锚点：s<编号>（数字或罗马数字，如 s0/s1/sI/sV；兼容旧负编号）或 l<行号>
-    const m = hash.match(/^#c(.+?)(s(?:-?\d+|[IVXLCDM]+)|l\d+)?$/);
-    if (!m || !ALL_FILES[m[1]]) { showListView(); return; }
-    const fileId = m[1], secId = m[2] || null;
+    let body = hash.slice(1);
+    try { body = decodeURIComponent(body); } catch (_) { /* 非法转义时按原样匹配 */ }
+    const parsed = parseHash(body);
+    if (!parsed) { showListView(); return; }
+    const fileId = parsed.fileId, secId = parsed.secId;
     // 同文件只滚动，不同文件完整渲染
     if (fileId === currentFileId) {
         if (secId) scrollToSection(secId);
@@ -164,7 +177,8 @@ function buildListUI() {
     for (const id in ALL_FILES) {
         (ALL_FILES[id].isChallenge ? challengeIds : otherIds).push(id);
     }
-    challengeIds.sort((a, b) => (a | 0) - (b | 0));
+    // 挑战按编号数值排（非数字编号如 TMPL 视作 0，排在最前）；工具按文件键排
+    challengeIds.sort((a, b) => (ALL_FILES[a].id | 0) - (ALL_FILES[b].id | 0));
     otherIds.sort();
 
     document.getElementById('challengeCount').textContent = challengeIds.length;
@@ -192,12 +206,14 @@ function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildFileRow(id) {
-    const f = ALL_FILES[id];
+// key = 文件键（c<编号>/u<编号>，即锚点）；id = 文件名编号（列表里展示的编号）
+function buildFileRow(key) {
+    const f = ALL_FILES[key];
+    const num = escapeHtml(String(f.id));
     var title = escapeHtml(f.title);
-    return '<div class="file-row" data-search="' + id + ' ' + title + '">'
-        + '<span class="file-num' + (id.length > 2 ? ' long' : '') + '">' + id + '</span>'
-        + '<a href="#c' + id + '" class="file-title">' + title + '</a>'
+    return '<div class="file-row" data-search="' + num + ' ' + title + '">'
+        + '<span class="file-num' + (num.length > 2 ? ' long' : '') + '">' + num + '</span>'
+        + '<a href="#' + key + '" class="file-title">' + title + '</a>'
         + '</div>';
 }
 
@@ -223,7 +239,7 @@ function showDetailView(fileId, secId) {
     subLegend.textContent = f.fname + ' - @Keye3Tuido';
     document.title = f.title + ' - 以撒代码挑战';
 
-    // 「其他」类（lua/utils）页面不提供整页复制和模组下载
+    // 「库」类（lua/utils）页面不提供整页复制和模组下载
     document.getElementById('copyCodeBtn').style.display = f.isChallenge ? '' : 'none';
     document.getElementById('downloadBtn').style.display = f.isChallenge ? '' : 'none';
     // 只剩 2 个按钮时加 utils-group 类，让它们在原 4 列网格中居中
@@ -390,7 +406,7 @@ function renderSections(f) {
         section.classList.add('collapsed');
         head.onclick = () => {
             section.classList.toggle('collapsed');
-            history.replaceState(null, null, '#c' + currentFileId + secId);
+            history.replaceState(null, null, '#' + currentFileId + secId);
             if (!section.classList.contains('collapsed') && state.autosizeAll) state.autosizeAll();
         };
         section.appendChild(box);
@@ -579,7 +595,7 @@ function buildCodeBox(codeLines, secId, state) {
         const text = state ? withLPrefix(state.getCode()) : codeLines.map(it => it.text).join('\n');
         copyBlock(text, text.split('\n').length, e);
     };
-    box.oncontextmenu = e => { e.preventDefault(); copyShareLink(e, '#c' + currentFileId + secId); };
+    box.oncontextmenu = e => { e.preventDefault(); copyShareLink(e, '#' + currentFileId + secId); };
     bindHover(box, codeLines.reduce((s, it) => s + it.text.length + 1, 0));
     fillCodeBox(box, codeLines);
     return box;
@@ -637,8 +653,8 @@ const shortProbeCache = {}; // baseUrl -> 探测中的 Promise 或已确定的�
 
 function shareHash() {
     const h = location.hash;
-    if (h && h.indexOf('#c') === 0) return h;
-    return currentFileId ? '#c' + currentFileId : '';
+    if (h && /^#[cu]/.test(h)) return h;   // 详情锚点（#c…/#u…）
+    return currentFileId ? '#' + currentFileId : '';
 }
 
 function shortShareBase() {
@@ -756,9 +772,9 @@ function copyAllCode(e) {
 }
 
 function copyLink(e) {
-    // 按钮始终复制文件级链接 #cN，不依赖地址栏 hash（多条展开时 hash 可能指向最后点击的条目）
+    // 按钮始终复制文件级链接（#c<编号> / #u<编号>），不依赖地址栏 hash（多条展开时 hash 可能指向最后点击的条目）
     tjEvent('copy_link', currentFileId);
-    return copyShareLink(e, '#c' + currentFileId);
+    return copyShareLink(e, '#' + currentFileId);
 }
 
 // ========== 下载 ZIP ==========
@@ -796,12 +812,14 @@ async function downloadZip(e) {
     if (!f) return;
     await ensureJsZip();
     try {
-        const filename = 'code' + currentFileId + '.zip';
+        // 模组文件名/目录仍用编号（code1.zip / code1），不因加入类别前缀而改变
+        const num = String(f.id);
+        const filename = 'code' + num + '.zip';
         const zip = new JSZip();
         // zip 用清理后代码（剥 "l " 前缀），内容为面板当前值现场生成
         zip.file('main.lua', cleanCode(currentRawText()));
         var safeTitle = escapeXml(f.title);
-        var safeId = escapeXml(currentFileId);
+        var safeId = escapeXml(num);
         const metadata = '\n            <metadata>\n                <name>code' + safeId + '-' + safeTitle + '</name>\n                <directory>code' + safeId + '</directory>\n                <description/>\n                <version>1.0</version>\n                <visibility/>\n            </metadata>';
         zip.file('metadata.xml', metadata.trim());
         const blob = await zip.generateAsync({ type: 'blob' });
@@ -876,14 +894,15 @@ function buildSearchIndex() {
     searchIndex = [];
     for (const id in ALL_FILES) {
         const f = ALL_FILES[id];
+        const fileNum = String(f.id);
         searchIndex.push({
-            fileId: id, title: f.title || '', num: '', secId: '',
+            fileId: id, fileNum, title: f.title || '', num: '', secId: '',
             kind: 'file', comment: '', tpl: '', name: '',
         });
         for (const b of (f.blocks || [])) {
             const num = (b.num !== undefined && b.num !== null) ? String(b.num) : '';
             searchIndex.push({
-                fileId: id, title: f.title || '', num, secId: num ? ('s' + num) : '',
+                fileId: id, fileNum, title: f.title || '', num, secId: num ? ('s' + num) : '',
                 kind: 'block',
                 comment: b.comment || '',
                 tpl: b.tpl || b.tplDef || '',
@@ -922,14 +941,14 @@ function matchSnippet(text, query) {
 
 // 单条搜索结果 → 两栏行：左 = 文件标题，右 = 关键字匹配
 function renderSearchRow(r, t) {
-    const link = '<a class="search-file" href="#c' + r.fileId + r.secId + '">'
-        + '<span class="search-file-num">' + escapeHtml(r.fileId) + '</span>'
+    const link = '<a class="search-file" href="#' + r.fileId + r.secId + '">'
+        + '<span class="search-file-num">' + escapeHtml(r.fileNum) + '</span>'
         + '<span class="search-file-title">' + escapeHtml(r.title) + '</span></a>';
     let match;
     if (r.kind === 'file') {
         // 文件级：命中编号则展示编号，否则展示标题
-        match = r.fileId.toLowerCase().indexOf(t) !== -1
-            ? '编号 ' + highlightHtml(r.fileId, t)
+        match = r.fileNum.toLowerCase().indexOf(t) !== -1
+            ? '编号 ' + highlightHtml(r.fileNum, t)
             : highlightHtml(r.title, t);
     } else if (r.comment && r.comment.toLowerCase().indexOf(t) !== -1) {
         match = matchSnippet(r.comment, t);
@@ -962,7 +981,7 @@ function handleSearch() {
     // 命中：文件级只比编号/标题；块级只比说明/模板id/名称（避免搜文件编号时泛滥出全部块）
     const matches = searchIndex.filter(r => {
         if (r.kind === 'file') {
-            return r.fileId.toLowerCase().indexOf(t) !== -1 ||
+            return r.fileNum.toLowerCase().indexOf(t) !== -1 ||
                 r.title.toLowerCase().indexOf(t) !== -1;
         }
         return r.comment.toLowerCase().indexOf(t) !== -1 ||

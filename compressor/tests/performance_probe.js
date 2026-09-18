@@ -1,11 +1,10 @@
 // Deterministic performance probe: counts actual luaparse.parse calls on the five
-// largest individual `l` segments (每条代码单独测试，去注释后压缩).
+// largest individual blocks (每条代码单独测试，去注释后压缩；语料 = 构建期默认参数替换后的最终代码).
 // Wall time is informational; parse count is gated.
-const fs = require('fs');
 const { performance } = require('perf_hooks');
 const baseParser = require('luaparse');
 const fengari = require('fengari');
-const { listRepoLuaFiles } = require('./repo-lua-files');
+const { loadRepoSegments } = require('./repo-lua-files');
 
 let parseCount = 0;
 const countedParser = Object.assign({}, baseParser, {
@@ -20,14 +19,13 @@ const LuaMin = globalThis.LuaMin.create(countedParser, fengari);
 
 const { removeComments } = require('./_helpers');
 
-// 逐段抽取：每行 `l`/`lua` 前缀是一段，各自去注释后单独作为探针样本。
+// 逐块抽取：每块 = 一条替换后的最终代码，各自去注释后单独作为探针样本。
+const segments = loadRepoSegments();
 const samples = [];
-for (const file of listRepoLuaFiles()) {
-  const lines = fs.readFileSync(file.abs, 'utf8').split(/\r?\n/);
-  for (let li = 0; li < lines.length; li++) {
-    if (!/^\s*(?:lua|l)\s+\S/.test(lines[li])) continue;
-    samples.push({ key: file.rel.replace(/\\/g, '/') + '#' + li, source: removeComments(LuaMin, lines[li]) });
-  }
+for (const rel of Object.keys(segments)) {
+  segments[rel].forEach((code, i) => {
+    samples.push({ key: rel + '#' + i, source: removeComments(LuaMin, 'l ' + code) });
+  });
 }
 samples.sort((a, b) => b.source.length - a.source.length || a.key.localeCompare(b.key));
 const top = samples.slice(0, 5);

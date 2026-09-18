@@ -10,6 +10,7 @@ const path = require('path');
 const luaparse = require('../node_modules/luaparse');
 const fengari = require('fengari');
 require('../core.js');
+const { loadRepoSegments } = require('./repo-lua-files');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
 function canonicalEq(a, b, aliasMap) {
@@ -68,21 +69,22 @@ const cases = [
   { name: '方法名因子(复用成员别名后缀)', code: "Isaac.AddCallback(ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local d=p:GetData()if p:IsHoldingItem()then d.HoldingItem=30 else d.HoldingItem=(d.HoldingItem or 0)-1 end end)" },
 ];
 
-// 追加真实语料：ver2 可读源码 + 用户 930 压缩版
-// 按标记行定位（语料文件会被编辑，硬编码行号会漂移）：
-//   '--2.1 源代码' 之后、纯 '-' 分隔行之前 = ver2 可读源码；
-//   '--2.2 压缩代码' 之后第一条 'l ' 开头的行 = 930 压缩版。
+// 追加真实语料：ver2 可读源码 + 压缩版
+// 迁移后语料文件格式：可读源码被注释化保留在 '--[[ 可读源代码' 块内；压缩版取该文件
+// 「构建期默认参数替换后」的对应块代码（与站点/复制口径一致）。
 try {
-  const lines = fs.readFileSync(path.join(__dirname, '../../lua/utils/DEBUG1.安全包装.lua'), 'utf8').split(/\r?\n/);
-  const srcMark = lines.findIndex((l) => l.indexOf('--2.1') === 0 && l.indexOf('源代码') >= 0);
-  const zipMark = lines.findIndex((l) => l.indexOf('---2.2') === 0 && l.indexOf('压缩代码') >= 0);
-  if (srcMark >= 0 && zipMark > srcMark) {
-    let srcEnd = zipMark;
-    for (let i = srcMark + 1; i < zipMark; i++) { if (/^-+\s*$/.test(lines[i])) { srcEnd = i; break; } }
-    cases.push({ name: 'ver2 可读源码', code: lines.slice(srcMark + 1, srcEnd).join('\n') });
-    const l930 = lines.slice(zipMark + 1).find((l) => /^l\s/.test(l));
-    if (l930) cases.push({ name: '930 压缩版', code: l930 });
+  const corpusPath = path.join(__dirname, '../../lua/utils/util1.安全包装.lua');
+  const lines = fs.readFileSync(corpusPath, 'utf8').split(/\r?\n/);
+  const open = lines.findIndex((l) => l.indexOf('--[[ 可读源代码') === 0);
+  if (open >= 0) {
+    let end = open + 1;
+    while (end < lines.length && lines[end].trim() !== ']]') end++;
+    const src = lines.slice(open + 1, end).join('\n');
+    if (src.trim()) cases.push({ name: 'ver2 可读源码', code: src });
   }
+  const segs = loadRepoSegments()['lua/utils/util1.安全包装.lua'] || [];
+  const mec = segs.find((code) => code.indexOf('_MEC') >= 0);
+  if (mec) cases.push({ name: '930 压缩版', code: 'l ' + mec });
 } catch (e) { /* 语料缺失不阻断 */ }
 
 let pass = 0, fail = 0;

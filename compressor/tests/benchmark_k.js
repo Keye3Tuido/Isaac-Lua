@@ -1,16 +1,15 @@
-// K 基准：对不同搜索级数 K，在仓库全部 `l`/`lua` 段上逐段跑 searchOptimize，
+// K 基准：对不同搜索级数 K，在仓库全部代码块（构建期默认参数替换后的最终代码）上逐块跑 searchOptimize，
 // 记录总用时（墙钟）与总输出字节。用于验证"用时随 K 递增、效果随 K 递增"。
 // 用法：
 //   node tests/benchmark_k.js                 # 全量
 //   node tests/benchmark_k.js --limit N       # 只跑前 N 段（快速探针）
 //   node tests/benchmark_k.js --ks 0,1,2      # 指定 K 列表
-const fs = require('fs');
 const { performance } = require('perf_hooks');
 const luaparse = require('luaparse');
 const fengari = require('fengari');
 require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
-const { listRepoLuaFiles } = require('./repo-lua-files');
+const { loadRepoSegments } = require('./repo-lua-files');
 
 // ---- 参数解析 ----
 const args = process.argv.slice(2);
@@ -23,16 +22,13 @@ for (let i = 0; i < args.length; i++) {
 
 const { removeComments } = require('./_helpers');
 
-// 收集全部段（去注释）
+// 收集全部块（构建期默认参数替换后的最终代码，去注释）
+const segments = loadRepoSegments();
 const segs = [];
-for (const file of listRepoLuaFiles()) {
-  let text;
-  try { text = fs.readFileSync(file.abs, 'utf8'); } catch (e) { continue; }
-  const lines = text.split(/\r?\n/);
-  for (let li = 0; li < lines.length; li++) {
-    if (!/^\s*(?:lua|l)\s+\S/.test(lines[li])) continue;
-    segs.push({ key: file.rel.replace(/\\/g, '/') + '#' + li, src: removeComments(LuaMin, lines[li]) });
-  }
+for (const rel of Object.keys(segments)) {
+  segments[rel].forEach((code, i) => {
+    segs.push({ key: rel + '#' + i, src: removeComments(LuaMin, 'l ' + code) });
+  });
 }
 const runSegs = segs.slice(0, limit);
 

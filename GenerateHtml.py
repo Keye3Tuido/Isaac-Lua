@@ -1,11 +1,62 @@
 import os
 import re
 import json
+import subprocess
+import sys
 
-try:
-    import yaml
-except ImportError:  # pragma: no cover
-    raise SystemExit("错误：需要 pyyaml（pip install pyyaml）以解析代码块 YAML 头。")
+
+def _load_yaml():
+    """加载 pyyaml；缺失时自举安装后重试。
+
+    静态托管平台（EdgeOne Pages / 阿里云 ESA Pages 等）的构建机通常只执行
+    `python3 scripts/build_site.py`，没有依赖安装步骤（构建日志：
+    "Cannot find package.json or installCommand is empty, skipping installation..."）。
+    自举安装让同一份构建命令在 GitHub Actions 与这些平台都可用；
+    极简镜像缺 pip 时先用 ensurepip 引导（ensurepip 随 CPython 提供）。
+    """
+    try:
+        import yaml
+        return yaml
+    except ImportError:
+        pass
+
+    def _run(cmd):
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            return True
+        except Exception:
+            return False
+
+    def _try_install():
+        for cmd in ([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"],
+                    ["python3", "-m", "pip", "install", "--quiet", "pyyaml"],
+                    ["pip3", "install", "--quiet", "pyyaml"],
+                    ["pip", "install", "--quiet", "pyyaml"]):
+            if not _run(cmd):
+                continue
+            try:
+                import yaml
+                return yaml
+            except ImportError:
+                continue
+        return None
+
+    got = _try_install()
+    if got is not None:
+        return got
+    for cmd in ([sys.executable, "-m", "ensurepip", "--default-pip"],
+                ["python3", "-m", "ensurepip", "--default-pip"]):
+        _run(cmd)
+    got = _try_install()
+    if got is not None:
+        return got
+    raise SystemExit(
+        "错误：需要 pyyaml（pip install pyyaml）以解析代码块 YAML 头。"
+        "构建环境无法联网时，请在构建命令前显式安装依赖（如 pip install -r requirements.txt）。"
+    )
+
+
+yaml = _load_yaml()
 
 # ========== 配置 ==========
 LUA_DIR = "lua"
@@ -19,7 +70,7 @@ BAIDU_TJ_IDS = {
     "isaaclua.keye3tuido.site": "4f04defafe97ea3b8a9997d1152002a1",
 }
 
-# 目录即分类：lua/challenges → 挑战，lua/utils → 其他
+# 目录即分类：lua/challenges → 挑战，lua/utils → 库
 CATEGORY_DIRS = [("challenges", True), ("utils", False)]
 
 # 挑战文件分隔线：固定字面量，全文件恰好一次
@@ -255,11 +306,10 @@ def collect_lua_entries(lua_dir=LUA_DIR):
         for fname in sorted(os.listdir(dir_path)):
             if not fname.endswith('.lua') or fname.startswith('$'):
                 continue
+            # 编号 = 文件名第一个 '.' 之前那段（如 3.标题.lua → 3，util1.标题.lua → util1）。
+            # 编号以 s/l+数字结尾时与「段锚点」在字符串上可能歧义（如 util1 与段锚点 l1），
+            # 由前端按「整串先当文件键、不中再剥段锚点」解析，故此处不再拒绝这类文件名。
             num = fname[:-4].split('.', 1)[0]
-            if re.search(r'(s-?\d+|l\d+|s[IVXLCDM]+)$', num):
-                raise SystemExit(
-                    f"错误：文件名 {fname} 的编号 {num!r} 与条目锚点格式（s/l+数字或罗马数字）冲突，请改名。"
-                )
             title = (fname[:-4].split('.', 1) + [""])[1]
             if not title:
                 print(f"警告：文件名 {fname} 缺少标题部分（形如 编号.标题.lua），将以空标题收录。")
@@ -271,6 +321,9 @@ def collect_lua_entries(lua_dir=LUA_DIR):
                 header, blocks = [], _parse_utils(raw, fname)
             lua_entries.append({
                 "id": num,
+                # key = 锚点/数据键：挑战 c<编号>、工具 u<编号>，两类目录各自独立编号
+                # （lua/challenges/1.x.lua 与 lua/utils/1.y.lua 可共存，锚点分别 #c1 / #u1）
+                "key": ("c" if is_challenge else "u") + num,
                 "title": title,
                 "fname": fname,
                 "isChallenge": is_challenge,
@@ -542,11 +595,11 @@ def _assemble_raw(e):
 def build_all_files(lua_entries):
     all_files = {}
     for e in lua_entries:
-        if e["id"] in all_files:
-            # 重复 id 会导致静默覆盖（数据丢失），直接报错
+        if e["key"] in all_files:
+            # 重复 key 会导致静默覆盖（数据丢失），直接报错；跨目录同号是允许的
             raise SystemExit(
-                f"错误：重复的文件编号 id={e['id']}（{all_files[e['id']]['fname']} 与 {e['fname']}），"
-                "请重命名其中一个文件。"
+                f"错误：重复的文件编号 {e['id']}（{all_files[e['key']]['fname']} 与 {e['fname']}），"
+                "同一目录内编号必须唯一，请重命名其中一个文件。"
             )
         blocks = []
         for b in e["blocks"]:
@@ -572,8 +625,9 @@ def build_all_files(lua_entries):
                 blk["body"] = b["body"]
                 blk["commentTpl"] = b["comment_tpl"]
             blocks.append(blk)
-        all_files[e["id"]] = {
+        all_files[e["key"]] = {
             "id": e["id"],
+            "key": e["key"],
             "title": e["title"],
             "fname": e["fname"],
             "isChallenge": e["isChallenge"],
@@ -630,9 +684,10 @@ def _block_kb(b, registry, fname):
 def build_kb_entries(lua_entries, registry):
     """生成 kb.json 条目：每个文件一份结构化记录。
 
-    条目 = 文件级信息（id/title/fname/isChallenge/tags/source/header）
+    条目 = 文件级信息（id/key/title/fname/isChallenge/tags/source/header）
          + blocks（每块 num/comment/code 及可选的 region/deps/name/tpl/tplDef/params/values/body/commentTpl）
          + text（整文件清理代码，剥 `l ` 前缀）/ code（整文件组装代码，控制台粘贴格式）。
+    id 为文件名编号（两类目录可同号，仅作展示）；key 为全局唯一的锚点键（c/u + 编号）。
     """
     kb_entries = []
     for e in lua_entries:
@@ -640,6 +695,7 @@ def build_kb_entries(lua_entries, registry):
         blocks = [_block_kb(b, registry, e["fname"]) for b in e["blocks"]]
         kb_entries.append({
             "id": e["id"],
+            "key": e["key"],
             "title": e["title"],
             "fname": e["fname"],
             "isChallenge": e["isChallenge"],
@@ -712,7 +768,7 @@ def build_html(style_css, js, challenge_count, other_count):
                 <div id="challengeList" class="file-list"></div>
             </div>
             <div class="list-section" id="otherSection">
-                <div class="list-label"><span>其他</span><span class="line"></span><span class="list-count" id="otherCount">{other_count}</span></div>
+                <div class="list-label"><span>库</span><span class="line"></span><span class="list-count" id="otherCount">{other_count}</span></div>
                 <div id="otherList" class="file-list"></div>
             </div>
             <div class="list-section" id="searchSection" style="display:none">

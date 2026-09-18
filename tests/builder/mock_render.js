@@ -94,9 +94,10 @@ const documentStub = {
 };
 
 // ---------- 载入真实 page.js（注入 mock 数据） ----------
+// 键 = 文件键：挑战 c1、工具 u1（与挑战同号，验证两类目录独立编号）
 const ALL_FILES = {
-    '1': {
-        id: '1', title: '样例挑战', fname: '1.样例.lua', isChallenge: true,
+    'c1': {
+        id: '1', key: 'c1', title: '样例挑战', fname: '1.样例.lua', isChallenge: true,
         header: ['--样例'],
         blocks: [
             { num: '0', comment: '前置安全包装。', code: 'MEC()', region: 'pre', name: '安全包装' },
@@ -109,6 +110,14 @@ const ALL_FILES = {
             },
             { num: '3', comment: '数据保存：门编号持久化。', code: 'Save(1)', name: '数据保存' },
             { num: 'II', comment: '后置重开。', code: 'Isaac.Restart()', region: 'post' },
+        ],
+    },
+    'u1': {
+        id: '1', key: 'u1', title: '工具包', fname: '1.工具包.lua', isChallenge: false,
+        header: [],
+        blocks: [
+            { num: 0, comment: '通用工具片段。', code: 'Tool(1)' },
+            { num: 1, comment: '工具第二段。', code: 'Tool(2)' },
         ],
     },
 };
@@ -149,7 +158,7 @@ function findById(id) { return walk(bodyEl).find(e => e.id === id) || null; }
 function findByClass(root, cls) { return walk(root).filter(e => e._classes.has(cls)); }
 
 // ---------- 渲染详情页 ----------
-vm.runInContext("showDetailView('1')", sandbox);
+vm.runInContext("showDetailView('c1')", sandbox);
 const codeArea = named.codeArea;
 
 // ① 依赖标记：sI 块（pre 组内）dep-note 在 section-header 之后、code-box 之前
@@ -229,9 +238,24 @@ locationStub.hash = '#c1sZ';
 vm.runInContext('route()', sandbox);
 check('非法锚点 #c1sZ 回退到列表视图', named.listView.style.display !== 'none');
 
+// ④b 工具命名空间：同一编号的工具用 #u 前缀（与挑战 c1 并存不冲突）
+locationStub.hash = '#u1s0';
+vm.runInContext('route()', sandbox);
+const utilSec0 = findById('s0');
+check('路由 #u1s0 命中工具条目（与挑战同号不冲突）',
+    !!utilSec0 && named.detailTitle.textContent === '工具包');
+locationStub.hash = '#u1';
+vm.runInContext('route()', sandbox);
+check('路由 #u1 命中工具文件', named.detailTitle.textContent === '工具包');
+locationStub.hash = '#c1';
+vm.runInContext('route()', sandbox);
+check('路由 #c1 仍命中挑战文件', named.detailTitle.textContent === '样例挑战');
+
 // ⑧ 列表搜索：文件/模板id/注释/名称的块级命中，两栏（文件标题 + 关键字匹配）
 vm.runInContext('buildListUI()', sandbox);
 const searchHtml = () => named.searchList.innerHTML;
+check('工具文件行链接为 #u1', named.otherList.innerHTML.indexOf('href="#u1"') !== -1);
+check('挑战文件行链接为 #c1', named.challengeList.innerHTML.indexOf('href="#c1"') !== -1);
 
 named.searchInput.value = 'tpl-x';
 vm.runInContext('handleSearch()', sandbox);
@@ -239,7 +263,7 @@ check('搜索命中后显示搜索结果区', named.searchSection.style.display 
 check('模板id搜索命中 tpl-x 块（锚点 #c1s1）', searchHtml().indexOf('#c1s1') !== -1);
 check('关键字匹配栏显示「模板·tpl-x」', searchHtml().indexOf('模板·') !== -1 && searchHtml().indexOf('tpl-x') !== -1);
 check('搜索计数为 1', named.searchCount.textContent === 1);
-check('搜索时隐藏原“挑战/其他”分区', named.challengeSection.style.display === 'none');
+check('搜索时隐藏原“挑战/库”分区', named.challengeSection.style.display === 'none');
 
 named.searchInput.value = '生成道具700';
 vm.runInContext('handleSearch()', sandbox);
@@ -248,6 +272,10 @@ check('注释搜索命中「生成道具700」块', searchHtml().indexOf('生成
 named.searchInput.value = '安全包装';
 vm.runInContext('handleSearch()', sandbox);
 check('名称搜索命中「安全包装」块（锚点 #c1s0）', searchHtml().indexOf('安全包装') !== -1 && searchHtml().indexOf('#c1s0') !== -1);
+
+named.searchInput.value = '工具第二段';
+vm.runInContext('handleSearch()', sandbox);
+check('工具条目注释搜索命中 #u1s1', searchHtml().indexOf('#u1s1') !== -1);
 
 named.searchInput.value = '样例';
 vm.runInContext('handleSearch()', sandbox);

@@ -1,0 +1,7 @@
+{
+  "name": "isaaclua",
+  "buildCommand": "python3 scripts/build_site.py",
+  "assets": {
+    "directory": "./_site"
+  }
+}

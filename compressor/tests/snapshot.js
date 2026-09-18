@@ -11,9 +11,9 @@ require('../core.js');
 const L = globalThis.LuaMin.create(luaparse, fengari);
 
 const { removeComments } = require('./_helpers');
+const { loadRepoSegments } = require('./repo-lua-files');
 function sha(s){ return crypto.createHash('sha256').update(s,'utf8').digest('hex').slice(0,16); }
 
-const ROOT = path.join(__dirname, '..', '..');           // Isaac-Lua repo root
 const REMOTE = path.join(__dirname, '.remote-cache');
 const BULK = path.join(__dirname, '_bulk_test_repos');
 
@@ -29,14 +29,6 @@ function walkLua(dir, relBase, acc){
     }
   }
   return acc;
-}
-
-// extract leading-l segments from a repo file (mirrors realtest)
-function extractSegments(raw){
-  const lines = raw.replace(/\r\n?/g,'\n').split('\n');
-  const segs=[];
-  for(const ln of lines){ if(/^[ \t]*(?:lua|l)[ \t]+\S/.test(ln)) segs.push(ln); }
-  return segs;
 }
 
 const snap = {};   // key -> {inputLen, ok, outLen, sha}
@@ -65,12 +57,12 @@ const UNIT = {
 };
 for(const k in UNIT) record(k, UNIT[k]);
 
-// 2. Repo .lua files: per-segment only（每条代码单独测试，去注释后压缩）。
-const repoFiles = walkLua(ROOT, ROOT, []).filter(f=>!f.rel.startsWith('compressor/'));
-for(const f of repoFiles){
-  let raw; try{ raw=fs.readFileSync(f.full,'utf8'); }catch(e){ continue; }
-  const segs = extractSegments(raw);
-  segs.forEach((seg,i)=>{ record('repo-seg:'+f.rel+'#'+i, removeComments(L, seg)); });
+// 2. Repo 代码块：逐块压缩「构建期默认参数替换后」的最终代码（与站点 / kb.json 同口径）。
+//    不是仓库文件里的原始 l 行——模板引用块在源文件里没有代码行，模板定义块的裸 Pn 占位
+//    也不是合法 Lua 语句，直接压缩会被真·Lua 校验拒绝。
+const repoSegs = loadRepoSegments();
+for(const rel of Object.keys(repoSegs)){
+  repoSegs[rel].forEach((code,i)=>{ record('repo-seg:'+rel+'#'+i, removeComments(L, 'l '+code)); });
 }
 
 // 3. Remote cache whole files.

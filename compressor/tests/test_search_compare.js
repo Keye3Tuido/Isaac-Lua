@@ -1,12 +1,11 @@
 // Phase 0: 前置验证 — 搜索优化器 vs 规则系统 全量对比
-// 对仓库所有 l 段【逐段】跑 compress 和 searchOptimize（去注释后压缩），报告差值。
+// 对仓库每个代码块（构建期默认参数替换后的最终代码）【逐块】跑 compress 和 searchOptimize（去注释后压缩），报告差值。
 
-const fs = require('fs'), path = require('path');
 const luaparse = require('../node_modules/luaparse');
 const fengari = require('fengari');
 require('../core.js');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
-const { listRepoLuaFiles } = require('./repo-lua-files');
+const { loadRepoSegments } = require('./repo-lua-files');
 
 const { removeComments } = require('./_helpers');
 
@@ -15,23 +14,18 @@ function canonicalEq(a, b, aliasMap) {
   catch (e) { return false; }
 }
 
-const files = listRepoLuaFiles();
+const segments = loadRepoSegments();
+const files = Object.keys(segments);
 
 let baselineTotal = 0, searchTotal = 0;
 let wins = [], losses = [], equivalenceErrors = [];
 let segCount = 0;
 
-for (const file of files) {
-  const f = file.rel;
-  let text;
-  try { text = fs.readFileSync(file.abs, 'utf8'); } catch (e) { continue; }
-  const lines = text.split(/\r?\n/);
+for (const f of files) {
+  const codes = segments[f];
 
-  const segs = [];
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    if (!/^l\s/.test(line)) continue;
-    segs.push(line);
+  for (let li = 0; li < codes.length; li++) {
+    const line = 'l ' + codes[li];
     segCount++;
 
     const cleaned = removeComments(LuaMin, line);

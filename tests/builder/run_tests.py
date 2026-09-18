@@ -8,6 +8,8 @@
       缺分隔线报错 / 重复模板id报错 / 说明整段覆盖 / 未定义参数报错 /
       占位符未替换完全报错 / main() 端到端 / verify_equivalence.py 的 PASS 与 FAIL /
       kb.json 结构化输出（build_kb_entries：注释/代码分栏、模板参数自包含） /
+      分类编号（challenges c<编号> / utils u<编号>，两类目录可同号） /
+      发布目录组装（build_site.py：必要资源一个不少、非必要文件一个不多） /
       page.js mock 渲染（mock_render.js：依赖标记、块内参数面板、罗马锚点路由、
       显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀、块级搜索）。
 """
@@ -85,7 +87,7 @@ class TestHappyPath(unittest.TestCase):
 
     def test_deps_field(self):
         all_files = G.build_all_files(self.entries)
-        blocks = all_files["1"]["blocks"]
+        blocks = all_files["c1"]["blocks"]
         # 有 依赖 的块输出 deps 列表；无 依赖 的块不输出该键
         self.assertEqual(blocks[4]["deps"], ["基础设置", "基础包装"])
         for b in (blocks[0], blocks[1], blocks[5]):
@@ -93,7 +95,7 @@ class TestHappyPath(unittest.TestCase):
 
     def test_name_field(self):
         all_files = G.build_all_files(self.entries)
-        blocks = all_files["1"]["blocks"]
+        blocks = all_files["c1"]["blocks"]
         # YAML 头声明了 名称 的块输出 name 字段；未声明的块不输出该键
         self.assertEqual(blocks[0]["name"], "基础设置")
         self.assertEqual(blocks[1]["name"], "基础包装")
@@ -106,7 +108,7 @@ class TestHappyPath(unittest.TestCase):
         self.assertEqual(b["comment"], "数据保存式依赖演示。")
         self.assertNotRegex(b["comment"], r"^\d+\.(\s|$)")
         all_files = G.build_all_files(self.entries)
-        self.assertEqual(all_files["1"]["blocks"][4]["comment"], "数据保存式依赖演示。")
+        self.assertEqual(all_files["c1"]["blocks"][4]["comment"], "数据保存式依赖演示。")
         # 组装文本（控制台粘贴格式）仍照常叠加 --N. 前缀
         self.assertIn("--3. 数据保存式依赖演示。", G._assemble_raw(self.ch))
 
@@ -121,7 +123,7 @@ class TestHappyPath(unittest.TestCase):
     def test_inline_param_panel_data(self):
         # 面板数据契约：{num, comment, code, params, values, body, commentTpl}（无 tpl/tplDef）
         all_files = G.build_all_files(self.entries)
-        blk = all_files["1"]["blocks"][5]
+        blk = all_files["c1"]["blocks"][5]
         self.assertEqual(blk["num"], "4")
         self.assertEqual(blk["body"],
                          "for i=1,P2 do Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,nil) end")
@@ -140,10 +142,10 @@ class TestHappyPath(unittest.TestCase):
 
     def test_custom_block_has_no_tpl(self):
         all_files = G.build_all_files(self.entries)
-        blk = all_files["1"]["blocks"][0]
+        blk = all_files["c1"]["blocks"][0]
         self.assertNotIn("tpl", blk)
         self.assertNotIn("values", blk)
-        blk2 = all_files["1"]["blocks"][2]
+        blk2 = all_files["c1"]["blocks"][2]
         self.assertEqual(blk2["tpl"], "tpl-param")
         self.assertEqual(blk2["values"], {"P1": 700, "P2": [3, 34]})
 
@@ -175,12 +177,14 @@ class TestKbEntries(unittest.TestCase):
         self.assertEqual(len(self.kb), 3)  # 1 挑战 + 2 工具
         ch = next(e for e in self.kb if e["id"] == "1")
         self.assertEqual(set(ch),
-                         {"id", "title", "fname", "isChallenge", "tags",
+                         {"id", "key", "title", "fname", "isChallenge", "tags",
                           "source", "header", "blocks", "text", "code"})
         self.assertEqual(ch["source"], "isaac_code")
+        self.assertEqual(ch["key"], "c1")           # 挑战锚点键
         self.assertEqual(ch["text"], G.clean_code(ch["code"]))
         self.assertTrue(ch["isChallenge"])
         util = next(e for e in self.kb if e["id"] == "U1")
+        self.assertEqual(util["key"], "uU1")        # 工具锚点键
         self.assertFalse(util["isChallenge"])
 
     def test_blocks_self_contained(self):
@@ -272,7 +276,7 @@ class TestMainEndToEnd(unittest.TestCase):
         self.assertEqual(len(kb), 3)  # 1 挑战 + 2 工具
         for entry in kb:
             self.assertEqual(set(entry),
-                             {"id", "title", "fname", "isChallenge", "tags",
+                             {"id", "key", "title", "fname", "isChallenge", "tags",
                               "source", "header", "blocks", "text", "code"})
             self.assertEqual(entry["source"], "isaac_code")
             self.assertEqual(entry["text"], G.clean_code(entry["code"]))
@@ -319,6 +323,110 @@ class TestMockRender(unittest.TestCase):
         r = subprocess.run([node, self.SCRIPT], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("全部通过", r.stdout)
+
+
+class TestPublishBuild(unittest.TestCase):
+    """发布目录组装（scripts/build_site.py）：必要资源一个不少，非必要文件一个不多。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._cwd = os.getcwd()
+        os.chdir(REPO_ROOT)
+        G.main()   # 先产出 index.html / kb.json（gitignore 产物），发布脚本依赖它们
+        sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
+        import build_site as B
+        cls.B = B
+        cls.tmp = tempfile.mkdtemp(prefix="publish-test-")
+        cls.out, cls.assets, cls.written = B.assemble(os.path.join(cls.tmp, "_site"))
+        cls.problems, cls.unused = B.verify(cls.out)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+        os.chdir(cls._cwd)
+
+    def test_no_broken_references(self):
+        self.assertEqual(self.problems, [])
+
+    def test_divider_assets_published(self):
+        # 回归锁：两张分隔图曾漏拷，导致线上「行间分隔线」消失
+        self.assertIn("content-divider.webp", self.assets)
+        self.assertIn("challenge-divider.webp", self.assets)
+
+    def test_every_referenced_asset_published(self):
+        # 发布目录里每个 assets/ 引用都真实存在（verify 的引用解析已覆盖，这里再独立断言一次）
+        pub = {os.path.relpath(os.path.join(dp, fn), self.out).replace(os.sep, "/")
+               for dp, _, fns in os.walk(self.out) for fn in fns}
+        for name in self.assets:
+            self.assertIn(f"assets/{name}", pub)
+
+    def test_only_necessary_files_published(self):
+        pub = {os.path.relpath(os.path.join(dp, fn), self.out).replace(os.sep, "/")
+               for dp, _, fns in os.walk(self.out) for fn in fns}
+        self.assertIn("index.html", pub)
+        self.assertIn("kb.json", pub)
+        self.assertIn("compressor/luaparse.js", pub)   # 由 node_modules 提供，不入库
+        self.assertIn("compressor/fengari-web.js", pub)
+        # 源码/测试/文档/依赖不得进入发布目录
+        self.assertEqual([p for p in pub if p.endswith((".py", ".lua", ".md"))], [])
+        self.assertEqual([p for p in pub if "node_modules/" in p], [])
+
+    def test_no_unused_asset_in_repo(self):
+        # 仓库 assets/ 里不得留下未被页面引用的资源
+        self.assertEqual(self.unused, [])
+
+
+class TestCategoryKeys(unittest.TestCase):
+    """编号在两类目录内各自独立：challenges/1 与 utils/1 可共存（键 c1 / u1）。"""
+
+    def _build(self, challenge_name, util_name):
+        tmp = tempfile.mkdtemp(prefix="catkeys-")
+        try:
+            for sub in ("challenges", "utils"):
+                os.makedirs(os.path.join(tmp, sub))
+            with open(os.path.join(tmp, "challenges", challenge_name), "w", encoding="utf-8") as f:
+                f.write(
+                    "--甲\n\n"
+                    "--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
+                    "--===--\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
+                    "--===--\n--[[\n说明: 后置。\n]]\nl print(3)\n"
+                )
+            with open(os.path.join(tmp, "utils", util_name), "w", encoding="utf-8") as f:
+                f.write("--[[\n说明: 工具。\n]]\nl print(4)\n")
+            entries, _registry = G.build(tmp)   # 跑完整管线（含展开），build_all_files 依赖展开结果
+            return entries, G.build_all_files(entries)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_same_number_in_both_categories(self):
+        _entries, all_files = self._build("1.甲.lua", "1.乙.lua")
+        self.assertEqual(set(all_files), {"c1", "u1"})
+        self.assertEqual(all_files["c1"]["id"], "1")
+        self.assertEqual(all_files["u1"]["id"], "1")
+        self.assertTrue(all_files["c1"]["isChallenge"])
+        self.assertFalse(all_files["u1"]["isChallenge"])
+
+    def test_id_ending_in_l_digits_allowed(self):
+        # util1 这类编号曾因「结尾 l+数字」被当成段锚点冲突而拒绝；改为「整串先当文件键」后放行
+        _entries, all_files = self._build("util1.甲.lua", "util1.乙.lua")
+        self.assertEqual(set(all_files), {"cutil1", "uutil1"})
+
+    def test_duplicate_number_within_category_rejected(self):
+        # 同目录内同号（1.甲.lua 与 1.乙.lua）仍必须报错，不能被静默覆盖
+        tmp = tempfile.mkdtemp(prefix="dupcat-")
+        try:
+            os.makedirs(os.path.join(tmp, "challenges"))
+            body = ("--甲\n\n--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
+                    "--===--\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
+                    "--===--\n--[[\n说明: 后置。\n]]\nl print(3)\n")
+            for name in ("1.甲.lua", "1.乙.lua"):
+                with open(os.path.join(tmp, "challenges", name), "w", encoding="utf-8") as f:
+                    f.write(body)
+            with self.assertRaises(SystemExit) as cm:
+                G.build_all_files(G.build(tmp)[0])
+            self.assertIn("重复的文件编号", str(cm.exception))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

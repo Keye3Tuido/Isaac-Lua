@@ -102,9 +102,9 @@
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 540,
-      "inputBytes": 14336,
-      "outputBytes": 13949
+      "parseCount": 641,
+      "inputBytes": 15899,
+      "outputBytes": 15479
     }
   }
 }

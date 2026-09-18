@@ -91,12 +91,12 @@ YAML 头 = `--[[` 与 `]]` 包裹的 YAML 文档。键名用中文。
 
 | 模板id | 来源 | 参数 | 说明 |
 |---|---|---|---|
-| safe-wrap-v1 | DEBUG1.安全包装（debug 库版） | 无 | 两个版本都收，当前挑战均用 v2 |
-| safe-wrap-mec | DEBUG1.安全包装 v2（MEC 版） | 无 | 段 0 件 1 |
-| clean-anon-callbacks | DEBUG2.清理匿名回调 | 无 | 段 0 件 2 |
-| persistent-data | DEBUG3.数据保存（单行版） | 无 | 24.拖家带口引用；可读源码注释化保留 |
+| safe-wrap-v1 | util1.安全包装（debug 库版） | 无 | 两个版本都收，当前挑战均用 v2 |
+| safe-wrap-mec | util1.安全包装 v2（MEC 版） | 无 | 段 0 件 1 |
+| clean-anon-callbacks | util3.清理匿名回调 | 无 | 段 0 件 2 |
+| persistent-data | util2.数据保存（单行版） | 无 | 24.拖家带口引用；可读源码注释化保留 |
 | lock-achievements | 0.实用代码合辑 #47 | 无 | 段 0 件 4 |
-| restart-game | CODE.代码模板.lua 后置 | P1 = 角色（可空，空则无参 restart） | 覆盖标准版 + 5 个角色变体 |
+| restart-game | TMPL.挑战代码模板.lua 后置 | P1 = 角色（可空，空则无参 restart） | 覆盖标准版 + 5 个角色变体 |
 
 ## 7. 段 0 标准分解（40 文件逐字节相同）
 
@@ -109,7 +109,7 @@ YAML 头 = `--[[` 与 `]]` 包裹的 YAML 文档。键名用中文。
 
 ## 8. 迁移步骤
 
-1. utils 处理：DEBUG1 v2、DEBUG3 头部的可读源码用 `--[[ ]]` 注释化（保留作参考），保留单行版；拆出模板并补 YAML 头（模板id/说明/参数定义）
+1. utils 处理：util1 v2、util2 头部的可读源码用 `--[[ ]]` 注释化（保留作参考），保留单行版；拆出模板并补 YAML 头（模板id/说明/参数定义）
 2. 39 个挑战：段 0 替换为第 7 节的分解；后置全部替换为 restart-game 模板引用（5 个文件带角色参数）
 3. 24.拖家带口的数据保存 → 模板引用；15.勇往直前的变体 → 保留自定义代码
 4. 只认新格式，无兼容层

@@ -21,7 +21,7 @@ _Avoid_: 代码段、条目、section
 _Avoid_: 作品文件、关卡文件
 
 **工具文件**:
-`lua/utils/` 下的代码文件，自由格式（无骨架约束），是模板代码的唯一宿主目录。合辑偏实用共享模板，灵感偏技巧性/类模板（暂定，待用户最终定归属）。
+`lua/utils/` 下的代码文件，自由格式（无骨架约束），是模板代码的唯一宿主目录。合辑（`0.`）偏实用共享模板，灵感（`1.`）偏技巧性/类模板，模板定义集中在 `utilN.` 文件里。
 _Avoid_: 库文件、模板文件
 
 **文件头（元信息）**:
@@ -50,6 +50,11 @@ _Avoid_: 作用域、可见性
 
 **编号**:
 正文代码块从 1 起的阿拉伯数字；前置/后置代码块为从 0 起的罗马数字（0, I, II, III…，后置继前置续排）。编号由构建器按文件顺序自动分配，YAML 头不写编号。
+_Avoid_: 序号、编号值
+
+**文件键（锚点）**:
+文件在站点里的唯一标识与 URL 锚点前缀，形如 `c<编号>`（挑战）或 `u<编号>`（工具），段锚点再续 `s<块编号>`（如 `#c1s3`、`#u1s0`）。两类目录**各自独立编号**，故 `lua/challenges/1.御灵术.lua` 与 `lua/utils/1.灵感.lua` 可共存（键 `c1` / `u1`）；同一目录内编号必须唯一，否则构建报错。文件名的编号段以 `s`/`l`+数字结尾（如 `util1`）时与段锚点在字符串上可能歧义，前端按「整串先当文件键、不中再剥段锚点」解析。
+_Avoid_: 文件 id、编号键
 
 ## 需求与决策清单（用户确认，改动代码后必须逐条对照）
 
@@ -79,13 +84,13 @@ _Avoid_: 作用域、可见性
 18. 依赖关系前端显式可见（依赖标记行）。
 19. 参数面板 3 列 N 行（参数名+性质 | 参数说明 | 输入框，默认显示当前值）；模板块与非模板但声明参数定义的自定义块都支持；输入即时同步说明与代码；复制代码/复制全部/下载 zip 使用面板当前值。
 20. 代码行显示与复制带 `l ` 前缀；注释头显示 `--编号. ` 前缀（编号规则见术语表"编号"）。
-21. 列表搜索：命中文件（编号/标题）与代码块（说明、模板id、块名称），结果两栏（文件标题 | 关键字匹配，命中词 `<mark>` 高亮），点击直达 `#c<id>s<编号>` 锚点；清空查询恢复原「挑战/其他」两分区。
+21. 列表搜索：命中文件（编号/标题）与代码块（说明、模板id、块名称），结果两栏（文件标题 | 关键字匹配，命中词 `<mark>` 高亮），点击直达 `#c<编号>s<段>` / `#u<编号>s<段>` 锚点；清空查询恢复原「挑战/库」两分区。
 
 ### 内容归属（已确认的个案）
 21. 段 0 结构：safe-wrap-mec 引用（名称： 安全包装）→ MEC() 自定义 → clean-anon-callbacks 引用（名称： 清理回调）→ 自动清理 自定义块（依赖 [安全包装, 清理回调]，不配参数：1e4/10秒 两头都字面化）→ lock-achievements 引用。规则：被依赖的工具代码（CLM/MEC 定义）才是模板；依赖于其他代码的代码（自动清理这类调用方）不做模板。
 22. 数据保存：24.拖家带口用模板 persistent-data；15.勇往直前变体保留自定义（名称： 数据保存）。
 23. 御灵术"按人数生成道具"用 multi-choice-spawn（P1='c653'）；curse-immune 模板不支持配置，28号"免疫混乱"为自定义；15号开图保留自定义变体（比模板多 VisitedCount 保留逻辑——模板版会清 visited 位，可能破坏"每房仅进一次"），说明必须与模板区分。
-23. 回调包装四条（callback-wrap）保留为 CODE.代码模板.lua 里的自定义代码，不做模板。
+23. 回调包装四条（callback-wrap）保留为 TMPL.挑战代码模板.lua 里的自定义代码，不做模板。
 24. open-map-red-rooms 属灵感文件；restart 双模板（restart-game 无参 / restart-as-character 带角色参数）。
 25. stats-switch 已参数化（展开多一空格可接受，验收门豁免字符串外空白）。
 26. 御灵术 wisp-soul-system 的说明必须清理（（射速）等语义占位与数值插值混杂视为乱码）。
@@ -96,5 +101,12 @@ _Avoid_: 作用域、可见性
 29. `python scripts/verify_equivalence.py --old-dir /tmp/isaac-old/lua --new-dir lua`：40/40 PASS（字节等价；仅还原引入的空白可豁免，当前仅 stats-switch 一例）。
 30. `python scripts/verify_comments.py`：渲染注释与 621858d 原文一致，差异 0；白名单按 (文件, 模板id, 块号) 精确键控（wisp 前导零、御灵术多选一、15号门编号、15号开图变体、39号用户自定），禁止整文件通配。
 31. `python GenerateHtml.py`：零警告。
-32. `python tests/builder/run_tests.py`：全过（含 kb.json 结构化 schema 与块自包含断言）。
-33. `node --check page.js` 通过；渲染冒烟（元信息整行/l 前缀/编号/分组/面板/徽标/依赖标记/块级搜索两栏结果）通过。
+32. `python tests/builder/run_tests.py`：全过（含 kb.json 结构化 schema 与块自包含断言、分类编号 c/u 断言、发布目录组装断言）。
+33. `node --check page.js` 通过；渲染冒烟（元信息整行/l 前缀/编号/分组/面板/徽标/依赖标记/块级搜索两栏结果/分类锚点 #c 与 #u）通过。
+34. 压缩器门禁 `npm run test:local` 全过（`test.js` 101/101、`edge.js` 40/40、`test_validation_cache.js` 5/5、`snapshot.js --check` 与 `realtest.js` 无回归）。**语料口径**：压缩测试必须针对**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出 `compressor/tests/_repo_segments.json`，与站点 / kb.json 同口径），逐块单独压缩、压缩前剥注释；禁止直接取仓库文件里的原始 `l` 行——模板引用块在源文件里根本没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句（旧口径既漏掉全部模板引用块，又把 4 条模板体误判为语法失败）。`_snapshot.json` 的 `repo-seg:` 键必须反映当前 `lua/` 目录布局与文件名（曾整体早于目录分类重构而全部失效，且失效前缀掩盖了回归判定，故 2026-09-18 整体重生成；unit/remote/bulk 三类键值须保持逐字节不变）；语料定义变更时 `_refactor_baseline.json` 的 `performance` 预算须同步重锚（代表语料随真实最终代码变大）。
+
+### 构建与发布（2026-09-18）
+35. 只发布构建产物目录：`python scripts/build_site.py` 组装 `_site/`（已 gitignore），其中只含构建产物（index.html / kb.json）与运行时资源（assets/、favicon.svg、jszip.min.js、compressor/ 页面）。源码（lua/、GenerateHtml.py、page.js、style.css、compressor/src 等）、测试、文档、依赖一律留在仓库、不进发布目录。三处部署共用同一条构建命令：GitHub Actions（工作流）、EdgeOne Pages（`edgeone.json`）、ESA Pages（`esa.jsonc`，项目名 isaaclua；该文件存在时 ESA 以其为唯一配置来源，控制台设置被忽略）。
+36. 资源清单自动推导：发布脚本从构建产物（index.html / page.js / style.css / compressor 页面与脚本）中提取 `assets/...` 引用，逐个校验存在性，缺一即失败；仓库 assets/ 里未被引用的资源会被点名。禁止再手写资源拷贝清单——曾漏拷 `content-divider.webp` / `challenge-divider.webp` 导致线上「行间分隔线」消失。
+37. 构建自足：GenerateHtml.py 缺 pyyaml 时自动 pip 安装；build_site.py 缺压缩器 node_modules 时自动 `npm ci`，使静态托管平台只配一条构建命令即可。
+38. 入库原则：第三方库能由构建期取得的就不入库——`compressor/luaparse.js`、`compressor/fengari-web.js` 改由 build_site.py 从 node_modules 拷贝；`jszip.min.js` 不在 npm 清单中（加入需重生成 package-lock）暂留入库。压缩器测试基线（`_snapshot.json` 等）为回归输入，属必要文件，保留入库。
