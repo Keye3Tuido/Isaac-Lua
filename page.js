@@ -105,6 +105,13 @@ const subLegend = document.getElementById('subLegend');
 const codeArea = document.getElementById('codeArea');
 const toast = document.getElementById('toast');
 const hoverTip = document.getElementById('hoverTip');
+const searchInput = document.getElementById('searchInput');
+const challengeSection = document.getElementById('challengeSection');
+const otherSection = document.getElementById('otherSection');
+const searchSection = document.getElementById('searchSection');
+const searchList = document.getElementById('searchList');
+const searchCount = document.getElementById('searchCount');
+const noResult = document.getElementById('noResult');
 
 // ========== 状态 ==========
 let currentFileId = null;
@@ -169,14 +176,16 @@ function buildListUI() {
 
     document.getElementById('challengeList').innerHTML = challengeIds.map(buildFileRow).join('');
 
-    const otherSection = document.getElementById('otherSection');
     const otherList = document.getElementById('otherList');
-    if (otherIds.length) {
+    otherSectionVisible = otherIds.length > 0;
+    if (otherSectionVisible) {
         otherSection.style.display = '';
         otherList.innerHTML = otherIds.map(buildFileRow).join('');
     } else {
         otherSection.style.display = 'none';
     }
+
+    buildSearchIndex();
 }
 
 function escapeHtml(s) {
@@ -860,23 +869,113 @@ function goBackToList(e) {
 }
 
 // ========== 列表搜索 ==========
+// 搜索索引：文件级（编号/标题） + 块级（编号/说明/模板id/名称）记录，构建一次、搜索时复用
+let searchIndex = [];
+let otherSectionVisible = false;
+function buildSearchIndex() {
+    searchIndex = [];
+    for (const id in ALL_FILES) {
+        const f = ALL_FILES[id];
+        searchIndex.push({
+            fileId: id, title: f.title || '', num: '', secId: '',
+            kind: 'file', comment: '', tpl: '', name: '',
+        });
+        for (const b of (f.blocks || [])) {
+            const num = (b.num !== undefined && b.num !== null) ? String(b.num) : '';
+            searchIndex.push({
+                fileId: id, title: f.title || '', num, secId: num ? ('s' + num) : '',
+                kind: 'block',
+                comment: b.comment || '',
+                tpl: b.tpl || b.tplDef || '',
+                name: b.name || '',
+            });
+        }
+    }
+}
+
+// 把查询词在文本中高亮（先转义再匹配，输出已转义 HTML）
+function highlightHtml(text, query) {
+    if (!query) return escapeHtml(text);
+    const esc = escapeHtml(text);
+    const q = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+        return esc.replace(new RegExp(q, 'gi'), m => '<mark>' + m + '</mark>');
+    } catch (_) {
+        return esc;
+    }
+}
+
+// 取包含查询词的一段文本（关键字前后各截若干字符），供“关键字匹配”栏展示
+function matchSnippet(text, query) {
+    const low = text.toLowerCase();
+    const idx = low.indexOf(query);
+    if (idx === -1) {
+        const cut = text.length > 80 ? text.slice(0, 80) + '…' : text;
+        return highlightHtml(cut, query);
+    }
+    const start = Math.max(0, idx - 18);
+    const end = Math.min(text.length, idx + query.length + 42);
+    const head = start > 0 ? '…' : '';
+    const tail = end < text.length ? '…' : '';
+    return head + highlightHtml(text.slice(start, end), query) + tail;
+}
+
+// 单条搜索结果 → 两栏行：左 = 文件标题，右 = 关键字匹配
+function renderSearchRow(r, t) {
+    const link = '<a class="search-file" href="#c' + r.fileId + r.secId + '">'
+        + '<span class="search-file-num">' + escapeHtml(r.fileId) + '</span>'
+        + '<span class="search-file-title">' + escapeHtml(r.title) + '</span></a>';
+    let match;
+    if (r.kind === 'file') {
+        // 文件级：命中编号则展示编号，否则展示标题
+        match = r.fileId.toLowerCase().indexOf(t) !== -1
+            ? '编号 ' + highlightHtml(r.fileId, t)
+            : highlightHtml(r.title, t);
+    } else if (r.comment && r.comment.toLowerCase().indexOf(t) !== -1) {
+        match = matchSnippet(r.comment, t);
+    } else if (r.tpl && r.tpl.toLowerCase().indexOf(t) !== -1) {
+        match = '模板·' + highlightHtml(r.tpl, t);
+    } else if (r.name && r.name.toLowerCase().indexOf(t) !== -1) {
+        match = '名称 ' + highlightHtml(r.name, t);
+    } else {
+        match = matchSnippet(r.comment || r.tpl || r.name || '', t);
+    }
+    return '<div class="search-row">' + link + '<span class="search-match">' + match + '</span></div>';
+}
+
 let searchTjTimer;
 function handleSearch() {
-    const t = searchInput.value.toLowerCase();
+    const t = searchInput.value.trim().toLowerCase();
     // 防抖上报搜索词（截断防超长）；空串不报
     clearTimeout(searchTjTimer);
     if (t) searchTjTimer = setTimeout(() => tjEvent('search', t.slice(0, 50)), 800);
-    let shown = 0;
-    document.querySelectorAll('.file-list').forEach(list => {
-        let listShown = 0;
-        for (const item of list.children) {
-            const match = item.getAttribute('data-search').toLowerCase().indexOf(t) !== -1;
-            item.style.display = match ? '' : 'none';
-            if (match) listShown++;
+
+    // 空查询：恢复“挑战 / 其他”两栏文件列表
+    if (!t) {
+        if (searchSection) searchSection.style.display = 'none';
+        if (challengeSection) challengeSection.style.display = '';
+        if (otherSection) otherSection.style.display = otherSectionVisible ? '' : 'none';
+        if (noResult) noResult.style.display = 'none';
+        return;
+    }
+
+    // 命中：文件级只比编号/标题；块级只比说明/模板id/名称（避免搜文件编号时泛滥出全部块）
+    const matches = searchIndex.filter(r => {
+        if (r.kind === 'file') {
+            return r.fileId.toLowerCase().indexOf(t) !== -1 ||
+                r.title.toLowerCase().indexOf(t) !== -1;
         }
-        const section = list.closest('.list-section');
-        if (section) section.style.display = listShown ? '' : 'none';
-        shown += listShown;
+        return r.comment.toLowerCase().indexOf(t) !== -1 ||
+            r.tpl.toLowerCase().indexOf(t) !== -1 ||
+            r.name.toLowerCase().indexOf(t) !== -1;
     });
-    document.getElementById('noResult').style.display = shown ? 'none' : 'block';
+
+    if (challengeSection) challengeSection.style.display = 'none';
+    if (otherSection) otherSection.style.display = 'none';
+    if (searchSection) {
+        searchSection.style.display = matches.length ? '' : 'none';
+        if (searchList) searchList.innerHTML = matches.map(r => renderSearchRow(r, t)).join('');
+        if (searchCount) searchCount.textContent = matches.length;
+    }
+    if (noResult) noResult.style.display = matches.length ? 'none' : 'block';
 }

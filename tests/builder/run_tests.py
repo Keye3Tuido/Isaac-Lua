@@ -7,8 +7,9 @@
       块内参数（定义/展开/面板数据/缺默认值报错/占位符残留报错） /
       缺分隔线报错 / 重复模板id报错 / 说明整段覆盖 / 未定义参数报错 /
       占位符未替换完全报错 / main() 端到端 / verify_equivalence.py 的 PASS 与 FAIL /
+      kb.json 结构化输出（build_kb_entries：注释/代码分栏、模板参数自包含） /
       page.js mock 渲染（mock_render.js：依赖标记、块内参数面板、罗马锚点路由、
-      显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀）。
+      显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀、块级搜索）。
 """
 import json
 import os
@@ -162,6 +163,61 @@ class TestHappyPath(unittest.TestCase):
         self.assertEqual(G.clean_code(raw).splitlines()[0], "--迷你挑战甲")
 
 
+class TestKbEntries(unittest.TestCase):
+    """kb.json 结构化输出：注释/代码分栏、模板参数自包含（可复现前端“双自定义”）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.entries, cls.registry = build_fixture("new")
+        cls.kb = G.build_kb_entries(cls.entries, cls.registry)
+
+    def test_entry_shape(self):
+        self.assertEqual(len(self.kb), 3)  # 1 挑战 + 2 工具
+        ch = next(e for e in self.kb if e["id"] == "1")
+        self.assertEqual(set(ch),
+                         {"id", "title", "fname", "isChallenge", "tags",
+                          "source", "header", "blocks", "text", "code"})
+        self.assertEqual(ch["source"], "isaac_code")
+        self.assertEqual(ch["text"], G.clean_code(ch["code"]))
+        self.assertTrue(ch["isChallenge"])
+        util = next(e for e in self.kb if e["id"] == "U1")
+        self.assertFalse(util["isChallenge"])
+
+    def test_blocks_self_contained(self):
+        ch = next(e for e in self.kb if e["id"] == "1")
+        blocks = ch["blocks"]
+        self.assertEqual([b["num"] for b in blocks], ["0", "I", "1", "2", "3", "4", "II"])
+        # 自定义块：无 tpl/tplDef/params/body，仅 num/comment/code
+        b0 = blocks[0]
+        self.assertEqual(b0["comment"], "前置自定义代码。")
+        self.assertEqual(b0["code"], "local X=1 print(X)")
+        self.assertNotIn("tpl", b0)
+        self.assertNotIn("params", b0)
+        # 模板引用块：自包含 body/commentTpl/params（下游可据此改参重替换）
+        b2 = blocks[2]
+        self.assertEqual(b2["tpl"], "tpl-param")
+        self.assertEqual(b2["values"], {"P1": 700, "P2": [3, 34]})
+        self.assertEqual(b2["body"], "local ids={P2} Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,nil)")
+        self.assertEqual(b2["commentTpl"], "生成道具{P1}，数量{P2}。")
+        self.assertEqual(b2["params"]["P1"]["默认"], 653)
+        # 块内参数块：无 tpl/tplDef，但带 params/values/body/commentTpl
+        b5 = blocks[5]
+        self.assertNotIn("tpl", b5)
+        self.assertNotIn("tplDef", b5)
+        self.assertEqual(b5["body"], "for i=1,P2 do Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,nil) end")
+        self.assertEqual(b5["commentTpl"], "块内生成道具{P1}，循环{P2}次。")
+
+    def test_template_def_block(self):
+        u = next(e for e in self.kb if e["id"] == "U1")
+        tdef = next(b for b in u["blocks"] if b.get("tplDef") == "tpl-param")
+        self.assertIn("body", tdef)
+        self.assertEqual(tdef["params"]["P1"]["默认"], 653)
+        self.assertEqual(tdef["commentTpl"], "生成道具{P1}，数量{P2}。")
+        # 无参模板定义（tpl-basic）不带 params/body/commentTpl（无可自定义项）
+        tbasic = next(b for b in u["blocks"] if b.get("tplDef") == "tpl-basic")
+        self.assertNotIn("params", tbasic)
+
+
 class TestErrors(unittest.TestCase):
     def test_missing_separator(self):
         assert_systemexit(self, "bad-nosep", "分隔线")
@@ -212,10 +268,12 @@ class TestMainEndToEnd(unittest.TestCase):
         self.assertNotIn("__ALL_FILES__", html)
         self.assertNotIn("__ALL_TEMPLATES__", html)
         self.assertIn("tpl-param", html)  # 模板注册表已注入
-        # kb.json schema 逐字段不变
+        # kb.json 新 schema：文件级信息 + 结构化 blocks（注释/代码分栏、模板参数自包含）
         self.assertEqual(len(kb), 3)  # 1 挑战 + 2 工具
         for entry in kb:
-            self.assertEqual(set(entry), {"id", "title", "tags", "text", "code", "source"})
+            self.assertEqual(set(entry),
+                             {"id", "title", "fname", "isChallenge", "tags",
+                              "source", "header", "blocks", "text", "code"})
             self.assertEqual(entry["source"], "isaac_code")
             self.assertEqual(entry["text"], G.clean_code(entry["code"]))
         ch = next(e for e in kb if e["id"] == "1")

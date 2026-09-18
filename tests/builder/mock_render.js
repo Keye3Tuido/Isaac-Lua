@@ -6,6 +6,7 @@
 //   ⑤ 显示格式：注释头无 -- 前缀（N. 说明）；说明自带数字编号时不叠加块编号
 //   ⑥ 名称标签（.name-badge）：有 name 的块渲染、无 name 的块不渲染
 //   ⑦ 复制全部组装文本保持 --N. 与 l 前缀（控制台粘贴格式不随页面显示改动）
+//   ⑧ 列表搜索：文件/模板id/注释/名称的块级命中，两栏结果（文件标题 + 关键字匹配），清空恢复
 // 运行：node tests/builder/mock_render.js
 'use strict';
 const fs = require('fs');
@@ -71,6 +72,7 @@ const named = {};
 for (const id of ['listView', 'detailView', 'detailTitle', 'subLegend', 'codeArea', 'toast', 'hoverTip',
     'copyCodeBtn', 'downloadBtn', 'buttonGroup', 'challengeCount', 'otherCount',
     'totalChallenges', 'totalOthers', 'challengeList', 'otherList', 'otherSection',
+    'challengeSection', 'searchSection', 'searchList', 'searchCount',
     'noResult', 'searchInput']) {
     named[id] = makeEl('div');
     named[id].id = id;
@@ -226,6 +228,35 @@ check('路由 #c1sII 命中后置块并解除折叠', !!secII && !secII._classes
 locationStub.hash = '#c1sZ';
 vm.runInContext('route()', sandbox);
 check('非法锚点 #c1sZ 回退到列表视图', named.listView.style.display !== 'none');
+
+// ⑧ 列表搜索：文件/模板id/注释/名称的块级命中，两栏（文件标题 + 关键字匹配）
+vm.runInContext('buildListUI()', sandbox);
+const searchHtml = () => named.searchList.innerHTML;
+
+named.searchInput.value = 'tpl-x';
+vm.runInContext('handleSearch()', sandbox);
+check('搜索命中后显示搜索结果区', named.searchSection.style.display !== 'none');
+check('模板id搜索命中 tpl-x 块（锚点 #c1s1）', searchHtml().indexOf('#c1s1') !== -1);
+check('关键字匹配栏显示「模板·tpl-x」', searchHtml().indexOf('模板·') !== -1 && searchHtml().indexOf('tpl-x') !== -1);
+check('搜索计数为 1', named.searchCount.textContent === 1);
+check('搜索时隐藏原“挑战/其他”分区', named.challengeSection.style.display === 'none');
+
+named.searchInput.value = '生成道具700';
+vm.runInContext('handleSearch()', sandbox);
+check('注释搜索命中「生成道具700」块', searchHtml().indexOf('生成道具700') !== -1 && searchHtml().indexOf('#c1s1') !== -1);
+
+named.searchInput.value = '安全包装';
+vm.runInContext('handleSearch()', sandbox);
+check('名称搜索命中「安全包装」块（锚点 #c1s0）', searchHtml().indexOf('安全包装') !== -1 && searchHtml().indexOf('#c1s0') !== -1);
+
+named.searchInput.value = '样例';
+vm.runInContext('handleSearch()', sandbox);
+check('标题搜索命中文件「样例挑战」', searchHtml().indexOf('样例') !== -1 && searchHtml().indexOf('#c1"') !== -1);
+
+named.searchInput.value = '';
+vm.runInContext('handleSearch()', sandbox);
+check('清空搜索后恢复列表并隐藏搜索区',
+    named.searchSection.style.display === 'none' && named.challengeSection.style.display !== 'none');
 
 console.log(failures ? `\n合计 ${failures} 项失败` : '\n全部通过');
 process.exit(failures ? 1 : 0);

@@ -591,6 +591,68 @@ def build_templates_json(registry):
     return out
 
 
+def _block_kb(b, registry, fname):
+    """把展开后的单个块转成 kb.json 块结构（自包含）。
+
+    注释（说明）与代码分开存放；可自定义块（模板引用 / 模板定义 / 块内参数）
+    额外附带 params（参数定义，含默认/说明/性质/类型）、body（含 Pn 占位符的原始体）、
+    commentTpl（含 {Pn} 插值槽的说明原文），下游据此可复现“注释 + 代码双自定义”。
+    """
+    blk = {"num": b["num"], "comment": b["comment"], "code": b["final_code"]}
+    if b.get("region"):
+        blk["region"] = b["region"]
+    meta = b.get("meta") or {}
+    deps = _deps_list(meta, fname, b["num"])
+    if deps:
+        blk["deps"] = deps
+    if meta.get("名称") is not None:
+        blk["name"] = str(meta["名称"])
+    if meta.get("作为模板") and meta.get("模板id"):
+        blk["tplDef"] = str(meta["模板id"])
+    if "tpl" in b:
+        blk["tpl"] = b["tpl"]
+        blk["values"] = b["values"]
+    if "params_def" in b:
+        # 模板定义块与块内参数块：构建期已把 body/commentTpl/params 挂在块上
+        blk["params"] = _params_json(b["params_def"])
+        blk["values"] = b["values"]
+        blk["body"] = b["body"]
+        blk["commentTpl"] = b["comment_tpl"]
+    elif "tpl" in b and b["tpl"] in registry:
+        # 模板引用块：body/说明/参数定义从模板注册表补齐，使单块即可读懂与自定义
+        t = registry[b["tpl"]]
+        blk["params"] = _params_json(t["params"])
+        blk["body"] = t["body"]
+        blk["commentTpl"] = t["说明"]
+    return blk
+
+
+def build_kb_entries(lua_entries, registry):
+    """生成 kb.json 条目：每个文件一份结构化记录。
+
+    条目 = 文件级信息（id/title/fname/isChallenge/tags/source/header）
+         + blocks（每块 num/comment/code 及可选的 region/deps/name/tpl/tplDef/params/values/body/commentTpl）
+         + text（整文件清理代码，剥 `l ` 前缀）/ code（整文件组装代码，控制台粘贴格式）。
+    """
+    kb_entries = []
+    for e in lua_entries:
+        raw = _assemble_raw(e)
+        blocks = [_block_kb(b, registry, e["fname"]) for b in e["blocks"]]
+        kb_entries.append({
+            "id": e["id"],
+            "title": e["title"],
+            "fname": e["fname"],
+            "isChallenge": e["isChallenge"],
+            "tags": ["代码挑战"] if e["isChallenge"] else ["工具代码"],
+            "source": "isaac_code",
+            "header": e["header"],
+            "blocks": blocks,
+            "text": clean_code(raw),
+            "code": raw,
+        })
+    return kb_entries
+
+
 # ========== 生成 index.html ==========
 def _baidu_tj_snippet():
     if not BAIDU_TJ_IDS:
@@ -643,9 +705,9 @@ def build_html(style_css, js, challenge_count, other_count):
             </header>
             <div class="control-row">
                 <div class="tools"><a href="compressor/index.html" class="tool-link">Lua 代码压缩器</a></div>
-                <div class="search-wrap"><input id="searchInput" placeholder="输入编号或挑战名称…" aria-label="搜索挑战文件" oninput="handleSearch()"></div>
+                <div class="search-wrap"><input id="searchInput" placeholder="搜索编号、挑战名称、模板id或注释…" aria-label="搜索文件、模板id或注释" oninput="handleSearch()"></div>
             </div>
-            <div class="list-section">
+            <div class="list-section" id="challengeSection">
                 <div class="list-label"><span>挑战</span><span class="line"></span><span class="list-count" id="challengeCount">{challenge_count}</span></div>
                 <div id="challengeList" class="file-list"></div>
             </div>
@@ -653,7 +715,11 @@ def build_html(style_css, js, challenge_count, other_count):
                 <div class="list-label"><span>其他</span><span class="line"></span><span class="list-count" id="otherCount">{other_count}</span></div>
                 <div id="otherList" class="file-list"></div>
             </div>
-            <div id="noResult" class="no-result" style="display:none">没有匹配的文件</div>
+            <div class="list-section" id="searchSection" style="display:none">
+                <div class="list-label"><span>搜索结果</span><span class="line"></span><span class="list-count" id="searchCount"></span></div>
+                <div id="searchList" class="search-list"></div>
+            </div>
+            <div id="noResult" class="no-result" style="display:none">没有匹配的结果</div>
         </div>
         <div class="contact">联系我<a href="https://k3t.site/?mail">@Keye3Tuido</a><br><a href="https://space.bilibili.com/336467623">Bilibili主页</a></div>
     </div>
@@ -704,17 +770,7 @@ def main():
                         json.dumps(build_templates_json(registry), ensure_ascii=False))
 
     # 输出知识库 JSON（站点同目录发布 kb.json 即可被下载）
-    kb_entries = []
-    for e in lua_entries:
-        raw = _assemble_raw(e)
-        kb_entries.append({
-            "id": e["id"],
-            "title": e["title"],
-            "tags": ["代码挑战"],
-            "text": clean_code(raw),
-            "code": raw,
-            "source": "isaac_code",
-        })
+    kb_entries = build_kb_entries(lua_entries, registry)
     with open("kb.json", "w", encoding="utf-8") as _f:
         json.dump(kb_entries, _f, ensure_ascii=False, indent=1)
     print(f"已生成 kb.json（{len(kb_entries)} 条代码知识库）")
