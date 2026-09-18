@@ -1,199 +1,634 @@
 -- 实用代码合辑
 
---0. 清理所有匿名模组回调。
+--[[
+作为模板: true
+模板id: remove-anon-mod-callbacks
+说明: 清理所有匿名模组回调。
+]]
 l local t,m for _,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end
 
---1. 检测到控制台输入rewind后，执行OnRewind函数。
-l local function OnRewind()end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCallback,I.GetFrameCount;A({},M.MC_PRE_GAME_EXIT,function(_,s)E=s and T()end)A({},M.MC_POST_GAME_STARTED,function()if E==T()then OnRewind()end end)
+--[[
+作为模板: true
+模板id: on-rewind-action
+说明: 检测到控制台输入rewind后，执行OnRewind函数。
+参数定义:
+  P1: {类型: 函数体, 性质: 局部, 默认: '', 说明: 函数体内容，默认空（空占位）}
+]]
+l local function OnRewind()P1 end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCallback,I.GetFrameCount;A({},M.MC_PRE_GAME_EXIT,function(_,s)E=s and T()end)A({},M.MC_POST_GAME_STARTED,function()if E==T()then OnRewind()end end)
 
---2. 长按道具键/副手键1s以上=连续多次按键
-l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACTION_ITEM','ACTION_PILLCARD'},{M={}}A(G.M,M.MC_POST_PLAYER_RENDER,function(_,p)local k,n,a=H(p)G[k]=G[k]or{}n=G[k]for _,b in pairs(K)do a=B[b]if Input.IsActionPressed(a,p.ControllerIndex)then n[a]=n[a]or Isaac.GetTime()else n[a]=nil end end end)A(G.M,M.MC_INPUT_ACTION,function(_,e,_,a)e=e and e:ToPlayer()if e then local k,t,s=H(e),Isaac.GetTime()s=G[k]and G[k][a]if s and s<t then return t>1e3+s end end end,InputHook.IS_ACTION_TRIGGERED)A(G.M,M.MC_POST_ENTITY_REMOVE,function(_,e)G[H(e)]=nil end,EntityType.ENTITY_PLAYER)
+--[[
+作为模板: true
+模板id: long-press-repeat
+说明: |-
+  长按道具键/副手键{P2}以上=连续多次按键。
+参数定义:
+  P1: {类型: 毫秒, 默认: '1e3', 性质: 局部, 说明: "长按判定时长(毫秒)，1秒=1e3"}
+  P2: {类型: 描述, 默认: "1s", 性质: 局部, 说明: "说明文本中的长按时长显示值（1s=1e3毫秒）"}
+]]
+l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACTION_ITEM','ACTION_PILLCARD'},{M={}}A(G.M,M.MC_POST_PLAYER_RENDER,function(_,p)local k,n,a=H(p)G[k]=G[k]or{}n=G[k]for _,b in pairs(K)do a=B[b]if Input.IsActionPressed(a,p.ControllerIndex)then n[a]=n[a]or Isaac.GetTime()else n[a]=nil end end end)A(G.M,M.MC_INPUT_ACTION,function(_,e,_,a)e=e and e:ToPlayer()if e then local k,t,s=H(e),Isaac.GetTime()s=G[k]and G[k][a]if s and s<t then return t>P1+s end end end,InputHook.IS_ACTION_TRIGGERED)A(G.M,M.MC_POST_ENTITY_REMOVE,function(_,e)G[H(e)]=nil end,EntityType.ENTITY_PLAYER)
 
---3. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
+--[[
+作为模板: true
+模板id: blind-permanent
+说明: |-
+  所有玩家永久蒙眼（在矿洞逃亡中不生效）。
+]]
 l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
 
---4. 强制给予玩家：道具534(书包)、3x道具649(甜甜糖梅宝)、5x饰品145(满分考卷)、道具105(六面骰)、道具284(四面骰)
--- 主动道具数量不够时，强制锁门，房间内生成对应道具
--- 格式：c=道具,t/T=饰品(仅保证层数一致),物品={'类别',数量};数量为一时可简化为物品='类别'; 道具id必须>0
-l ITEMS={'c534',{'c649',3},{'t145',5},'c105','c284'}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPlayerType',PlayerType,'Get',Isaac,pairs,EntityType,'Remove',ModCallbacks,{}local A,B,G,J,K,N,O,S,U=I.AddCallback D,B='C'..D,'C'..D:lower()J=H..B K=J..'Num'O=L..B N=function(i,a,b)a,i=table.unpack(type(i)=='table'and i or{i,1})a,b=a:match('(%a)(%d+)')return i,a,tonumber(b)end G=function(_,a,b,p)for _,i in P(ITEMS)do i,a,b=N(i)if a=='c'then while 0<p[K](p,b)do p[O](p,b)end end end end A(T,M.MC_POST_PLAYER_UPDATE,function(a,p,b,c,e,g,h,j,k,l)if F.PLAYER_THESOUL_B~=p[E](p)and not p:HasCurseMistEffect()then c=I.GetItemConfig()e='Trinket'h='Add'for _,i in P(ITEMS)do i,a,b=N(i)if a=='T'then a='t'i=i*2 end if a=='c'then g=Game():GetItemPool()g[O](g,b)g=0 if not p:IsItemQueueEmpty()then g=p.QueuedItem.Item g=g and g['Is'..B](g)and b==g.ID and 1 or 0 end while i>g+p[K](p,b)do if c[J](c,b).Type==ItemType.ITEM_ACTIVE then S=b break else p[h..B](p,b)end end elseif a=='t'then g=H..e l=h..e while 1 do j=i-p[g..'Multiplier'](p,b)if j<=0 then break end k={}for s=0,1 do k[s]=p[g](p,s)p['Try'..L..e](p,k[s])p[l](p,b|((j>1 and s==0 or j>3)and TrinketType.TRINKET_GOLDEN_FLAG or 0))end p:UseActiveItem(C[D..'_SMELTER'],2315)for s=0,1 do p[l](p,k[s],false)end end end end end end)A(T,M.MC_POST_UPDATE,function(d,r,v,s)if S then r=Game():GetRoom()for _,i in P(DoorSlot)do d=r:GetDoor(i)if d then d:Close()end end d=Q.ENTITY_PICKUP v=PickupVariant.PICKUP_COLLECTIBLE s=I.FindByType if 1>#s(d,v,S)then U=U and U+1 or 1 if U>29 then I.Spawn(d,v,S,r:GetCenterPos(),Vector.Zero,nil)end else U=nil end for _,e in P(s(d,v,0))do e:Remove()end end S=nil end)A(T,M.MC_PRE_USE_ITEM,G,C[D..'_D4'])A(T,M.MC_ENTITY_TAKE_DMG,function(d,e,u,f)d=DamageFlag u='DAMAGE_'e=e:ToPlayer()if F.PLAYER_EDEN_B==e[E](e)and 0==f&(d[u..'RED_HEARTS']|d[u..'IV_BAG']|d[u..'FAKE']|d[u..'NO_PENALTIES'])then G(e,e,e,e)end end,Q.ENTITY_PLAYER)
+--[[
+作为模板: true
+模板id: force-give-items
+说明: |-
+  强制给予玩家：{P2}
+  主动道具数量不够时，强制锁门，房间内生成对应道具
+  格式：c=道具,t/T=饰品(仅保证层数一致),物品=｛'类别',数量｝;数量为一时可简化为物品='类别'; 道具id必须>0
+参数定义:
+  P1: {类型: "物品条目列表", 默认: "'c534',{'c649',3},{'t145',5},'c105','c284'", 性质: "全局", 说明: "行首全局变量ITEMS的值，玩家可在控制台手改；'c<id>'=道具、't<id>'=饰品、{'类别',数量}=多件，单件可简写"}
+  P2: {类型: "物品描述", 默认: "道具534(书包)、3x道具649(甜甜糖梅宝)、5x饰品145(满分考卷)、道具105(六面骰)、道具284(四面骰)", 性质: "局部", 说明: "说明文本中的物品描述部分"}
+]]
+l ITEMS={P1}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPlayerType',PlayerType,'Get',Isaac,pairs,EntityType,'Remove',ModCallbacks,{}local A,B,G,J,K,N,O,S,U=I.AddCallback D,B='C'..D,'C'..D:lower()J=H..B K=J..'Num'O=L..B N=function(i,a,b)a,i=table.unpack(type(i)=='table'and i or{i,1})a,b=a:match('(%a)(%d+)')return i,a,tonumber(b)end G=function(_,a,b,p)for _,i in P(ITEMS)do i,a,b=N(i)if a=='c'then while 0<p[K](p,b)do p[O](p,b)end end end end A(T,M.MC_POST_PLAYER_UPDATE,function(a,p,b,c,e,g,h,j,k,l)if F.PLAYER_THESOUL_B~=p[E](p)and not p:HasCurseMistEffect()then c=I.GetItemConfig()e='Trinket'h='Add'for _,i in P(ITEMS)do i,a,b=N(i)if a=='T'then a='t'i=i*2 end if a=='c'then g=Game():GetItemPool()g[O](g,b)g=0 if not p:IsItemQueueEmpty()then g=p.QueuedItem.Item g=g and g['Is'..B](g)and b==g.ID and 1 or 0 end while i>g+p[K](p,b)do if c[J](c,b).Type==ItemType.ITEM_ACTIVE then S=b break else p[h..B](p,b)end end elseif a=='t'then g=H..e l=h..e while 1 do j=i-p[g..'Multiplier'](p,b)if j<=0 then break end k={}for s=0,1 do k[s]=p[g](p,s)p['Try'..L..e](p,k[s])p[l](p,b|((j>1 and s==0 or j>3)and TrinketType.TRINKET_GOLDEN_FLAG or 0))end p:UseActiveItem(C[D..'_SMELTER'],2315)for s=0,1 do p[l](p,k[s],false)end end end end end end)A(T,M.MC_POST_UPDATE,function(d,r,v,s)if S then r=Game():GetRoom()for _,i in P(DoorSlot)do d=r:GetDoor(i)if d then d:Close()end end d=Q.ENTITY_PICKUP v=PickupVariant.PICKUP_COLLECTIBLE s=I.FindByType if 1>#s(d,v,S)then U=U and U+1 or 1 if U>29 then I.Spawn(d,v,S,r:GetCenterPos(),Vector.Zero,nil)end else U=nil end for _,e in P(s(d,v,0))do e:Remove()end end S=nil end)A(T,M.MC_PRE_USE_ITEM,G,C[D..'_D4'])A(T,M.MC_ENTITY_TAKE_DMG,function(d,e,u,f)d=DamageFlag u='DAMAGE_'e=e:ToPlayer()if F.PLAYER_EDEN_B==e[E](e)and 0==f&(d[u..'RED_HEARTS']|d[u..'IV_BAG']|d[u..'FAKE']|d[u..'NO_PENALTIES'])then G(e,e,e,e)end end,Q.ENTITY_PLAYER)
 
---5. 从游戏中移除捐款机
+--[[
+作为模板: true
+模板id: remove-donation-machine
+说明: |-
+  从游戏中移除捐款机
+]]
 l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
 
---6. 从游戏中移除饰品85(业报)。
-l local G,F,b=32768,Isaac.AddCallback,{85}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
+--[[
+作为模板: true
+模板id: remove-trinkets
+说明: |-
+  从游戏中移除饰品{P2}。
+参数定义:
+  P1: {类型: "饰品id列表", 默认: "85", 性质: "局部", 说明: "要移除的饰品id列表"}
+  P2: {类型: "描述", 默认: "85(业报)", 性质: "局部", 说明: "说明文本中的被移除饰品描述"}
+]]
+l local G,F,b=32768,Isaac.AddCallback,{P1}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
 
---7. 每开启新游戏时，在初始房间根据玩家人数n，生成n组多选一道具(87-洛基的角,229-萌死戳的肺,233-小小星球)
-l local V,g,N=Vector,{87,229,233}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game():GetNumPlayers()if not c then x,y=(720-#g*80)/2,(640-n*80)/2 for i=1,n do for j=1,#g do Isaac.Spawn(5,100,g[j],V(x+80*(j-1),y),V.Zero,N):ToPickup().OptionsPickupIndex=i end y=y+80 end end end)
+--[[
+作为模板: true
+模板id: multi-choice-spawn
+说明: |-
+  每开启新游戏时，在初始房间根据玩家人数n，生成n组多选一道具{P2}
+参数定义:
+  P1: {类型: "道具id列表", 默认: "87,229,233", 性质: "局部", 说明: "每组多选一的候选道具id列表"}
+  P2: {类型: "描述", 默认: "(87-洛基的角,229-萌死戳的肺,233-小小星球)", 性质: "局部", 说明: "说明文本中的候选道具描述"}
+]]
+l local V,g,N=Vector,{P1}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game():GetNumPlayers()if not c then x,y=(720-#g*80)/2,(640-n*80)/2 for i=1,n do for j=1,#g do Isaac.Spawn(5,100,g[j],V(x+80*(j-1),y),V.Zero,N):ToPickup().OptionsPickupIndex=i end y=y+80 end end end)
 
---8. 从游戏中移除道具329(鲁多维科科技)和579(英灵剑)
-l local I,C,Y,T,A=Isaac,{329,579},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+--[[
+作为模板: true
+模板id: remove-collectibles
+说明: |-
+  从游戏中移除{P2}
+参数定义:
+  P1: {类型: "道具id列表", 默认: "329,579", 性质: "局部", 说明: "要移除的道具id列表"}
+  P2: {类型: "描述", 默认: "道具329(鲁多维科科技)和579(英灵剑)", 性质: "局部", 说明: "说明文本中的被移除对象描述"}
+]]
+l local I,C,Y,T,A=Isaac,{P1},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
---9. [不适配手柄]禁止玩家暂停游戏、禁止使用控制台(忏悔+不生效)；可使用Esc返回游戏菜单
+--[[
+作为模板: true
+模板id: no-pause-no-console
+说明: |-
+  [不适配手柄]禁止玩家暂停游戏、禁止使用控制台(忏悔+不生效)；可使用Esc返回游戏菜单
+]]
 l local A,B,M,T,O,P=Isaac.AddCallback,ButtonAction,ModCallbacks,{},Options,'PauseOnFocusLost'A(T,M.MC_POST_RENDER,function()O[P]=false for i=1,Game():GetNumPlayers()do local c=Isaac.GetPlayer(i-1).ControllerIndex if Input.IsActionPressed(B.ACTION_MENUBACK,c)then Game():Fadeout(1,2)end end end)A(T,M.MC_INPUT_ACTION,function(_,_,h,b)if b==B.ACTION_CONSOLE or b==B.ACTION_PAUSE then return h==InputHook.GET_ACTION_VALUE and 0 or false end end)A(T,M.MC_PRE_MOD_UNLOAD,function()O[P]=true end)
 
---10. 死亡证明内的道具、任务道具之外的所有道具均被替换为饰品掉落；角色受伤时自动吃掉携带的饰品
+--[[
+作为模板: true
+模板id: eat-trinkets
+说明: |-
+  死亡证明内的道具、任务道具之外的所有道具均被替换为饰品掉落；角色受伤时自动吃掉携带的饰品
+]]
 l local F,G=Isaac.AddCallback,Game()F({},11,function(_,e)e:ToPlayer():UseActiveItem(479,3339)SFXManager():Play(157)end,1)F({},37,function(_,_,v,s)if(v==100 and not Isaac.GetItemConfig():GetCollectible(s):HasTags(1<<15)and G:GetLevel():GetCurrentRoomDesc().Data.Name~='Death Certificate')then return{350,G:GetItemPool():GetTrinket()}end end)
 
---11. 初始给予玩家道具116(9伏特)、9*311(犹大的影子)、356(车载电池)、468(阴影)、619(长子权)。
-l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs{116,{311,9},356,468,619}do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})for _=1,n do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
+--[[
+作为模板: true
+模板id: give-start-collectibles
+说明: |-
+  初始给予玩家{P2}
+参数定义:
+  P1: {类型: "道具列表", 默认: "116,{311,9},356,468,619", 性质: "局部", 说明: "道具id或{id,数量}的列表"}
+  P2: {类型: "物品描述", 默认: "道具116(9伏特)、9*311(犹大的影子)、356(车载电池)、468(阴影)、619(长子权)。", 性质: "局部", 说明: "说明文本中的物品描述部分"}
+]]
+l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs{P1}do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})for _=1,n do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
 
---12. 免疫失忆症、免疫迷途诅咒。
+--[[
+作为模板: true
+模板id: curse-immune
+说明: 免疫失忆症、免疫迷途诅咒。
+]]
 l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(4)end,25)F({},12,function(_,c)return~4&c end)
 
---13. 从游戏中移除符文41(黑符文)、卡牌74(月亮?)和魂石83(该隐的魂石)。
-l local b,Y,F,G={41,74,83},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
+--[[
+作为模板: true
+模板id: remove-cards
+说明: |-
+  从游戏中移除{P2}
+参数定义:
+  P1: {类型: "卡牌符文id列表", 默认: "41,74,83", 性质: "局部", 说明: "要移除的卡牌/符文/魂石id列表"}
+  P2: {类型: "描述", 默认: "符文41(黑符文)、卡牌74(月亮?)和魂石83(该隐的魂石)。", 性质: "局部", 说明: "说明文本中的被移除卡牌/符文/魂石描述"}
+]]
+l local b,Y,F,G={P1},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
 
---14. 从游戏中移除药丸23(我能永远看清)。
-l local b,Y,N,F,G,P,E,L,T={23},true,false,Isaac.AddCallback,Game(),'GetItemPool','GetPillEffect','GetPill',{}F(T,31,function(_,p,o)o=G[P](G)for _,i in pairs(b)do for s=0,3 do if o[E](o,p[L](p,s),p)==i then p:SetPill(s,0)end end end end)F(T,37,function(p,f,v,s,r)p=G[P](G)if v==70 then repeat f=Y for _,i in pairs(b)do if i==p[E](p,s)then f,r=N,G:GetRandomPlayer(Vector.Zero,0):GetPillRNG(REPENTANCE_PLUS and-1 or 0)s=p[L](p,r:GetSeed())r:Next()break end end until f return{v,s}end end)
+--[[
+作为模板: true
+模板id: remove-pills
+说明: |-
+  从游戏中移除药丸{P2}。
+参数定义:
+  P1: {类型: "药丸id列表", 默认: "23", 性质: "局部", 说明: "要移除的药丸id列表"}
+  P2: {类型: "描述", 默认: "23(我能永远看清)", 性质: "局部", 说明: "说明文本中的被移除药丸描述"}
+]]
+l local b,Y,N,F,G,P,E,L,T={P1},true,false,Isaac.AddCallback,Game(),'GetItemPool','GetPillEffect','GetPill',{}F(T,31,function(_,p,o)o=G[P](G)for _,i in pairs(b)do for s=0,3 do if o[E](o,p[L](p,s),p)==i then p:SetPill(s,0)end end end end)F(T,37,function(p,f,v,s,r)p=G[P](G)if v==70 then repeat f=Y for _,i in pairs(b)do if i==p[E](p,s)then f,r=N,G:GetRandomPlayer(Vector.Zero,0):GetPillRNG(REPENTANCE_PLUS and-1 or 0)s=p[L](p,r:GetSeed())r:Next()break end end until f return{v,s}end end)
 
---15. 强制非精英敌人变为指定类型精英怪(“0”和“1”可替换为非负整数表示权重)。
-l local A,I,C={[0]=0,[1]=0,[2]=0,[3]=0,[4]=0,[5]=0,[6]=0,[7]=0,[8]=0,[9]=0,[10]=0,[11]=0,[12]=0,[13]=0,[14]=0,[15]=0,[16]=0,[17]=0,[18]=0,[19]=0,[20]=0,[21]=0,[22]=0,[23]=0,[24]=0,[25]=0},'InitSeed',{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({},ModCallbacks.MC_NPC_UPDATE,function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible()and not e:IsChampion()then e:MakeChampion(e[I],C[e[I]%#C+1])end end)
+--[[
+作为模板: true
+模板id: champion-force
+说明: |-
+  按权重表强制非精英敌人变为指定类型精英怪（26 个权重值对应精英怪类型 id 0..25，0=排除该类型）。{P26}
+参数定义:
+  P0: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型0精英怪权重（0=排除，可替换为非负整数）"}
+  P1: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型1精英怪权重（0=排除，可替换为非负整数）"}
+  P2: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型2精英怪权重（0=排除，可替换为非负整数）"}
+  P3: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型3精英怪权重（0=排除，可替换为非负整数）"}
+  P4: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型4精英怪权重（0=排除，可替换为非负整数）"}
+  P5: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型5精英怪权重（0=排除，可替换为非负整数）"}
+  P6: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型6精英怪权重（0=排除，可替换为非负整数）"}
+  P7: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型7精英怪权重（0=排除，可替换为非负整数）"}
+  P8: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型8精英怪权重（0=排除，可替换为非负整数）"}
+  P9: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型9精英怪权重（0=排除，可替换为非负整数）"}
+  P10: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型10精英怪权重（0=排除，可替换为非负整数）"}
+  P11: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型11精英怪权重（0=排除，可替换为非负整数）"}
+  P12: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型12精英怪权重（0=排除，可替换为非负整数）"}
+  P13: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型13精英怪权重（0=排除，可替换为非负整数）"}
+  P14: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型14精英怪权重（0=排除，可替换为非负整数）"}
+  P15: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型15精英怪权重（0=排除，可替换为非负整数）"}
+  P16: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型16精英怪权重（0=排除，可替换为非负整数）"}
+  P17: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型17精英怪权重（0=排除，可替换为非负整数）"}
+  P18: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型18精英怪权重（0=排除，可替换为非负整数）"}
+  P19: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型19精英怪权重（0=排除，可替换为非负整数）"}
+  P20: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型20精英怪权重（0=排除，可替换为非负整数）"}
+  P21: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型21精英怪权重（0=排除，可替换为非负整数）"}
+  P22: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型22精英怪权重（0=排除，可替换为非负整数）"}
+  P23: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型23精英怪权重（0=排除，可替换为非负整数）"}
+  P24: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型24精英怪权重（0=排除，可替换为非负整数）"}
+  P25: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型25精英怪权重（0=排除，可替换为非负整数）"}
+  P26: {类型: "描述", 默认: "按权重表强制非精英敌人变为指定类型精英怪（表中0和1可替换为非负整数表示权重，0=排除）。", 性质: "局部", 说明: "说明文本末尾的一行文字说明"}
+]]
+l local A,I,C={[0]=P0,[1]=P1,[2]=P2,[3]=P3,[4]=P4,[5]=P5,[6]=P6,[7]=P7,[8]=P8,[9]=P9,[10]=P10,[11]=P11,[12]=P12,[13]=P13,[14]=P14,[15]=P15,[16]=P16,[17]=P17,[18]=P18,[19]=P19,[20]=P20,[21]=P21,[22]=P22,[23]=P23,[24]=P24,[25]=P25},'InitSeed',{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({},ModCallbacks.MC_NPC_UPDATE,function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible()and not e:IsChampion()then e:MakeChampion(e[I],C[e[I]%#C+1])end end)
 
---16. 黏币变为镍币
+--[[
+作为模板: true
+模板id: sticky-to-nickel
+说明: |-
+  黏币变为镍币。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_INIT,function(_,p)if p.SubType==CoinSubType.COIN_STICKYNICKEL then p:Morph(p.Type,p.Variant,CoinSubType.COIN_NICKEL,true)end end,PickupVariant.PICKUP_COIN)
 
---17. 角色吸引硬币
+--[[
+作为模板: true
+模板id: attract-coins
+说明: |-
+  角色吸引硬币。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_UPDATE,function(_,p)local e,l=Game():GetNearestPlayer(p.Position)l=e.Position-p.Position p.Velocity=3*(l:Length()>10 and math.log(l:Length())or 0)*l:Normalized()p.GridCollisionClass=EntityGridCollisionClass.GRIDCOLL_NONE end,PickupVariant.PICKUP_COIN)
 
---18. 非任务道具替换为以下道具之一：道具36(大便)、道具74(25美分)、道具667(稻草人)
-l local I,M,C,A=Isaac,ModCallbacks,{36,74,667}A=I.AddCallback;A({},M.MC_POST_PICKUP_INIT,function(_,p)local s=p.SubType if not I.GetItemConfig():GetCollectible(s):HasTags(ItemConfig.TAG_QUEST)then for _,v in pairs(C)do if v==s then return end end local r=RNG()r:SetSeed(p.InitSeed,35)p:Morph(p.Type,p.Variant,C[r:RandomInt(#C)+1],true,true)end end,PickupVariant.PICKUP_COLLECTIBLE)A({},M.MC_PRE_GET_COLLECTIBLE,function(_,_,_,s)return C[s%#C+1]end)
+--[[
+作为模板: true
+模板id: replace-collectibles
+说明: |-
+  非任务道具替换为以下道具之一：{P2}
+参数定义:
+  P1: {类型: "道具id列表", 默认: "36,74,667", 性质: "局部", 说明: "替换候选道具id列表"}
+  P2: {类型: "描述", 默认: "道具36(大便)、道具74(25美分)、道具667(稻草人)", 性质: "局部", 说明: "说明文本中的替换候选道具描述"}
+]]
+l local I,M,C,A=Isaac,ModCallbacks,{P1}A=I.AddCallback;A({},M.MC_POST_PICKUP_INIT,function(_,p)local s=p.SubType if not I.GetItemConfig():GetCollectible(s):HasTags(ItemConfig.TAG_QUEST)then for _,v in pairs(C)do if v==s then return end end local r=RNG()r:SetSeed(p.InitSeed,35)p:Morph(p.Type,p.Variant,C[r:RandomInt(#C)+1],true,true)end end,PickupVariant.PICKUP_COLLECTIBLE)A({},M.MC_PRE_GET_COLLECTIBLE,function(_,_,_,s)return C[s%#C+1]end)
 
---19. 强制角色为游魂。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_THELOST if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
+--[[
+作为模板: true
+模板id: force-character
+说明: |-
+  强制角色为指定PlayerType。
+参数定义:
+  P1: {类型: "角色枚举", 默认: "PlayerType.PLAYER_THELOST", 性质: "局部", 说明: "PlayerType枚举值"}
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P1 if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
 
---20. 开启当前层、当前维度，所有能打开的红房间
+--[[
+作为模板: true
+模板id: open-floor-red-rooms
+说明: 开启当前层、当前维度，所有能打开的红房间
+]]
 l local S,D,G,E,L,R,T,C,P,O,m,x='SafeGridIndex','Data','GetRoomByIdx','GetRooms',Game():GetLevel(),{}T=L[E](L)C,O=#T,function(r,i,d)i=r[S]d=r[D]and r[D].Doors for j=0,7 do if(not d or d&1==1)then L:MakeRedRoomDoor(i,j)L:UncoverHiddenDoor(i,j)end d=d and d>>1 end R[i]=true r.DisplayFlags=4 end O(L[G](L,L:GetCurrentRoomDesc()[S]))while P~=C do P=C for i=1,C do m=T:Get(i-1)x=m[S]m=L[G](L,x,N)if not R[x]then O(m)end end T=L[E](L)C=#T end L:UpdateVisibility()
 
---21. 固定开启下列彩蛋种子：G_FUEL。
-l local S={SeedEffect.SEED_G_FUEL}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local D,f=Game():GetSeeds()for _,d in pairs(S)do if D:CanAddSeedEffect(d)then D:AddSeedEffect(d)f=true end end if f then Isaac.ExecuteCommand'restart'end end)
+--[[
+作为模板: true
+模板id: seed-fixed
+说明: |-
+  固定开启指定彩蛋种子。
+参数定义:
+  P1: {类型: "彩蛋种子列表", 默认: "SeedEffect.SEED_G_FUEL", 性质: "局部", 说明: "SeedEffect枚举列表"}
+]]
+l local S={P1}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local D,f=Game():GetSeeds()for _,d in pairs(S)do if D:CanAddSeedEffect(d)then D:AddSeedEffect(d)f=true end end if f then Isaac.ExecuteCommand'restart'end end)
 
---22. 角色的下列属性不会超出限定的值（nil表示不做限制）：移速(nil~2.00)；弹速(nil~3.00)
-l local A,M,V,T,E=Isaac.AddCallback,ModCallbacks,{['MoveSpeed']={min=nil,max=2.00,F='SPEED'},['MaxFireDelay']={min=nil,max=nil,F='FIREDELAY'},['Damage']={min=nil,max=nil,F='DAMAGE'},['TearRange']={min=nil,max=nil,F='RANGE'},['ShotSpeed']={min=nil,max=3.00,F='SHOTSPEED'},['Luck']={min=nil,max=nil,F='LUCK'},['SpriteScale']={min=nil,max=nil,F='SIZE'}},{}E=function(p,k,v)local l,r=v.min,v.max if l and l>p[k]then p[k]=l end if r and r<p[k]then p[k]=r end end A(T,M.MC_EVALUATE_CACHE,function(_,p,f)for k,v in pairs(V)do if f==CacheFlag['CACHE_'..v.F]then return E(p,k,v)end end end)A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)for k,v in pairs(V)do E(p,k,v)end end)
+--[[
+作为模板: true
+模板id: stat-cap
+说明: |-
+  角色的下列属性不会超出限定的值（nil表示不做限制）。
+参数定义:
+  P1: {类型: "属性限值表", 默认: "['MoveSpeed']={min=nil,max=2.00,F='SPEED'},['MaxFireDelay']={min=nil,max=nil,F='FIREDELAY'},['Damage']={min=nil,max=nil,F='DAMAGE'},['TearRange']={min=nil,max=nil,F='RANGE'},['ShotSpeed']={min=nil,max=3.00,F='SHOTSPEED'},['Luck']={min=nil,max=nil,F='LUCK'},['SpriteScale']={min=nil,max=nil,F='SIZE'}", 性质: "局部", 说明: "7个属性键的min/max限值表，nil=不限"}
+]]
+l local A,M,V,T,E=Isaac.AddCallback,ModCallbacks,{P1},{}E=function(p,k,v)local l,r=v.min,v.max if l and l>p[k]then p[k]=l end if r and r<p[k]then p[k]=r end end A(T,M.MC_EVALUATE_CACHE,function(_,p,f)for k,v in pairs(V)do if f==CacheFlag['CACHE_'..v.F]then return E(p,k,v)end end end)A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)for k,v in pairs(V)do E(p,k,v)end end)
 
---23. 取消屏幕晃动
+--[[
+作为模板: true
+模板id: no-screen-shake
+说明: |-
+  取消屏幕晃动。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()Game():ShakeScreen(0)end)
 
---24. 角色受到惩罚伤害时,执行Action函数(参数：玩家实体，伤害数值，伤害标签，伤害来源，受伤冷却)
-l local function Action(p,a,f,s,c)end;local D,E=DamageFlag,EntityType Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,f,s,c)e=e:ToPlayer()if e:GetPlayerType()==PlayerType.PLAYER_JACOB_B and s.Type==E.ENTITY_DARK_ESAU or 0<f&(D.DAMAGE_RED_HEARTS|D.DAMAGE_IV_BAG|D.DAMAGE_FAKE|D.DAMAGE_NO_PENALTIES)then return end Action(e,a,f,s,c)end,E.ENTITY_PLAYER)
+--[[
+作为模板: true
+模板id: punish-damage-action
+说明: |-
+  角色受到惩罚伤害时，执行Action函数（参数：玩家实体，伤害数值，伤害标签，伤害来源，受伤冷却）。Action为空占位，由使用方改写函数体。
+参数定义:
+  P1: {类型: 函数体, 性质: 局部, 默认: '', 说明: 函数体内容，默认空（空占位）}
+]]
+l local function Action(p,a,f,s,c)P1 end;local D,E=DamageFlag,EntityType Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,f,s,c)e=e:ToPlayer()if e:GetPlayerType()==PlayerType.PLAYER_JACOB_B and s.Type==E.ENTITY_DARK_ESAU or 0<f&(D.DAMAGE_RED_HEARTS|D.DAMAGE_IV_BAG|D.DAMAGE_FAKE|D.DAMAGE_NO_PENALTIES)then return end Action(e,a,f,s,c)end,E.ENTITY_PLAYER)
 
---25 .实时监测游戏帧率，可使用指令：lua SetTimeScale(数值) 来设置游戏速率(默认1，最小0)。
--- GetTimeScale()可获取{[1]=当前渲染帧倍率,[2]=当前逻辑帧倍率}。
--- 由于监测数据和调控速率之间存在延迟，实际效果与预期效果会有一定偏差。
+--[[
+作为模板: true
+模板id: time-scale-monitor
+说明: |-
+  实时监测游戏帧率，可使用指令：lua SetTimeScale(数值) 来设置游戏速率(默认1，最小0)。GetTimeScale()可获取{[1]=当前渲染帧倍率,[2]=当前逻辑帧倍率}。由于监测数据和调控速率之间存在延迟，实际效果与预期效果会有一定偏差。
+]]
 l local H,I,J,K,M,N,O,P,U,V,X,T,A,B,C,D,E,F,G,L,Q='GetFrameCount',Isaac,1,Game,ModCallbacks,math.max,1,1,1,1,true,{}A=I.AddCallback D=I.GetTime L=K().IsPaused B=I[H]C=K()[H]Q=X E=B()F=C(K())G=D()A(T,M.MC_POST_RENDER,function()local c,r,g,d=D(),B(),C(K())d=c-G G,E,O=c,r,50/d/3*(r-E)if r&1<1 then F,P=g,50/d/3*(g-F)end if J<1 and not L(K())then if J<O then U=U*1.2 elseif J>O then U=N(U/2,.5)end for i=1,U do I.GetRoomEntities()end end end)A(T,M.MC_POST_UPDATE,function()if Q and J>1 and not L(K())then if J>P then V=V*1.2 elseif J<P then V=N(V/2,.5)end Q=false for i=1,V do K():Update()end Q=X end end)function SetTimeScale(v)J=N(tonumber(v)or 1,0)end function GetTimeScale()return{O,P}end
 
---26. 玩家的眼泪未命中实体时，执行Action函数(参数：眼泪实体)。
-l local function Action(t)end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityType,GetPtrHash,ModCallbacks,{}A(T,M.MC_POST_FIRE_TEAR,function(_,e)B[H(e)]=e.SpawnerType==E.ENTITY_PLAYER end)A(T,M.MC_POST_TEAR_UPDATE,function(_,t)local h,m,r,a,b=H(t),math,Game():GetRoom()a=m.max b=m.abs if B[h]then for i=0,r:GetGridSize()-1 do local g,p=r:GetGridEntity(i),r:GetGridPosition(i)if g then local s,e,v=g.State,GridEntityType,g:GetType()if(v==e.GRID_POOP and s~=1e3 or v==e.GRID_TNT and s~=4)then s=t.Position e=a(0,b(s.X-p.X)-20)v=a(0,b(s.Y-p.Y)-20)if m.ceil(t.Size)>=m.sqrt(e*e+v*v)then B[h]=N break end end end end end end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,e)B[H(e)]=N end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)local h=H(e)e=e:ToTear()if B[h]then Action(e)end B[h]=N end,E.ENTITY_TEAR)A(T,M.MC_POST_NEW_ROOM,function(t)t={}for k,v in pairs(B)do if v then t[k]=v end end B=t end)
+--[[
+作为模板: true
+模板id: tear-miss-action
+说明: |-
+  玩家的眼泪未命中实体时，执行Action函数（参数：眼泪实体）。Action为空占位，由使用方改写函数体。
+参数定义:
+  P1: {类型: 函数体, 性质: 局部, 默认: '', 说明: 函数体内容，默认空（空占位）}
+]]
+l local function Action(t)P1 end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},EntityType,GetPtrHash,ModCallbacks,{}A(T,M.MC_POST_FIRE_TEAR,function(_,e)B[H(e)]=e.SpawnerType==E.ENTITY_PLAYER end)A(T,M.MC_POST_TEAR_UPDATE,function(_,t)local h,m,r,a,b=H(t),math,Game():GetRoom()a=m.max b=m.abs if B[h]then for i=0,r:GetGridSize()-1 do local g,p=r:GetGridEntity(i),r:GetGridPosition(i)if g then local s,e,v=g.State,GridEntityType,g:GetType()if(v==e.GRID_POOP and s~=1e3 or v==e.GRID_TNT and s~=4)then s=t.Position e=a(0,b(s.X-p.X)-20)v=a(0,b(s.Y-p.Y)-20)if m.ceil(t.Size)>=m.sqrt(e*e+v*v)then B[h]=N break end end end end end end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,e)B[H(e)]=N end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)local h=H(e)e=e:ToTear()if B[h]then Action(e)end B[h]=N end,E.ENTITY_TEAR)A(T,M.MC_POST_NEW_ROOM,function(t)t={}for k,v in pairs(B)do if v then t[k]=v end end B=t end)
 
---27. 所有预生成道具替换为道具612-迷失游魂
-l local ItemId=612;Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(_,t,v)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then return{t,v,ItemId}end end)
+--[[
+作为模板: true
+模板id: replace-preset-collectible
+说明: 所有预生成道具替换为道具{P2}
+参数定义:
+  P1: {类型: "道具id", 默认: "612", 性质: "局部", 说明: "行首局部变量ItemId的值（内联），预生成道具被替换成的道具id"}
+  P2: {类型: "描述", 默认: "612-迷失游魂", 性质: "局部", 说明: "说明文本中的替换目标道具描述"}
+]]
+l local ItemId=P1;Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(_,t,v)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then return{t,v,ItemId}end end)
 
---28. 每层在初始房间生成1*道具247-好朋友一辈子!,2*道具612-迷失游魂。
---离开房间后道具消失。
-l local Items={247,{612,2}}local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for k,v in pairs(Items)do local c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n*(0<LevelCurse.CURSE_OF_LABYRINTH&Game():GetLevel():GetCurses()and 2 or 1)do I.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,c,I.GetFreeNearPosition(Game():GetRoom():GetCenterPos(),0),Vector.Zero,nil):ToPickup().Timeout=9e9 end end end)
+--[[
+作为模板: true
+模板id: per-floor-spawn-collectibles
+说明: |-
+  每层在初始房间生成{P2}。
+  离开房间后道具消失。
+参数定义:
+  P1: {类型: "道具列表", 默认: "247,{612,2}", 性质: "局部", 说明: "道具id或{id,数量}的列表"}
+  P2: {类型: "描述", 默认: "1*道具247-好朋友一辈子!、2*道具612-迷失游魂", 性质: "局部", 说明: "说明文本中的生成道具描述"}
+]]
+l local Items={P1}local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for k,v in pairs(Items)do local c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n*(0<LevelCurse.CURSE_OF_LABYRINTH&Game():GetLevel():GetCurses()and 2 or 1)do I.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,c,I.GetFreeNearPosition(Game():GetRoom():GetCenterPos(),0),Vector.Zero,nil):ToPickup().Timeout=9e9 end end end)
 
---29. 删除每层的：宝箱房(类型为4)、星象房(类型为24)。
-l local Del={4,24}local D,G,S,T='Data','GetRoomByIdx','SafeGridIndex','Type'Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()local L,C,R,r=Game():GetLevel()C,R=L:GetCurrentRoomDesc(),L:GetRooms()for i=1,#R do r=R:Get(i-1)for k,v in pairs(Del)do if v==r[D][T]then L[G](L,r[S])[D]=C[D]break end end end L:UpdateVisibility()for i=0,8 do r=Game():GetRoom():GetDoor(i)if r then R=L[G](L,r.TargetRoomIndex)[D][T]if R~=r.TargetRoomType then r:SetRoomTypes(C[D][T],R)r:SetLocked(false)end end end end)
+--[[
+作为模板: true
+模板id: del-room-types
+说明: |-
+  删除每层的指定类型房间：{P2}。
+参数定义:
+  P1: {类型: "房间类型列表", 默认: "4,24", 性质: "局部", 说明: "RoomType枚举值列表"}
+  P2: {类型: "描述", 默认: "宝箱房(类型为4)、星象房(类型为24)", 性质: "局部", 说明: "说明文本中的被删除房间类型描述"}
+]]
+l local Del={P1}local D,G,S,T='Data','GetRoomByIdx','SafeGridIndex','Type'Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()local L,C,R,r=Game():GetLevel()C,R=L:GetCurrentRoomDesc(),L:GetRooms()for i=1,#R do r=R:Get(i-1)for k,v in pairs(Del)do if v==r[D][T]then L[G](L,r[S])[D]=C[D]break end end end L:UpdateVisibility()for i=0,8 do r=Game():GetRoom():GetDoor(i)if r then R=L[G](L,r.TargetRoomIndex)[D][T]if R~=r.TargetRoomType then r:SetRoomTypes(C[D][T],R)r:SetLocked(false)end end end end)
 
---30. 每层给予所有玩家1*道具247-好朋友一辈子!,2*道具612-迷失游魂。
-l local Items={247,{612,2}}local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for x=1,Game():GetNumPlayers()do local p,c,n=I.GetPlayer(x-1)for k,v in pairs(Items)do c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n*(0<LevelCurse.CURSE_OF_LABYRINTH&Game():GetLevel():GetCurses()and 2 or 1)do p:AddCollectible(c,I.GetItemConfig():GetCollectible(c).InitCharge)end end end end)
+--[[
+作为模板: true
+模板id: per-floor-give-collectibles
+说明: |-
+  每层给予所有玩家{P2}。
+参数定义:
+  P1: {类型: "道具列表", 默认: "247,{612,2}", 性质: "局部", 说明: "道具id或{id,数量}的列表"}
+  P2: {类型: "描述", 默认: "1*道具247-好朋友一辈子!、2*道具612-迷失游魂", 性质: "局部", 说明: "说明文本中的给予道具描述"}
+]]
+l local Items={P1}local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for x=1,Game():GetNumPlayers()do local p,c,n=I.GetPlayer(x-1)for k,v in pairs(Items)do c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n*(0<LevelCurse.CURSE_OF_LABYRINTH&Game():GetLevel():GetCurses()and 2 or 1)do p:AddCollectible(c,I.GetItemConfig():GetCollectible(c).InitCharge)end end end end)
 
---31. 若未开启鼠标控制功能则显示鼠标位置。
+--[[
+作为模板: true
+模板id: mouse-pos-show
+说明: |-
+  若未开启鼠标控制功能则显示鼠标位置。
+]]
 l Isaac.AddCallback({},2,function(p)if not Options.MouseControl then p=Isaac.WorldToScreen(Input.GetMousePosition(true))Isaac.RenderText('o',p.X-2.2,p.Y-6.4,0,1,1,1)end end)
 
---32. 函数 RandomItems([BlackList]) 返回一个表，包含两个子表：Active和Passive，分别存储随机排序的主动道具和被动道具的道具ID列表。BlackList为可选参数，是一个包含不希望被选择的道具ID的黑名单表。
---道具列表中包含本局已经存在的错误道具。
-l function RandomItems(BlackList)local A,B,C,E,G,T,P,t,c,f,Q={},BlackList or{59},Isaac.GetItemConfig(),'Type','GetCollectible',ItemType,{},-1 while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then Q=T.ITEM_ACTIVE==c[E]and A or T.ITEM_NULL~=c[E]and P or{}table.insert(Q,math.random(#Q+1),i)end end end return{Active=A,Passive=P}end
+--[[
+作为模板: true
+模板id: random-items
+说明: |-
+  函数 RandomItems([BlackList]) 返回一个表，包含两个子表：Active和Passive，分别存储随机排序的主动道具和被动道具的道具ID列表。BlackList为可选参数，是一个包含不希望被选择的道具ID的黑名单表。道具列表中包含本局已经存在的错误道具。
+名称: RandomItems
+参数定义:
+  P1: {类型: "道具id黑名单", 默认: "59", 性质: "局部", 说明: "不希望被选择的道具id列表"}
+]]
+l function RandomItems(BlackList)local A,B,C,E,G,T,P,t,c,f,Q={},BlackList or{P1},Isaac.GetItemConfig(),'Type','GetCollectible',ItemType,{},-1 while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then Q=T.ITEM_ACTIVE==c[E]and A or T.ITEM_NULL~=c[E]and P or{}table.insert(Q,math.random(#Q+1),i)end end end return{Active=A,Passive=P}end
 
---33. 函数 D4(EntityPlayer[,BlackList]) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。该函数依赖函数原型 RandomItems([BlackList:table]) -> {Active={},Passive={}}。
-l function D4(EntityPlayer,BlackList)local B,C,N,T,p,m,t,G,H='Collectible',Isaac.GetItemConfig(),0,RandomItems(BlackList or{59,584}),EntityPlayer,0,-1 G,H='Get'..B,'Add'..B while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do while p['Has'..B](p,i,true)do N=N+1 p['Remove'..B](p,i,true)end end if N>0 then t=T.Active[1]p[H](p,t,C[G](C,t).InitCharge,false)t=T.Passive for i=2,N do m=m%#t+1 p[H](p,t[m],0,false)end end end
+--[[
+作为模板: true
+模板id: d4-reroll
+说明: |-
+  函数 D4(EntityPlayer[,BlackList]) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。
+依赖: RandomItems
+参数定义:
+  P1: {类型: "道具id黑名单", 默认: "59,584", 性质: "局部", 说明: "不希望被选择的道具id列表"}
+]]
+l function D4(EntityPlayer,BlackList)local B,C,N,T,p,m,t,G,H='Collectible',Isaac.GetItemConfig(),0,RandomItems(BlackList or{P1}),EntityPlayer,0,-1 G,H='Get'..B,'Add'..B while C[G](C,t)do t=t-1 end for i=t+1,#C[G..'s'](C)-1 do while p['Has'..B](p,i,true)do N=N+1 p['Remove'..B](p,i,true)end end if N>0 then t=T.Active[1]p[H](p,t,C[G](C,t).InitCharge,false)t=T.Passive for i=2,N do m=m%#t+1 p[H](p,t[m],0,false)end end end
 
---34. 函数 RandomTrinkets([BlackList]) 返回一个表,存储随机排序的饰品ID列表。BlackList为可选参数，是一个包含不希望被选择的饰品ID的黑名单表。
-l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{},Isaac.GetItemConfig(),'GetTrinket',-1 for i=1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then table.insert(A,math.random(#A+1),i)end end end return A end
+--[[
+作为模板: true
+模板id: random-trinkets
+说明: |-
+  函数 RandomTrinkets([BlackList]) 返回一个表，存储随机排序的饰品ID列表。BlackList为可选参数，是一个包含不希望被选择的饰品ID的黑名单表。
+名称: RandomTrinkets
+参数定义:
+  P1: {类型: "饰品id黑名单", 默认: "", 性质: "局部", 说明: "不希望被选择的饰品id列表"}
+]]
+l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{P1},Isaac.GetItemConfig(),'GetTrinket',-1 for i=1,#C[G..'s'](C)-1 do c=C[G](C,i)if c then f=true for j=1,#B do if B[j]==i then f=false break end end if f then table.insert(A,math.random(#A+1),i)end end end return A end
 
---35. 函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。该函数依赖函数原型 RandomTrinkets([BlackList:table]) -> {}。
-l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{64,75,180}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
+--[[
+作为模板: true
+模板id: d4-trinket-reroll
+说明: |-
+  函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。
+依赖: RandomTrinkets
+参数定义:
+  P1: {类型: "饰品id黑名单", 默认: "64,75,180", 性质: "局部", 说明: "不希望被选择的饰品id列表"}
+]]
+l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetItemConfig(),0,RandomTrinkets(BlackList or{P1}),EntityPlayer,0 G='Get'..B for i=1,#C[G..'s'](C)-1 do while p['Has'..B](p,i)do N=N+1 p['TryRemove'..B](p,i)end end for i=1,N do m=m%#T+1 p['Add'..B](p,T[m],false)p:UseActiveItem(CollectibleType.COLLECTIBLE_SMELTER,3339)end end
 
---36. 每WaitFrames(默认90)帧随机BrokenKeys(默认3,最多12)个按键失灵。
--- 可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
--- 可在控制台输入lua WaitFrames = 数值 来调整失灵按键刷新间隔的帧数。
--- GetBrokenKeys()可获取顺序表格，包含当前失灵的按键名称字符串。
-l BrokenKeys=3;WaitFrames=90;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCount',ModCallbacks,{'LEFT','RIGHT','UP','DOWN','SHOOTLEFT','SHOOTRIGHT','SHOOTUP','SHOOTDOWN','BOMB','ITEM','PILLCARD','DROP'},{}A(T,M.MC_POST_UPDATE,function()local g,t,p=Game()t=g[D](g)if t<C or t>=C+WaitFrames then for i=#N,1,-1 do p=Random()%i+1 N[i],N[p]=N[p],N[i]end C=t end end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)for i=1,BrokenKeys do if a==ButtonAction['ACTION_'..N[i]]then return h==InputHook.GET_ACTION_VALUE and 0 end end end)function GetBrokenKeys()return table.move(N,1,BrokenKeys,1,{})end
+--[[
+作为模板: true
+模板id: broken-keys
+说明: |-
+  每WaitFrames(默认{P2})帧随机BrokenKeys(默认{P1},最多12)个按键失灵。
+  可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
+  可在控制台输入lua WaitFrames = 数值 来调整失灵按键刷新间隔的帧数。
+  GetBrokenKeys()可获取顺序表格，包含当前失灵的按键名称字符串。
+参数定义:
+  P1: {类型: "整数", 默认: "3", 性质: "全局", 说明: "行首全局变量BrokenKeys，失灵按键数量(最多12)"}
+  P2: {类型: "整数", 默认: "90", 性质: "全局", 说明: "行首全局变量WaitFrames，失灵刷新间隔帧数"}
+]]
+l BrokenKeys=P1;WaitFrames=P2;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCount',ModCallbacks,{'LEFT','RIGHT','UP','DOWN','SHOOTLEFT','SHOOTRIGHT','SHOOTUP','SHOOTDOWN','BOMB','ITEM','PILLCARD','DROP'},{}A(T,M.MC_POST_UPDATE,function()local g,t,p=Game()t=g[D](g)if t<C or t>=C+WaitFrames then for i=#N,1,-1 do p=Random()%i+1 N[i],N[p]=N[p],N[i]end C=t end end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)for i=1,BrokenKeys do if a==ButtonAction['ACTION_'..N[i]]then return h==InputHook.GET_ACTION_VALUE and 0 end end end)function GetBrokenKeys()return table.move(N,1,BrokenKeys,1,{})end
 
---37. 将玩家的输入延迟15帧（约0.5秒），可在控制台输入lua Lag = 数值 来调整延迟帧数。
-l Lag=15 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
+--[[
+作为模板: true
+模板id: input-lag
+说明: |-
+  将玩家的输入延迟{P1}帧（约{P2}），可在控制台输入lua Lag = 数值 来调整延迟帧数。
+参数定义:
+  P1: {类型: "整数", 默认: "15", 性质: "全局", 说明: "行首全局变量Lag，延迟帧数"}
+  P2: {类型: "描述", 默认: "0.5秒", 性质: "局部", 说明: "说明文本中的延迟秒数显示值（15帧÷30fps=0.5秒）"}
+]]
+l Lag=P1 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
 
---38. 将眼泪替换为混沌卡(CHAOS_CARD)/还可替换为橡皮擦(ERASER)。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_UPDATE,function(v,t)v=TearVariant.CHAOS_CARD if t.Variant~=v and t.SpawnerType==EntityType.ENTITY_PLAYER then t:ChangeVariant(v)end end)
+--[[
+作为模板: true
+模板id: tear-variant-force
+说明: |-
+  将眼泪强制替换为指定TearVariant。
+参数定义:
+  P1: {类型: "眼泪变种枚举", 默认: "TearVariant.CHAOS_CARD", 性质: "局部", 说明: "TearVariant枚举值"}
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_UPDATE,function(v,t)v=P1 if t.Variant~=v and t.SpawnerType==EntityType.ENTITY_PLAYER then t:ChangeVariant(v)end end)
 
---39. 按下"="键，展示所有实体和障碍物信息。
+--[[
+作为模板: true
+模板id: entity-grid-inspector
+说明: 按下"="键，展示所有实体和障碍物信息。
+]]
 l local a,z,b,c,d,I,j,k,l=table.insert,string.format,pairs,KColor,Vector,Isaac,Font(),{}j:Load('font/terminus.fnt')I.AddCallback({},ModCallbacks.MC_POST_RENDER,function(f,g,h,y)f=Game()g=f:GetRoom()h=function(e)e=I.WorldToScreen(e)if g:IsMirrorWorld()then e.X=I.GetScreenWidth()-e.X end return e end for i=1,f:GetNumPlayers()do if not Game():IsPaused()and Input.IsButtonTriggered(Keyboard.KEY_EQUAL,I.GetPlayer(i-1).ControllerIndex)then l=not l break end end if l then for _,e in b(I.GetRoomEntities())do f=e.InitSeed y=e.SubType a(k,{s=z('%d.%d.%d',e.Type,e.Variant,y>1<<31 and y-(1<<32)or y),p=h(e.Position),c=c(((f>>16)&255)/255,((f>>8)&255)/255,(f&255)/255,1.5)})end for i=0,g:GetGridSize()-1 do f=g:GetGridEntity(i)if(f)then a(k,{s=z('%d.%d(%d)',f:GetType(),f:GetVariant(),f.State),p=h(g:GetGridPosition(i)),c=c(1,1,1,.3)})end end h={}for _,e in b(k)do f=(e.p.X//15)..','..(e.p.Y//15)h[f]=h[f]or{}a(h[f],e)end for _,e in b(h)do f=d.Zero for _,i in b(e)do f=f+i.p end f=f/#e g=1.25*(1-#e)for _,i in b(e)do y=d(f.X,f.Y+g)j:DrawStringScaled(i.s,y.X-j:GetStringWidth(i.s)/8,y.Y-j:GetBaselineHeight()/8,.25,.25,i.c)g=g+2.5 end end k={}end end)
 
---40. 玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数(参数：玩家实体)。
---不兼容拉撒路的绷带、拉撒路的魂石
-l function OnHit(p)end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)
+--[[
+作为模板: true
+模板id: on-hit-detect
+说明: |-
+  玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数（参数：玩家实体）。OnHit为空占位，由下游代码重定义。不兼容拉撒路的绷带、拉撒路的魂石。
+参数定义:
+  P1: {类型: 函数体, 性质: 局部, 默认: '', 说明: 函数体内容，默认空（空占位）}
+]]
+l function OnHit(p)P1 end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)
 
---41. 玩家永久飞行。
+--[[
+作为模板: true
+模板id: fly-permanent
+说明: |-
+  玩家永久飞行。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)p.CanFly=true e=CollectibleType.COLLECTIBLE_BIBLE p=p:GetEffects()if not p:HasCollectibleEffect(e)then p:AddCollectibleEffect(e)end end,CacheFlag.CACHE_FLYING)
 
---42. 在不锁定成就的游戏中输入这串代码，可获得1000个伊甸代币。
-l local c,A,B,T,M,Y,W=Game,Isaac,ModCallbacks.MC_POST_UPDATE,{}Y=function()M.state=M.map[M.state]()or M.state end W=A.ExecuteCommand M={state=0,map={[0]=function()W'challenge 0'return 1 end,[1]=function()W'restart 0'return 2 end,[2]=function()W'stage 8'return 3 end,[3]=function(l)l=c():GetLevel()l:ChangeRoom(l:GetRooms():Get(l:GetLastBossRoomListIndex()).SafeGridIndex)return 4 end,[4]=function(a,b)A.RemoveCallback(T,B,Y)for _=1,1e3 do c():GetRoom():TriggerClear()end c():FinishChallenge()c():Fadeout(9,2)return 5 end}}A.AddCallback(T,B,Y)
+--[[
+作为模板: true
+模板id: gain-eden-tokens
+说明: 在不锁定成就的游戏中输入这串代码，可获得{P2}个伊甸代币。
+参数定义:
+  P1: {类型: "数值", 默认: "1e3", 性质: "局部", 说明: "触发房间清空的次数（即获得的伊甸代币数量），1000=1e3"}
+  P2: {类型: "描述", 默认: "1000", 性质: "局部", 说明: "说明文本中的伊甸代币数量显示值（1000=1e3）"}
+]]
+l local c,A,B,T,M,Y,W=Game,Isaac,ModCallbacks.MC_POST_UPDATE,{}Y=function()M.state=M.map[M.state]()or M.state end W=A.ExecuteCommand M={state=0,map={[0]=function()W'challenge 0'return 1 end,[1]=function()W'restart 0'return 2 end,[2]=function()W'stage 8'return 3 end,[3]=function(l)l=c():GetLevel()l:ChangeRoom(l:GetRooms():Get(l:GetLastBossRoomListIndex()).SafeGridIndex)return 4 end,[4]=function(a,b)A.RemoveCallback(T,B,Y)for _=1,P1 do c():GetRoom():TriggerClear()end c():FinishChallenge()c():Fadeout(9,2)return 5 end}}A.AddCallback(T,B,Y)
 
---43. 强制角色副手道具为道具485（掰弯的硬币）。
-l POCKET=485;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p,s)c=POCKET s=ActiveSlot.SLOT_POCKET if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s)end end)
+--[[
+作为模板: true
+模板id: force-pocket-active
+说明: 强制角色副手道具为道具{P2}。
+参数定义:
+  P1: {类型: "道具id", 默认: "485", 性质: "全局", 说明: "行首全局变量POCKET，副手主动道具id"}
+  P2: {类型: "描述", 默认: "485（掰弯的硬币）", 性质: "局部", 说明: "说明文本中的副手道具描述"}
+]]
+l POCKET=P1;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p,s)c=POCKET s=ActiveSlot.SLOT_POCKET if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s)end end)
 
---44. 辨认传送胶囊。
+--[[
+作为模板: true
+模板id: teleport-pill-reveal
+说明: |-
+  辨认传送胶囊。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
 
---45. 从游戏中移除可绕过眼泪输出的道具
-l local I,C,Y,T,A=Isaac,{52,68,114,118,152,168,244,329,399,579,640,643,678,696},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+--[[
+模板: remove-collectibles
+参数:
+  P1: "52,68,114,118,152,168,244,329,399,579,640,643,678,696"
+  P2: "可绕过眼泪输出的道具"
+]]
 
---46. 移除所有绕过蒙眼输出的道具
-l local I,C,Y,T,A=Isaac,{360,399,640,643,680,696,698},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+--[[
+模板: remove-collectibles
+参数:
+  P1: "360,399,640,643,680,696,698"
+  P2: "所有绕过蒙眼输出的道具"
+]]
 
---47. 游戏锁定成就。
+--[[
+作为模板: true
+模板id: lock-achievements
+说明: |-
+  游戏锁定成就。
+]]
 l Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end)
 
---48. 达摩克里斯之剑永不落下。
+--[[
+作为模板: true
+模板id: damocles-never-fall
+说明: 达摩克里斯之剑永不落下。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)f.State=1 end,FamiliarVariant.DAMOCLES)
 
---49. 保持致幻层数为0。
+--[[
+作为模板: true
+模板id: no-hallucination-stack
+说明: 保持致幻层数为0。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(a,p,b)a=CollectibleType.COLLECTIBLE_WAVY_CAP b=NullItemID.ID_WAVY_CAP_1 p=p:GetEffects()p:RemoveCollectibleEffect(a,p:GetCollectibleEffectNum(a))p:RemoveNullEffect(b,p:GetNullEffectNum(b))end)
 
---50. 所有天使/恶魔房都转化为天使房。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()Game():GetLevel():InitializeDevilAngelRoom(true,false)end)
+--[[
+作为模板: true
+模板id: angel-devil-convert
+说明: |-
+  所有天使/恶魔房都转化为指定类型房间。P1=true、P2=false转化为天使房；P1=false、P2=true转化为恶魔房。
+参数定义:
+  P1: {类型: "布尔", 默认: "true", 性质: "局部", 说明: "InitializeDevilAngelRoom第1参"}
+  P2: {类型: "布尔", 默认: "false", 性质: "局部", 说明: "InitializeDevilAngelRoom第2参"}
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()Game():GetLevel():InitializeDevilAngelRoom(P1,P2)end)
 
---51. 所有天使/恶魔房都转化为恶魔房。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()Game():GetLevel():InitializeDevilAngelRoom(false,true)end)
-
---52. 达摩克里斯之剑立刻落下。
+--[[
+作为模板: true
+模板id: damocles-fall-now
+说明: 达摩克里斯之剑立刻落下。
+]]
 l for _,v in pairs(Isaac.FindByType(EntityType.ENTITY_FAMILIAR,FamiliarVariant.DAMOCLES))do v:ToFamiliar().State=2 end
 
---53. 立即结束本局游戏，并不影响连胜进度。
+--[[
+作为模板: true
+模板id: finish-run-keep-streak
+说明: 立即结束本局游戏，并不影响连胜进度。
+]]
 l Game():FinishChallenge()Game():Fadeout(9,2)
 
---54. 游戏卡顿3秒。
-l local A,B=Isaac.GetTime B=A()repeat until A()-B>3e3
+--[[
+作为模板: true
+模板id: freeze-game
+说明: 游戏卡顿{P2}。
+参数定义:
+  P1: {类型: "毫秒", 默认: "3e3", 性质: "局部", 说明: "卡顿时长（毫秒），3秒=3e3"}
+  P2: {类型: "描述", 默认: "3秒", 性质: "局部", 说明: "说明文本中的卡顿时长显示值（3秒=3e3毫秒）"}
+]]
+l local A,B=Isaac.GetTime B=A()repeat until A()-B>P1
 
---55. 代码状态机,每秒30帧。初态为state=0,map中的key为状态值(非nil、非false);value是一个函数,表示当前状态下执行的行为。返回值为下一个状态值,若返回nil或false则保持当前状态不变。
-l local M={state=0,map={[0]=function()end}}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()M.state=M.map[M.state]()or M.state end)
+--[[
+作为模板: true
+模板id: state-machine
+说明: |-
+  代码状态机，每秒30帧。初态为state=0，map中的key为状态值(非nil、非false)；value是一个函数，表示当前状态下执行的行为。返回值为下一个状态值，若返回nil或false则保持当前状态不变。
+参数定义:
+  P1: {类型: 状态表, 性质: 局部, 默认: '[0]=function()end', 说明: "map 表内容：key=状态值，value=该状态执行的行为函数"}
+]]
+l local M={state=0,map={P1}}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()M.state=M.map[M.state]()or M.state end)
 
---56. 连胜次数增加1000次。
-l for _=1,1e3 do Game():End(0)end
+--[[
+作为模板: true
+模板id: add-win-streak
+说明: 连胜次数增加{P2}次。
+参数定义:
+  P1: {类型: "数值", 默认: "1e3", 性质: "局部", 说明: "增加的连胜次数，1000=1e3"}
+  P2: {类型: "描述", 默认: "1000", 性质: "局部", 说明: "说明文本中的连胜次数显示值（1000=1e3）"}
+]]
+l for _=1,P1 do Game():End(0)end
 
---57. 玩家拾取非任务道具时，自动触发道具706-无底坑效果。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(i,p)i=p.QueuedItem.Item if not p:IsItemQueueEmpty()and i:IsCollectible()and not i:HasTags(ItemConfig.TAG_QUEST)then p:UseActiveItem(706)end end)
+--[[
+作为模板: true
+模板id: pickup-trigger-active
+说明: 玩家拾取非任务道具时，自动触发道具{P2}效果。
+参数定义:
+  P1: {类型: "道具id", 默认: "706", 性质: "局部", 说明: "拾取非任务道具时触发使用的主动道具id"}
+  P2: {类型: "描述", 默认: "706-无底坑", 性质: "局部", 说明: "说明文本中的触发道具描述"}
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(i,p)i=p.QueuedItem.Item if not p:IsItemQueueEmpty()and i:IsCollectible()and not i:HasTags(ItemConfig.TAG_QUEST)then p:UseActiveItem(P1)end end)
 
---58. 角色的面板属性发生轮换：
--- 控制台输入lua STATS_SWITCH='123456'可以指定轮换次序，输入lua STATS_SWITCH=nil 可以取消轮换次序
--- 如：STATS_SWITCH='341265' 表示将属性面板从上到下，依次替换为第3、4、1、2、6、5个属性，即：
--- 移速(1) <-> 攻击(3)
--- 射程(4) <-> 射速(2)
--- 弹速(5) <-> 幸运(6)
-l STATS_SWITCH='341265'local A,B,C,D,E,F,G,H,I,J,Z,Y,X,W,V=Isaac,ModCallbacks.MC_EVALUATE_CACHE,CacheFlag,'MoveSpeed','MaxFireDelay','Damage','TearRange','ShotSpeed','Luck',ipairs Z=A.AddCallback Y=A.RemoveCallback X=function(p)p:AddCacheFlags(C.CACHE_ALL)p:EvaluateItems()end W={{k=D,f=C.CACHE_SPEED,b=-1,i=function(p,i)p[D]=i end,o=function(p)return p[D]end},{k=E,f=C.CACHE_FIREDELAY,b=0,i=function(p,i)p[E]=30/i-1 end,o=function(p)return 30/(p[E]+1)end},{k=F,f=C.CACHE_DAMAGE,b=0,i=function(p,i)p[F]=i end,o=function(p)return p[F]end},{k=G,f=C.CACHE_RANGE,b=0,i=function(p,i)p[G]=40*i end,o=function(p)return p[G]/40 end},{k=H,f=C.CACHE_SHOTSPEED,b=0,i=function(p,i)p[H]=i end,o=function(p)return p[H]end},{k=I,f=C.CACHE_LUCK,b=-1/0,i=function(p,i)p[I]=i end,o=function(p)return p[I]end}}Z({},B,function(a,p,t,f)t=STATS_SWITCH if t and not V then V=p a={}f=function(_,e,h)for _,v in J(W)do if h==v.f then a[v.k]=v.o(e)v.i(e,v.b)end end end Z(a,B,f)X(p)Y(a,B,f)f=function(_,e,h)for k,v in J(W)do if h==v.f then v.i(e,a[W[tonumber(string.sub(t,k,k))].k])end end end Z(a,B,f)X(p)Y(a,B,f)V=nil end end)
+--[[
+作为模板: true
+模板id: stats-switch
+说明: |-
+  角色的面板属性发生轮换：
+  控制台输入lua STATS_SWITCH='123456'可以指定轮换次序，输入lua STATS_SWITCH=nil 可以取消轮换次序
+  {P2}
+参数定义:
+  P1: {类型: "排列串", 默认: "'341265'", 性质: "全局", 说明: "行首全局变量STATS_SWITCH，6位排列串，nil=取消轮换"}
+  P2: {类型: "描述", 默认: "如：STATS_SWITCH='341265' 表示将属性面板从上到下，依次替换为第3、4、1、2、6、5个属性，即：\n移速(1) <-> 攻击(3)\n射程(4) <-> 射速(2)\n弹速(5) <-> 幸运(6)", 性质: "局部", 说明: "说明文本中的排列串示例与含义描述，与P1排列串联动"}
+]]
+l STATS_SWITCH=P1 local A,B,C,D,E,F,G,H,I,J,Z,Y,X,W,V=Isaac,ModCallbacks.MC_EVALUATE_CACHE,CacheFlag,'MoveSpeed','MaxFireDelay','Damage','TearRange','ShotSpeed','Luck',ipairs Z=A.AddCallback Y=A.RemoveCallback X=function(p)p:AddCacheFlags(C.CACHE_ALL)p:EvaluateItems()end W={{k=D,f=C.CACHE_SPEED,b=-1,i=function(p,i)p[D]=i end,o=function(p)return p[D]end},{k=E,f=C.CACHE_FIREDELAY,b=0,i=function(p,i)p[E]=30/i-1 end,o=function(p)return 30/(p[E]+1)end},{k=F,f=C.CACHE_DAMAGE,b=0,i=function(p,i)p[F]=i end,o=function(p)return p[F]end},{k=G,f=C.CACHE_RANGE,b=0,i=function(p,i)p[G]=40*i end,o=function(p)return p[G]/40 end},{k=H,f=C.CACHE_SHOTSPEED,b=0,i=function(p,i)p[H]=i end,o=function(p)return p[H]end},{k=I,f=C.CACHE_LUCK,b=-1/0,i=function(p,i)p[I]=i end,o=function(p)return p[I]end}}Z({},B,function(a,p,t,f)t=STATS_SWITCH if t and not V then V=p a={}f=function(_,e,h)for _,v in J(W)do if h==v.f then a[v.k]=v.o(e)v.i(e,v.b)end end end Z(a,B,f)X(p)Y(a,B,f)f=function(_,e,h)for k,v in J(W)do if h==v.f then v.i(e,a[W[tonumber(string.sub(t,k,k))].k])end end end Z(a,B,f)X(p)Y(a,B,f)V=nil end end)
 
---59. 强制在鼠标位置生成指定类型、变种、状态的障碍物。
--- 需要在控制台指定 TYPE,VARIANT,STATE的值，如在控制台输入 lua TYPE,VARIANT,STATE=18,2,1 后，再输入下面的指令，会在鼠标位置生成一个打开的会员商店门。
+--[[
+作为模板: true
+模板id: grid-spawn-at-mouse
+说明: |-
+  强制在鼠标位置生成指定类型、变种、状态的障碍物。
+  需要在控制台指定 TYPE,VARIANT,STATE的值，如在控制台输入 lua TYPE,VARIANT,STATE=18,2,1 后，再输入下面的指令，会在鼠标位置生成一个打开的会员商店门。
+]]
 l local c,d,a,r,b=Isaac,Vector,Input.GetMousePosition(true),Game():GetRoom()b=c.WorldToScreen(a)a=r:IsMirrorWorld()and d(a.X-2*c.ScreenToWorldDistance(b-c.WorldToRenderPosition(d(320,240))).X,a.Y)or a r:RemoveGridEntity(r:GetGridIndex(a),0,false)r:Update()a=c.GridSpawn(TYPE,0,a,true)if a then a:SetVariant(VARIANT)a:Init(a.Desc.SpawnSeed)a.State=STATE end
+
+
+--[[
+作为模板: true
+模板id: restart-game
+说明: |-
+  重开一局新游戏。
+]]
+l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
+
+--[[
+作为模板: true
+模板id: restart-as-character
+说明: |-
+  以指定角色{P1}重开一局新游戏。
+参数定义:
+  P1: {类型: "角色枚举", 性质: "局部", 默认: "PlayerType.PLAYER_JUDAS_B", 说明: "PlayerType枚举表达式；示例：PlayerType.PLAYER_JUDAS_B、PlayerType.PLAYER_KEEPER_B"}
+]]
+l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..P1)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
+
+--[[
+作为模板: true
+模板id: pool-blacklist
+说明: 抽取道具时不再抽取{P2}
+参数定义:
+  P1: {类型: 道具id列表, 默认: "360,698", 性质: 局部, 说明: 不再抽取的道具id列表（加入房间黑名单）}
+  P2: {类型: 描述, 默认: "淫魔和作孽双子", 性质: 局部, 说明: 说明文本中的道具描述}
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_PRE_GET_COLLECTIBLE,function()for _,c in pairs{P1}do Game():GetItemPool():AddRoomBlacklist(c)end end)
+
+--[[
+作为模板: true
+模板id: door-id-map
+说明: 提供全局接口用于获取门的唯一编号。
+]]
+l local a,S=GetPtrHash,{{0,1,2,28},{0,nil,2,nil},{nil,1,nil,28},{0,1,2,55,27,nil,29,nil},{nil,1,nil,55},{0,1,4,28,nil,3,nil,30},{0,nil,4,nil},{0,1,4,55,27,3,31,57},{2,28,4,55,27,3,31,57},{0,1,2,55,27,30,31,57},{0,1,4,28,29,3,31,57},{0,1,4,55,27,3,29,30}}function GetDoorId(i,s,r,d)if not d or d<0 then d=0 end return 2*(i%13)+27*(i//13)+S[s][r+1]+d*1e3 end function GetDim()local b=Game():GetLevel()local c=b:GetCurrentRoomIndex()for d=0,2 do if a(b:GetRoomByIdx(c,d))==a(b:GetRoomByIdx(c,-1))then return d end end end
+
+--[[
+作为模板: true
+模板id: curse-immune-quad
+说明: 免疫失忆症、免疫???、免疫迷途诅咒、免疫混乱诅咒。
+]]
+l local A,M,C,P,T=Isaac.AddCallback,ModCallbacks,LevelCurse,PillEffect,{}A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_THE_LOST)end,P.PILLEFFECT_AMNESIA)A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_MAZE)end,P.PILLEFFECT_QUESTIONMARK)A(T,M.MC_POST_CURSE_EVAL,function(_,c)return~(C.CURSE_OF_THE_LOST|C.CURSE_OF_MAZE)&c end)
 
 --.

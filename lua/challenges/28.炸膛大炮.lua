@@ -4,40 +4,87 @@
 
 ---- 代码效果 ----
 
---0. 前置功能性代码：避免代码污染和重复输入问题;
---默认锁定游戏成就;
---游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果;
---提供接口: CLM()删除匿名回调, MEC()包装报错模组, DEMEC()撤销对报错模组的包装
-l local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end --[[ 包装报错模组 ]]MEC()function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end end --[[ 清理匿名模组回调,预防代码污染 ]]CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end) --[[ 自动清理回调 ]] Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end) --[[ 游戏锁定成就 ]]
+--===--
+--[[
+模板: safe-wrap-mec
+名称: 安全包装
+]]
 
---1. 玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数(参数：玩家实体)。
---不兼容拉撒路的绷带、拉撒路的魂石
-l function OnHit(p)end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)A(T,M.MC_POST_NEW_ROOM,function(t)t={}for k,v in pairs(B)do if v then t[k]=v end B=t end end)
+--[[
+说明: 启用安全包装。
+依赖: [安全包装]
+]]
+l MEC()
 
---2. 有Fatal(默认50)%概率的房间，玩家受伤（无敌帧被重置）即死。这些房间内玩家攻击力翻倍。
---依赖代码1.
-l Fatal=50;local B,C,I,M,S,G,R,L,D,K,A=Sprite(),CacheFlag.CACHE_DAMAGE,Isaac,ModCallbacks,'!!!'B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=Vector.One*9 B.Color=Color(0,0,0,.3,.5)A=I.AddCallback;A({},M.MC_POST_RENDER,function(d,e,f)G=Game()L=G:GetLevel()e=DoorVariant D=function(i)return L:GetRoomByIdx(i).DecorationSeed%100<Fatal end K=D(L:GetCurrentRoomIndex())R=G:GetRoom()for i=0,7 do d=R:GetDoor(i)f=d and d:GetVariant()if d and e.DOOR_HIDDEN~=f and e.DOOR_UNSPECIFIED~=f and D(d.TargetRoomIndex)then d=I.WorldToRenderPosition(d.Position)+R:GetRenderScrollOffset()d.X=R:IsMirrorWorld()and I.GetScreenWidth()-d.X or d.X I.RenderText(S,d.X-I.GetTextWidth(S)/2,d.Y-5,1,0,0,1)end end if K then B:RenderLayer(0,Vector.Zero)end end)A({},M.MC_EVALUATE_CACHE,function(_,p)if K then p.Damage=p.Damage*2 end end,C)A({},M.MC_POST_PLAYER_UPDATE,function(_,p)p:AddCacheFlags(C)p:EvaluateItems()end)OnHit=function(p)if K then p:Die()end end
+--[[
+模板: clean-anon-callbacks
+名称: 清理回调
+]]
 
---3. 免疫混乱诅咒。
+--[[
+说明: 游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果。
+依赖: [安全包装, 清理回调]
+]]
+l CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
+
+--[[
+模板: lock-achievements
+]]
+--===--
+--[[
+说明: |-
+ 玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数(参数：玩家实体)。
+ 不兼容拉撒路的绷带、拉撒路的魂石
+名称: 命中检测
+模板: on-hit-detect
+参数:
+  P1: ''
+]]
+
+--[[
+说明: |-
+  有Fatal(默认{P1})%概率的房间，玩家受伤（无敌帧被重置）即死。这些房间内玩家攻击力翻倍。
+依赖: [命中检测]
+参数定义:
+  P1: {类型: 数值, 默认: 50, 性质: 全局, 说明: 即死房间概率百分数}
+]]
+l Fatal=P1;local B,C,I,M,S,G,R,L,D,K,A=Sprite(),CacheFlag.CACHE_DAMAGE,Isaac,ModCallbacks,'!!!'B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=Vector.One*9 B.Color=Color(0,0,0,.3,.5)A=I.AddCallback;A({},M.MC_POST_RENDER,function(d,e,f)G=Game()L=G:GetLevel()e=DoorVariant D=function(i)return L:GetRoomByIdx(i).DecorationSeed%100<Fatal end K=D(L:GetCurrentRoomIndex())R=G:GetRoom()for i=0,7 do d=R:GetDoor(i)f=d and d:GetVariant()if d and e.DOOR_HIDDEN~=f and e.DOOR_UNSPECIFIED~=f and D(d.TargetRoomIndex)then d=I.WorldToRenderPosition(d.Position)+R:GetRenderScrollOffset()d.X=R:IsMirrorWorld()and I.GetScreenWidth()-d.X or d.X I.RenderText(S,d.X-I.GetTextWidth(S)/2,d.Y-5,1,0,0,1)end end if K then B:RenderLayer(0,Vector.Zero)end end)A({},M.MC_EVALUATE_CACHE,function(_,p)if K then p.Damage=p.Damage*2 end end,C)A({},M.MC_POST_PLAYER_UPDATE,function(_,p)p:AddCacheFlags(C)p:EvaluateItems()end)OnHit=function(p)if K then p:Die()end end
+
+--[[
+说明: 免疫混乱诅咒。
+]]
 l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(32)end,31)F({},12,function(_,c)return~32&c end)
 
---4. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
-l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
+--[[
+模板: blind-permanent
+说明: 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
+]]
 
---5. 强制给予玩家：道具63(蓄电池)、116(9伏特)、352(玻璃大炮)
--- 主动道具数量不够时，强制锁门，房间内生成对应道具
--- 格式：c=道具,t/T=饰品(仅保证层数一致),物品={'类别',数量};数量为一时可简化为物品='类别'; 道具id必须>0
-l ITEMS={'c63','c116','c352'}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPlayerType',PlayerType,'Get',Isaac,pairs,EntityType,'Remove',ModCallbacks,{}local A,B,G,J,K,N,O,S,U=I.AddCallback D,B='C'..D,'C'..D:lower()J=H..B K=J..'Num'O=L..B N=function(i,a,b)a,i=table.unpack(type(i)=='table'and i or{i,1})a,b=a:match('(%a)(%d+)')return i,a,tonumber(b)end G=function(_,a,b,p)for _,i in P(ITEMS)do i,a,b=N(i)if a=='c'then while 0<p[K](p,b)do p[O](p,b)end end end end A(T,M.MC_POST_PLAYER_UPDATE,function(a,p,b,c,e,g,h,j,k,l)if F.PLAYER_THESOUL_B~=p[E](p)and not p:HasCurseMistEffect()then c=I.GetItemConfig()e='Trinket'h='Add'for _,i in P(ITEMS)do i,a,b=N(i)if a=='T'then a='t'i=i*2 end if a=='c'then g=Game():GetItemPool()g[O](g,b)g=0 if not p:IsItemQueueEmpty()then g=p.QueuedItem.Item g=g and g['Is'..B](g)and b==g.ID and 1 or 0 end while i>g+p[K](p,b)do if c[J](c,b).Type==ItemType.ITEM_ACTIVE then S=b break else p[h..B](p,b)end end elseif a=='t'then g=H..e l=h..e while 1 do j=i-p[g..'Multiplier'](p,b)if j<=0 then break end k={}for s=0,1 do k[s]=p[g](p,s)p['Try'..L..e](p,k[s])p[l](p,b|((j>1 and s==0 or j>3)and TrinketType.TRINKET_GOLDEN_FLAG or 0))end p:UseActiveItem(C[D..'_SMELTER'],2315)for s=0,1 do p[l](p,k[s],false)end end end end end end)A(T,M.MC_POST_UPDATE,function(d,r,v,s)if S then r=Game():GetRoom()for _,i in P(DoorSlot)do d=r:GetDoor(i)if d then d:Close()end end d=Q.ENTITY_PICKUP v=PickupVariant.PICKUP_COLLECTIBLE s=I.FindByType if 1>#s(d,v,S)then U=U and U+1 or 1 if U>29 then I.Spawn(d,v,S,r:GetCenterPos(),Vector.Zero,nil)end else U=nil end for _,e in P(s(d,v,0))do e:Remove()end end S=nil end)A(T,M.MC_PRE_USE_ITEM,G,C[D..'_D4'])A(T,M.MC_ENTITY_TAKE_DMG,function(d,e,u,f)d=DamageFlag u='DAMAGE_'e=e:ToPlayer()if F.PLAYER_EDEN_B==e[E](e)and 0==f&(d[u..'RED_HEARTS']|d[u..'IV_BAG']|d[u..'FAKE']|d[u..'NO_PENALTIES'])then G(e,e,e,e)end end,Q.ENTITY_PLAYER)
+--[[
+模板: force-give-items
+参数:
+  P1: "'c63','c116','c352'"
+  P2: "道具63(蓄电池)、116(9伏特)、352(玻璃大炮)"
+]]
 
---6. 玩家主手持有的道具为破碎的玻璃大炮时，自动充能。
+--[[
+说明: 玩家主手持有的道具为破碎的玻璃大炮时，自动充能。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveSlot.SLOT_PRIMARY if CollectibleType.COLLECTIBLE_BROKEN_GLASS_CANNON==p:GetActiveItem(s)then p:FullCharge(s)end end)
 
---7. 初始给予玩家道具352(玻璃大炮)。
-l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs{352}do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})for _=1,n do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
+--[[
+模板: give-start-collectibles
+参数:
+  P1: "352"
+  P2: "道具352(玻璃大炮)。"
+]]
 
---8. 辨认传送胶囊。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
+--[[
+模板: teleport-pill-reveal
+说明: 辨认传送胶囊。
+]]
 
---重开一局新游戏。
-l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
---.
+--===--
+--[[
+模板: restart-game
+]]

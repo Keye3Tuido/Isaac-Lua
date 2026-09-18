@@ -2,21 +2,51 @@
 
 ---- 代码效果 ----
 
---0. 前置功能性代码：避免代码污染和重复输入问题;
---默认锁定游戏成就;
---游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果;
---提供接口: CLM()删除匿名回调, MEC()包装报错模组, DEMEC()撤销对报错模组的包装
-l local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end --[[ 包装报错模组 ]]MEC()function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end end --[[ 清理匿名模组回调,预防代码污染 ]]CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end) --[[ 自动清理回调 ]] Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end) --[[ 游戏锁定成就 ]]
+--===--
+--[[
+模板: safe-wrap-mec
+名称: 安全包装
+]]
 
---1. 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
-l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
+--[[
+说明: "启用安全包装。"
+依赖: [安全包装]
+]]
+l MEC()
 
---2. 每秒随机天降火箭,落地处生成可投掷的手雷。火箭数量为每个玩家的运气的绝对值+1的总和，每位玩家运气触发上限为30
-l local I,F,G,Z,M,N=Isaac,Isaac.AddCallback,GetPtrHash,Vector.Zero,{}F({},31,function(_,s)local t,r,p=math.abs(s.Luck)if(I.GetFrameCount()%60<=math.min(t,30))then p=I.GetRandomPosition()I.Spawn(1e3,30,0,p,Z,s):ToEffect().Timeout=30 r=I.Spawn(1e3,31,0,p,Z,s)r:ToEffect().Timeout=30 M[G(r)]=1 end end)F({},67,function(_,e)if(M[G(e)])then M[G(e)]=N I.Spawn(5,41,0,e.Position,Z,N):ToPickup().Timeout=90 end end,1e3)
+--[[
+模板: clean-anon-callbacks
+名称: 清理回调
+]]
 
---3. 从游戏中移除捐款机
-l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
+--[[
+说明: 游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果。
+依赖: [安全包装, 清理回调]
+]]
+l CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
 
---重开一局新游戏。
-l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand'restart'A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
---.
+--[[
+模板: lock-achievements
+]]
+
+--===--
+
+--[[
+模板: blind-permanent
+]]
+
+--[[
+说明: "每秒随机天降火箭,落地处生成可投掷的手雷。火箭数量为每个玩家的运气的绝对值+1的总和，每位玩家运气触发上限为{P1}"
+参数定义:
+  P1: {类型: 整数, 默认: "30", 性质: 局部, 说明: "每位玩家的运气触发上限（仅 math.min 处；代码中其余 30 为效果变种与超时帧数，语义不同，保持字面量）"}
+]]
+l local I,F,G,Z,M,N=Isaac,Isaac.AddCallback,GetPtrHash,Vector.Zero,{}F({},31,function(_,s)local t,r,p=math.abs(s.Luck)if(I.GetFrameCount()%60<=math.min(t,P1))then p=I.GetRandomPosition()I.Spawn(1e3,30,0,p,Z,s):ToEffect().Timeout=30 r=I.Spawn(1e3,31,0,p,Z,s)r:ToEffect().Timeout=30 M[G(r)]=1 end end)F({},67,function(_,e)if(M[G(e)])then M[G(e)]=N I.Spawn(5,41,0,e.Position,Z,N):ToPickup().Timeout=90 end end,1e3)
+
+--[[
+模板: remove-donation-machine
+]]
+
+--===--
+--[[
+模板: restart-game
+]]

@@ -4,42 +4,134 @@
 
 ---- 代码效果 ----
 
---0. 前置功能性代码：避免代码污染和重复输入问题;
---默认锁定游戏成就;
---游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果;
---提供接口: CLM()删除匿名回调, MEC()包装报错模组, DEMEC()撤销对报错模组的包装
-l local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end --[[ 包装报错模组 ]]MEC()function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end end --[[ 清理匿名模组回调,预防代码污染 ]]CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end) --[[ 自动清理回调 ]] Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end) --[[ 游戏锁定成就 ]]
+--===--
+--[[
+模板: safe-wrap-mec
+名称: 安全包装
+]]
 
---1. 强制敌人变为精英怪(不包括6无敌变种和25彩虹变种)。
-l local A,I,C={[0]=1,[1]=1,[2]=1,[3]=1,[4]=1,[5]=1,[6]=0,[7]=1,[8]=1,[9]=1,[10]=1,[11]=1,[12]=1,[13]=1,[14]=1,[15]=1,[16]=1,[17]=1,[18]=1,[19]=1,[20]=1,[21]=1,[22]=1,[23]=1,[24]=1,[25]=0},'InitSeed',{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({},ModCallbacks.MC_NPC_UPDATE,function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible()and not e:IsChampion()then e:MakeChampion(e[I],C[e[I]%#C+1])end end)
+--[[
+说明: 启用安全包装。
+依赖: [安全包装]
+]]
+l MEC()
 
+--[[
+模板: clean-anon-callbacks
+名称: 清理回调
+]]
 
---2. 强制给予玩家：道具202(弥达斯之触)、227(小猪存钱罐)、295(魔术手指)、304(天秤座)、416(深口袋)、501(贪婪的胃袋)、590(水星)
--- 主动道具数量不够时，强制锁门，房间内生成对应道具
--- 格式：c=道具,t/T=饰品(仅保证层数一致),物品={'类别',数量};数量为一时可简化为物品='类别'; 道具id必须>0
-l ITEMS={'c202','c227','c295','c304','c416','c501','c590'}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPlayerType',PlayerType,'Get',Isaac,pairs,EntityType,'Remove',ModCallbacks,{}local A,B,G,J,K,N,O,S,U=I.AddCallback D,B='C'..D,'C'..D:lower()J=H..B K=J..'Num'O=L..B N=function(i,a,b)a,i=table.unpack(type(i)=='table'and i or{i,1})a,b=a:match('(%a)(%d+)')return i,a,tonumber(b)end G=function(_,a,b,p)for _,i in P(ITEMS)do i,a,b=N(i)if a=='c'then while 0<p[K](p,b)do p[O](p,b)end end end end A(T,M.MC_POST_PLAYER_UPDATE,function(a,p,b,c,e,g,h,j,k,l)if F.PLAYER_THESOUL_B~=p[E](p)and not p:HasCurseMistEffect()then c=I.GetItemConfig()e='Trinket'h='Add'for _,i in P(ITEMS)do i,a,b=N(i)if a=='T'then a='t'i=i*2 end if a=='c'then g=Game():GetItemPool()g[O](g,b)g=0 if not p:IsItemQueueEmpty()then g=p.QueuedItem.Item g=g and g['Is'..B](g)and b==g.ID and 1 or 0 end while i>g+p[K](p,b)do if c[J](c,b).Type==ItemType.ITEM_ACTIVE then S=b break else p[h..B](p,b)end end elseif a=='t'then g=H..e l=h..e while 1 do j=i-p[g..'Multiplier'](p,b)if j<=0 then break end k={}for s=0,1 do k[s]=p[g](p,s)p['Try'..L..e](p,k[s])p[l](p,b|((j>1 and s==0 or j>3)and TrinketType.TRINKET_GOLDEN_FLAG or 0))end p:UseActiveItem(C[D..'_SMELTER'],2315)for s=0,1 do p[l](p,k[s],false)end end end end end end)A(T,M.MC_POST_UPDATE,function(d,r,v,s)if S then r=Game():GetRoom()for _,i in P(DoorSlot)do d=r:GetDoor(i)if d then d:Close()end end d=Q.ENTITY_PICKUP v=PickupVariant.PICKUP_COLLECTIBLE s=I.FindByType if 1>#s(d,v,S)then U=U and U+1 or 1 if U>29 then I.Spawn(d,v,S,r:GetCenterPos(),Vector.Zero,nil)end else U=nil end for _,e in P(s(d,v,0))do e:Remove()end end S=nil end)A(T,M.MC_PRE_USE_ITEM,G,C[D..'_D4'])A(T,M.MC_ENTITY_TAKE_DMG,function(d,e,u,f)d=DamageFlag u='DAMAGE_'e=e:ToPlayer()if F.PLAYER_EDEN_B==e[E](e)and 0==f&(d[u..'RED_HEARTS']|d[u..'IV_BAG']|d[u..'FAKE']|d[u..'NO_PENALTIES'])then G(e,e,e,e)end end,Q.ENTITY_PLAYER)
+--[[
+说明: 游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果。
+依赖: [安全包装, 清理回调]
+]]
+l CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
 
---3. 强制玩家变为堕化店主，给予副手道具金剃刀片，移动速度变为金钱数量*0.003
-l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)p.MoveSpeed=3e-3+3e-3*p:GetNumCoins()end)A(T,M.MC_POST_PLAYER_UPDATE,function(_,p)local k,c,s=PlayerType.PLAYER_KEEPER_B,CollectibleType.COLLECTIBLE_GOLDEN_RAZOR,ActiveSlot.SLOT_POCKET if k~=p:GetPlayerType()then p:ChangePlayerType(k)end if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s,true)end end)
+--[[
+模板: lock-achievements
+]]
 
---4. 黏币变为镍币
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_INIT,function(_,p)if p.SubType==CoinSubType.COIN_STICKYNICKEL then p:Morph(p.Type,p.Variant,CoinSubType.COIN_NICKEL,true)end end,PickupVariant.PICKUP_COIN)
+--===--
 
---5. 角色吸引硬币
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_UPDATE,function(_,p)local e,l=Game():GetNearestPlayer(p.Position)l=e.Position-p.Position p.Velocity=3*(l:Length()>10 and math.log(l:Length())or 0)*l:Normalized()p.GridCollisionClass=EntityGridCollisionClass.GRIDCOLL_NONE end,PickupVariant.PICKUP_COIN)
+--[[
+模板: champion-force
+说明: |-
+  强制敌人变为精英怪(不包括6无敌变种和25彩虹变种)。
+参数:
+  P0: "1"
+  P1: "1"
+  P2: "1"
+  P3: "1"
+  P4: "1"
+  P5: "1"
+  P6: "0"
+  P7: "1"
+  P8: "1"
+  P9: "1"
+  P10: "1"
+  P11: "1"
+  P12: "1"
+  P13: "1"
+  P14: "1"
+  P15: "1"
+  P16: "1"
+  P17: "1"
+  P18: "1"
+  P19: "1"
+  P20: "1"
+  P21: "1"
+  P22: "1"
+  P23: "1"
+  P24: "1"
+  P25: "0"
+  P26: "按权重表强制非精英敌人变为指定类型精英怪（表中0和1可替换为非负整数表示权重，0=排除）。"
+]]
 
---6. 角色使用道具魔术手指的同时，在原地生成三滴眼泪；眼泪会追踪敌人，命中敌人后生成硬币
+--[[
+模板: force-give-items
+参数:
+  P1: "'c202','c227','c295','c304','c416','c501','c590'"
+  P2: "道具202(弥达斯之触)、227(小猪存钱罐)、295(魔术手指)、304(天秤座)、416(深口袋)、501(贪婪的胃袋)、590(水星)"
+]]
+
+--[[
+说明: |-
+  强制玩家变为{P3}，给予副手道具{P4}，移动速度变为金钱数量*0.003
+参数定义:
+  P1: {类型: 角色枚举, 默认: "PlayerType.PLAYER_KEEPER_B", 性质: 局部, 说明: "强制变更的角色（PlayerType枚举，堕化店主=PLAYER_KEEPER_B）"}
+  P2: {类型: 道具枚举, 默认: "CollectibleType.COLLECTIBLE_GOLDEN_RAZOR", 性质: 局部, 说明: "给予的副手道具（CollectibleType枚举，金剃刀片=COLLECTIBLE_GOLDEN_RAZOR）"}
+  P3: {类型: 描述, 默认: "堕化店主", 性质: 局部, 说明: "说明文本中的角色描述（对应P1）"}
+  P4: {类型: 描述, 默认: "金剃刀片", 性质: 局部, 说明: "说明文本中的副手道具描述（对应P2）"}
+]]
+l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)p.MoveSpeed=3e-3+3e-3*p:GetNumCoins()end)A(T,M.MC_POST_PLAYER_UPDATE,function(_,p)local k,c,s=P1,P2,ActiveSlot.SLOT_POCKET if k~=p:GetPlayerType()then p:ChangePlayerType(k)end if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s,true)end end)
+
+--[[
+模板: sticky-to-nickel
+说明: |-
+  黏币变为镍币
+]]
+
+--[[
+模板: attract-coins
+说明: |-
+  角色吸引硬币
+]]
+
+--[[
+说明: |-
+  角色使用道具魔术手指的同时，在原地生成三滴眼泪；眼泪会追踪敌人，命中敌人后生成硬币
+]]
 l local A,M,T=Isaac.AddCallback,ModCallbacks,{T={}}A(T,M.MC_USE_ITEM,function(_,_,_,p)for _=1,3 do local t=p:FireTear(p.Position,Vector.Zero)t.TearFlags=t.TearFlags|TearFlags.TEAR_HOMING end end,CollectibleType.COLLECTIBLE_MAGIC_FINGERS)A(T,M.MC_POST_NEW_ROOM,function()T.T={}end)A(T,M.MC_PRE_TEAR_COLLISION,function(_,t,c)if c:IsVulnerableEnemy()and c:IsActiveEnemy(false)then T.T[t.InitSeed]=true end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)if T.T[e.InitSeed]then Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COIN,CoinSubType.COIN_PENNY,e.Position,Vector.Zero,nil)T.T[e.InitSeed]=nil end end,EntityType.ENTITY_TEAR)
 
---7. 长按道具键/副手键1s以上=连续多次按键
-l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACTION_ITEM','ACTION_PILLCARD'},{M={}}A(G.M,M.MC_POST_PLAYER_RENDER,function(_,p)local k,n,a=H(p)G[k]=G[k]or{}n=G[k]for _,b in pairs(K)do a=B[b]if Input.IsActionPressed(a,p.ControllerIndex)then n[a]=n[a]or Isaac.GetTime()else n[a]=nil end end end)A(G.M,M.MC_INPUT_ACTION,function(_,e,_,a)e=e and e:ToPlayer()if e then local k,t,s=H(e),Isaac.GetTime()s=G[k]and G[k][a]if s and s<t then return t>1e3+s end end end,InputHook.IS_ACTION_TRIGGERED)A(G.M,M.MC_POST_ENTITY_REMOVE,function(_,e)G[H(e)]=nil end,EntityType.ENTITY_PLAYER)
+--[[
+模板: long-press-repeat
+说明: |-
+  长按道具键/副手键1s以上=连续多次按键
+参数:
+  P1: "1e3"
+  P2: "1s"
+]]
 
---8. 非任务道具替换为以下道具之一：道具36(大便)、道具74(25美分)、道具667(稻草人)
-l local I,M,C,A=Isaac,ModCallbacks,{36,74,667}A=I.AddCallback;A({},M.MC_POST_PICKUP_INIT,function(_,p)local s=p.SubType if not I.GetItemConfig():GetCollectible(s):HasTags(ItemConfig.TAG_QUEST)then for _,v in pairs(C)do if v==s then return end end local r=RNG()r:SetSeed(p.InitSeed,35)p:Morph(p.Type,p.Variant,C[r:RandomInt(#C)+1],true,true)end end,PickupVariant.PICKUP_COLLECTIBLE)A({},M.MC_PRE_GET_COLLECTIBLE,function(_,_,_,s)return C[s%#C+1]end)
+--[[
+模板: replace-collectibles
+参数:
+  P1: "36,74,667"
+  P2: "道具36(大便)、道具74(25美分)、道具667(稻草人)"
+]]
 
---9. 非主角色透明度降低为0.3
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,0.3,c.RO,c.GO,c.BO)end end)
+--[[
+说明: |-
+  非主角色透明度降低为{P1}
+参数定义:
+  P1: {类型: 数值, 默认: "0.3", 性质: 局部, 说明: "非主角色的透明度（0~1）"}
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,P1,c.RO,c.GO,c.BO)end end)
 
---以堕化店主重开一局新游戏。
-l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..PlayerType.PLAYER_KEEPER_B)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
---.
+--===--
+--[[
+模板: restart-as-character
+说明: |-
+  以堕化店主重开一局新游戏。
+参数:
+  P1: "PlayerType.PLAYER_KEEPER_B"
+]]

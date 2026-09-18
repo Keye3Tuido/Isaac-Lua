@@ -4,45 +4,113 @@
 
 ---- 代码效果 ----
 
---0. 前置功能性代码：避免代码污染和重复输入问题;
---默认锁定游戏成就;
---游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果;
---提供接口: CLM()删除匿名回调, MEC()包装报错模组, DEMEC()撤销对报错模组的包装
-l local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end --[[ 包装报错模组 ]]MEC()function CLM(t,m)for i,j in pairs(ModCallbacks)do t=Isaac.GetCallbacks(j)for x=#t,1,-1 do m=t[x].Mod if not(m and m.Name)then Isaac.RemoveCallback(m,j,t[x].Function)end end end end --[[ 清理匿名模组回调,预防代码污染 ]]CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end) --[[ 自动清理回调 ]] Isaac.AddPriorityCallback({},ModCallbacks.MC_POST_GAME_STARTED,CallbackPriority.IMPORTANT,function(_,c)if not c then Isaac.ExecuteCommand('seed '..Seeds.Seed2String(Game():GetSeeds():GetNextSeed()))end end) --[[ 游戏锁定成就 ]]
+--===--
+--[[
+模板: safe-wrap-mec
+名称: 安全包装
+]]
 
---1. 用于储存数据，无实际效果。
--- _Data()返回的表兼容发光沙漏和rewind（可回溯）,_Data(entity)=entity:GetData()（可回溯）,_rew()返回当前是否处于rew状态（不要更新表中的数据）,_Pata()返回的数据仅在游戏结束时重置（不回溯）。
-l local B,I,M,H,T,F,A,C,D,R,S='MC_POST_NEW_ROOM',Isaac,ModCallbacks,function(e)return e.InitSeed end,true,false A,C,R,S,D=function(S,...)I.AddPriorityCallback(D.M,S,CallbackPriority.IMPORTANT,...)end,function(s)if type(s)=='table'then local c={}for k,v in pairs(s)do if v~=nil then c[k]=C(v)end end return c end return s end,function()D.R,D.C,D.T=T,F,C(D.B)end,I.GetFrameCount,{B={},D={},T={},R=F,C=F,G=F,M={},W={}}A(M.MC_USE_ITEM,R,CollectibleType.COLLECTIBLE_GLOWING_HOUR_GLASS)A(M[B],function()if D.G then if D.R then if D.C then D.R=F end D.C=not D.C end if not D.R then D.W=C(D.B)D.B=C(D.T)end end end)A(M.MC_POST_GAME_STARTED,function(_,c)D.R,D.C,D.G=F,F,T if c then if D.E==S()then D.B=C(D.W)R()I.RunCallback(M[B])else D.B=C(D.T)end else D.T,D.B,D.D={},{},{}end end)A(M.MC_PRE_GAME_EXIT,function(_,d)D.E=d and S()if not d then D.D,D.B,D.T={},{},{}end D.R,D.C,D.G=F,F,F end)A(M.MC_POST_ENTITY_REMOVE,function(_,e)D.T[H(e)]=nil D.T=C(D.T)end)function _Data(e)if e then local k=H(e)D.T[k]=D.T[k]or{}return D.T[k]end return D.T end function _rew()return D.R or not D.G end function _Pata()return D.D end
+--[[
+说明: 启用安全包装。
+依赖: [安全包装]
+]]
+l MEC()
 
---2. 道具:迷失游魂 可叠加。
--- 依赖代码1
+--[[
+模板: clean-anon-callbacks
+名称: 清理回调
+]]
+
+--[[
+说明: 游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果。
+依赖: [安全包装, 清理回调]
+]]
+l CLM()local I,M,A,T,F=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback A({},M.MC_POST_GAME_END,function(_,f)if not f then DEMEC()CLM()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then DEMEC()CLM()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
+
+--[[
+模板: lock-achievements
+]]
+
+--===--
+
+--[[
+模板: persistent-data
+说明: |-
+  用于储存数据，无实际效果。
+  _Data()返回的表兼容发光沙漏和rewind（可回溯）,_Data(entity)=entity:GetData()（可回溯）,_rew()返回当前是否处于rew状态（不要更新表中的数据）,_Pata()返回的数据仅在游戏结束时重置（不回溯）。
+名称: 数据保存
+]]
+
+--[[
+说明: |-
+  道具:迷失游魂 可叠加。
+依赖: [数据保存]
+]]
 l local B,C,D,E,F,G,H,I,J,L,M,O,P,R,S,T,A,N=_Data,'Player','InitSeed',EntityType.ENTITY_FAMILIAR,FamiliarVariant.LOST_SOUL,'Position',GetPtrHash,Isaac,'ToFamiliar',Vector,ModCallbacks,math,'Parent','Remove','State',{}A,N=I.AddCallback,I.FindByType A(T,M.MC_POST_NEW_LEVEL,function()for k,v in pairs(B())do v.N=0 end end)A(T,M.MC_POST_PLAYER_UPDATE,function(_,p)local a,b,c,h,n,e=N(E,F),{},0,H(p)n=p:GetCollectibleNum(CollectibleType.COLLECTIBLE_LOST_SOUL)-(B(p).N or 0)for k,v in pairs(a)do e=v[J](v)if h==H(e[C])then c=c+1 if c>n then e[R](e)else b[#b+1]=e end end end while c<n and 64>#N(E)do c,e=c+1,I.Spawn(E,F,0,p[G],L.Zero,p)b[#b+1]=e[J](e)end table.sort(b,function(x,y)return x[D]<y[D]end)for k,v in pairs(b)do v[C],v[P],e=p,p,b[1]a=e[G]if k>1 then v:FollowPosition(a+(40-O.max(O.min((v[G]-a):Length(),160),1)/8)*L.FromAngle(360*k/(#b-1)+Game():GetFrameCount()))end end end)A(T,M.MC_FAMILIAR_UPDATE,function(_,f)local p=f[C]if f[S]==4 and f:GetSprite():IsFinished()then B(p).N=(B(p).N or 0)+1 f[R](f)end end,F)
 
---3. 强制角色为游魂。
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=PlayerType.PLAYER_THELOST if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
+--[[
+模板: force-character
+说明: |-
+  强制角色为游魂。
+参数:
+  P1: "PlayerType.PLAYER_THELOST"
+]]
 
---4. 初始给予玩家道具247(好朋友一辈子!)。
-l local I,G=Isaac,Game()I.AddCallback({},15,function(p,c,t,n)if not c then for _,i in pairs{247}do for k=1,G:GetNumPlayers()do p,t,n=I.GetPlayer(k-1),table.unpack(type(i)=='table'and i or{i,1})for _=1,n do p:AddCollectible(t,I.GetItemConfig():GetCollectible(t).InitCharge)end end G:GetItemPool():RemoveCollectible(t)end end end)
+--[[
+模板: give-start-collectibles
+参数:
+  P1: "247"
+  P2: "道具247(好朋友一辈子!)。"
+]]
 
---5. 每层在初始房间生成2*道具612-迷失游魂。
---离开房间后道具消失。
-l local Items={{612,2}}local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()for k,v in pairs(Items)do local c,n=table.unpack(type(v)=='table'and v or{v,1})for i=1,n*(0<LevelCurse.CURSE_OF_LABYRINTH&Game():GetLevel():GetCurses()and 2 or 1)do I.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,c,I.GetFreeNearPosition(Game():GetRoom():GetCenterPos(),0),Vector.Zero,nil):ToPickup().Timeout=9e9 end end end)
+--[[
+模板: per-floor-spawn-collectibles
+参数:
+  P1: "{612,2}"
+  P2: "2*道具612-迷失游魂"
+]]
 
---6. 删除每层的：宝箱房(类型为4)、星象房(类型为24)。
-l local Del={4,24}local D,G,S,T='Data','GetRoomByIdx','SafeGridIndex','Type'Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()local L,C,R,r=Game():GetLevel()C,R=L:GetCurrentRoomDesc(),L:GetRooms()for i=1,#R do r=R:Get(i-1)for k,v in pairs(Del)do if v==r[D][T]then L[G](L,r[S])[D]=C[D]break end end end L:UpdateVisibility()for i=0,8 do r=Game():GetRoom():GetDoor(i)if r then R=L[G](L,r.TargetRoomIndex)[D][T]if R~=r.TargetRoomType then r:SetRoomTypes(C[D][T],R)r:SetLocked(false)end end end end)
+--[[
+模板: del-room-types
+说明: |-
+  删除每层的：宝箱房(类型为4)、星象房(类型为24)。
+参数:
+  P1: "4,24"
+  P2: "宝箱房(类型为4)、星象房(类型为24)"
+]]
 
---7. 从游戏中移除道具123(怪物手册)、567(逾越节蜡烛)、704(狂怒!)
-l local I,C,Y,T,A=Isaac,{123,567,704},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
+--[[
+模板: remove-collectibles
+参数:
+  P1: "123,567,704"
+  P2: "道具123(怪物手册)、567(逾越节蜡烛)、704(狂怒!)"
+]]
 
---8. 从游戏中移除符文87(参孙的魂石)。
-l local b,Y,F,G={87},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
+--[[
+模板: remove-cards
+参数:
+  P1: "87"
+  P2: "符文87(参孙的魂石)。"
+]]
 
---9. 角色拾取跟班类道具时，立刻将道具加入道具列表。
+--[[
+说明: |-
+  角色拾取跟班类道具时，立刻将道具加入道具列表。
+]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p)if not p:IsItemQueueEmpty()and p.QueuedItem.Item.Type==ItemType.ITEM_FAMILIAR then p:FlushQueueItem()end end)
 
---10. 从游戏中移除饰品75(错误)和饰品180(复得游魂)。
-l local G,F,b=32768,Isaac.AddCallback,{75,180}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
+--[[
+模板: remove-trinkets
+参数:
+  P1: "75,180"
+  P2: "75(错误)和饰品180(复得游魂)"
+]]
 
---以游魂重开一局新游戏。
-l local A,B,C,Z=Isaac,ModCallbacks.MC_POST_UPDATE,{}Z=function()A.ExecuteCommand('restart '..PlayerType.PLAYER_THELOST)A.RemoveCallback(C,B,Z)end A.AddCallback(C,B,Z)
---.
+--===--
+--[[
+模板: restart-as-character
+说明: |-
+  以游魂重开一局新游戏。
+参数:
+  P1: "PlayerType.PLAYER_THELOST"
+]]
