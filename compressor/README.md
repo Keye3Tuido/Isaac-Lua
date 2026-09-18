@@ -79,7 +79,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.1e 布尔别名（true/false 提取别名）
 1.1f 数字归一（0.X → .X）
 1.1h 括号消除（冗余圆括号移除，保留 load-bearing 的 `;(`）
-1.2  :method 折叠（base 为简单变量；只缩短才提交）
+1.2  :method 折叠（base 为简单变量；优先注入已有 local 尾部，否则独立 local；只缩短才提交）
 1.3  字段前缀折叠（obj.PREFIX_X 系列提取公共前缀因子；支持多级派生因子，按成本选最优拆分等级）
 1.4  Safe call sugar: `f("x")` -> `f"x"`, `f({})` -> `f{}`
 1.4b 字符串字面量内联（重复字符串提取别名，含 call sugar `a'X'` 参数）
@@ -126,7 +126,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 - **高频全局折叠** — 多次出现且从不被赋值的全局（`Isaac`/`Game`/`pairs`…）提取 `local A,B=...`，按盈亏公式决定
 - **透明别名合并** — 多个局部变量都是同一全局的别名时，统一替换为全局折叠别名并删除冗余声明
 - **透明别名消解** — copy-propagation：只读、从不被赋值、init 溯源到全局的局部变量，其成员/调用使用重定向到源全局并删除声明；`canonical` 内置归一验证
-- **成员字段折叠** — 高频 `obj.Field` → `obj[v]` + 提取 `v='Field'`（`.Data` / `RIGHT0` / `ROOMSHAPE_1x1`…）
+- **成员字段折叠** — 高频 `obj.Field` → `obj[v]` + 提取 `v='Field'`（base 可为任意表达式，如 `i(e.Type)[1].InitSeed`；`.Field`→`[v]` 是纯文本改写，求值次数/顺序不变；别名声明同样支持注入已有 local 尾部）
 - **仿射因子分解** — 折叠字符串别名值共享前缀/后缀（`ROOMSHAPE_*`）提取因子 `p='ROOMSHAPE_'`，其余写 `p..'1x1'`；迭代提取多因子
 - **统一频次竞争** — 局部、全局、成员三类符号在同一频次表竞争最短名
 
@@ -143,7 +143,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 - **括号消除** — 冗余圆括号移除，保留 load-bearing 的 `;(`
 
 **增量优化**（阶段 1.2~1.7c）：
-- **`:method` 折叠** — `obj:M(args)` → `obj[s](obj,args)` + `s='M'`（仅 base 为简单标识符；只缩短才提交）
+- **`:method` 折叠** — `obj:M(args)` → `obj[s](obj,args)` + `s='M'`（仅 base 为简单标识符；别名声明优先注入已有 local 尾部——先 dropLeading 头部 batched local，其次顶层首条普通 local（要求 init 数 ≥ 变量数、无 `local function` 初值、改写点不落在该语句内部），都无才退回独立 local；只缩短才提交）
 - **字段前缀折叠** — `obj.PREFIX_X` 系列提取公共前缀因子 `U`，改写为 `obj[U..'rest']`；可注入现有 batched local 尾部。支持**多级派生因子**：候选前缀构成一棵树，在树上做 DP 选择最优抽取集合——子前缀可写成 `V=U..'seg'`（派生，声明后赋值，省去重复存储父前缀字符串），按成本选最优拆分等级（前缀太短或子分组太少时自动退回单级/不拆）
 - **字符串字面量内联** — 重复字符串（`≥3` 字、`≥2` 次，不含 `'`/`\`/换行）提取别名 `u='X'` 注入 batched local，替换每处 `'X'` 为 `u`；不再限定标识符样字符，call sugar `a'X'` 的参数也纳入（改写为 `a(u)`）
 - **字符串公共前缀因子** — 多串共享公共前缀时，迭代提取收益最大的公共前缀作因子（`'ACTION_SHOOT_UP'` 系列 → `a='ACTION_SHOOT_'` + `a..'UP'`）；支持**多级嵌套**：`'DATABASE_TABLE_X_COLUMN_NAME_1'` → `a..b..'NAME_1'`（`a='DATABASE_TABLE_'`、`b='X_COLUMN_'`），每级带盈亏闸门，不赚则跳过
@@ -153,7 +153,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 - **多重赋值拆分** — 非 local 多重赋值安全条件下拆为单赋值序列；编码层每个非末值符号收尾兑现 1 字节省
 - **if-not 二择** — `if not C then A else B end` → `if C then B else A end`，省 `not`（约 4 字）；`canonical` 内置归一验证
 - **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；支持循环体内复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`）；SSA 等价校验
-- **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证
+- **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证。
 - **前向 nil 内联（声明下沉）** — 声明上提的逆变换：`local a,f,g=X f,g=Y,Z`（f,g 为 nil 占位）按位并回 `local a,f,g=X,Y,Z`；支持多目标赋值整体下沉（全部目标均为同条 local 的 nil 占位、赋值前不被读写、RHS 不引用同条 local 变量时整条并入），省 ` f,g=`；canonical fwdNil 归一验证
 - **重复声明删除（禁用）** — 文本相同不能证明求值时机和副作用相同；安全模式保留重复 `local` 声明
 
@@ -207,11 +207,12 @@ node tests/performance_probe.js          # 确定性性能探针：解析次数�
 node tests/test_transparent_elision.js  # 透明别名消解专项
 node tests/test_canonical_fwdnil.js     # 死前向声明归一专项（含多目标赋值形态）
 node tests/test_fwdnil_merge.js         # 前向nil多目标下沉 + 链别名映射传播回归（noMetatable 路径）
+node tests/test_method_inject.js        # foldMethods/foldMemberField 注入已有 local 形态 + 任意 base 成员字段 + 安全负例
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 101/101、边界 40/40、仓库真实语料 525/525 块（逐块单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大块）parse 次数 641，输出 15479 字节。
+**当前状态**：基础 101/101、边界 40/40、仓库真实语料 525/525 块（逐块单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、方法注入/成员字段base 10/10、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大块）parse 次数 641，输出 15479 字节。
 
 **语料测试口径**：仓库真实代码按「每个代码块单独压缩」进行——语料取**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出，与站点 / kb.json 同口径），不是仓库文件里的原始 `l` 行：模板引用块在源文件里没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句。既不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐块测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 
@@ -226,7 +227,7 @@ node tests/snapshot.js --check          # 全语料字节级回归比对（改�
 - **透明别名消解** — 仅"只读、从不被赋值、init 溯源到全局"的局部；同名 binding 全部满足 + 单声明单别名才消解。`canonical` copy-propagation 双侧归一验证
 - **变量复用** — 仅 SSA 版本化等价能确认时应用；循环体内可复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`，其活跃区间在循环头结束）；跨复杂控制流保守判负则回退
 - **多重赋值拆分** — 仅非 local 多重赋值；目标含索引/成员或目标耦合（`a,b=b,a`）时跳过
-- **全局/成员折叠** — 仅从不被赋值的全局 / base 为简单标识符的方法调用
+- **全局/成员折叠** — 仅从不被赋值的全局 / base 为简单标识符的方法调用；成员字段折叠（`obj.Field`→`obj[v]`）的 base 可为任意表达式，是否折叠由「只缩短才提交」实测闸门决定
 - **字段前缀/字面量内联** — 跳过 `function obj.PREFIX_X()` 名字链（语法必须保持 `name(.name)*(:name)?` 形态）
 - **字符串处理** — 长字符串 `[[...]]` 内部换行保留（语义内容）；长短字符串内容不归一（转义规则不同）
 - **人工技巧** — 第二部分的跨段提全局、命名空间表等依赖语义判断，自动化易误伤，仅作参考

@@ -92,14 +92,62 @@
         });
       });
 
-      var newBody = applyEdits(src, edits);
-
-      // 把新别名并进开头的声明里。src 开头可能已是 "local ... " 或 "@-style"；
-      // 简单稳妥：再加一条独立 local 在最前面。
       // 正确 Lua 格式：local a,b='x','y'（所有名字在前，一个 =，所有值在后）
       var declNames = chosen.map(function(c){return c.alias;}).join(',');
       var declVals  = chosen.map(function(c){return "'"+c.method+"'";}).join(',');
-      var candidate = 'local '+declNames+'='+declVals+' '+newBody;
+
+      // 优先注入已有的 local 尾部（',a=\'M\''，比独立 local 省 6 字）；
+      // 无 local 可注入时退回独立 local 形态。两种形态都过真实长度闸门 + 三重校验。
+      // 注入目标按优先级：
+      //  ① priorAlias.dropLeading 范围内最后一条 batched local（与 foldFieldPrefix 相同约束）；
+      //  ② 顶层首条普通 local（canonical 的 aliasLocalBindings 扫描覆盖所有顶层
+      //     LocalStatement，注入的别名声明项在归一时被删除，等价可验证）。附加守卫：
+      //     - init 数须 ≥ 变量数：否则新名字错位抢走既有占位变量的值
+      //      （`local r,s=1` 注入成 `local r,s,a=1,'M'` 会让 s 读到 'M'）；
+      //       对齐后追加名/值到尾部对所有既有变量取值无影响（末值是调用也只会被
+      //       截断为 1 个返回值，与注入前该变量读到的首值一致）；
+      //     - 不得含 FunctionDeclaration 初值（`local function f` 语法上不能追加名字）；
+      //     - 任何改写点不得落在该语句内部（否则别名在用点之后声明，读到 nil）。
+      function probeInjectable(st){
+        if(!st || st.type!=='LocalStatement' || !st.variables || !st.variables.length
+           || !st.init || !st.init.length) return false;
+        if(st.init.length < st.variables.length) return false;
+        for(var ii=0; ii<st.init.length; ii++){
+          if(st.init[ii] && st.init[ii].type==='FunctionDeclaration') return false;
+        }
+        return true;
+      }
+      function editsInside(st){
+        for(var ei=0; ei<edits.length; ei++){
+          if(edits[ei].start>=st.range[0] && edits[ei].start<st.range[1]) return true;
+        }
+        return false;
+      }
+      var priorDrop=(priorAlias && priorAlias.dropLeading) || 0;
+      var injectStmt=null;
+      if(priorDrop>0 && priorDrop<=ast.body.length){
+        var probeSt=ast.body[priorDrop-1];
+        if(probeInjectable(probeSt)) injectStmt=probeSt;
+      }
+      if(!injectStmt && priorDrop===0 && ast.body.length && probeInjectable(ast.body[0]) && !editsInside(ast.body[0])){
+        injectStmt=ast.body[0];
+      }
+      var candidate;
+      var dropDelta;
+      if(injectStmt){
+        var lastVar=injectStmt.variables[injectStmt.variables.length-1];
+        var stmtEnd=injectStmt.range[1];
+        var allEdits=edits.concat([
+          {start:lastVar.range[1], end:lastVar.range[1], name:','+declNames},
+          {start:stmtEnd, end:stmtEnd, name:','+declVals}
+        ]);
+        candidate=applyEdits(src, allEdits);
+        dropDelta=0;     // 没新增 local 语句，dropLeading 不增
+      }else{
+        var newBody = applyEdits(src, edits);
+        candidate = 'local '+declNames+'='+declVals+' '+newBody;
+        dropDelta=1;
+      }
 
       // 严格闸门：必须真的更短，否则放弃（不折叠）
       if(candidate.length >= src.length){
@@ -116,13 +164,15 @@
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
         chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
         transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
-        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + 1   // 多了一条 local 声明
+        // 注入到现有 batched local 时不产生新的 local 语句，dropLeading 不增；
+        // 退路独立 local 时 +1
+        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
       };
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'method-fold/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
       if(rec) rec(':method 折叠(提交)', src.length, candidate.length,
-                  '折叠 '+chosen.map(function(c){return c.method+'×'+c.sites.length;}).join(', '));
+                  '折叠 '+chosen.map(function(c){return c.method+'×'+c.sites.length;}).join(', ')+(injectStmt?'（注入头部 local）':''));
       return {code:candidate, aliasMap:newAlias};
     }
 
@@ -2864,7 +2914,49 @@
       });
       var declNames = chosen.map(function(c){return c.alias;}).join(',');
       var declVals  = chosen.map(function(c){return "'"+c.field+"'";}).join(',');
-      var candidate = 'local '+declNames+'='+declVals+' '+applyEdits(src, edits);
+      // 与 foldMethods 相同：优先注入已有 local 尾部（',v=\'Field\''，省 6 字）——
+      // ① dropLeading 范围内最后一条 batched local；② 顶层首条普通 local（需 init 数
+      // 与变量数对齐、无 FunctionDeclaration 初值、改写点不落在语句内部）。无可注入时
+      // 退回独立 local；两形态均过三重校验。
+      function probeInjectableMF(st){
+        if(!st || st.type!=='LocalStatement' || !st.variables || !st.variables.length
+           || !st.init || !st.init.length) return false;
+        if(st.init.length < st.variables.length) return false;
+        for(var ii=0; ii<st.init.length; ii++){
+          if(st.init[ii] && st.init[ii].type==='FunctionDeclaration') return false;
+        }
+        return true;
+      }
+      function editsInsideMF(st){
+        for(var ei=0; ei<edits.length; ei++){
+          if(edits[ei].start>=st.range[0] && edits[ei].start<st.range[1]) return true;
+        }
+        return false;
+      }
+      var priorDrop=(priorAlias && priorAlias.dropLeading) || 0;
+      var injectStmt=null;
+      if(priorDrop>0 && priorDrop<=ast.body.length){
+        var probeSt=ast.body[priorDrop-1];
+        if(probeInjectableMF(probeSt)) injectStmt=probeSt;
+      }
+      if(!injectStmt && priorDrop===0 && ast.body.length && probeInjectableMF(ast.body[0]) && !editsInsideMF(ast.body[0])){
+        injectStmt=ast.body[0];
+      }
+      var candidate;
+      var dropDelta;
+      if(injectStmt){
+        var lastVar=injectStmt.variables[injectStmt.variables.length-1];
+        var stmtEnd=injectStmt.range[1];
+        var allEdits=edits.concat([
+          {start:lastVar.range[1], end:lastVar.range[1], name:','+declNames},
+          {start:stmtEnd, end:stmtEnd, name:','+declVals}
+        ]);
+        candidate=applyEdits(src, allEdits);
+        dropDelta=0;
+      }else{
+        candidate = 'local '+declNames+'='+declVals+' '+applyEdits(src, edits);
+        dropDelta=1;
+      }
       if(candidate.length>=src.length) return null;
 
       var newAlias={
@@ -2875,7 +2967,7 @@
         stringAliasByLocal:Object.assign({},(priorAlias&&priorAlias.stringAliasByLocal)||{}),
         chainAliasByLocal:Object.assign({},(priorAlias&&priorAlias.chainAliasByLocal)||{}),
         transparentAliases:(priorAlias&&priorAlias.transparentAliases)||{},
-        dropLeading:((priorAlias&&priorAlias.dropLeading)||0)+1
+        dropLeading:((priorAlias&&priorAlias.dropLeading)||0)+dropDelta
       };
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'member-field/syntax', steps);
