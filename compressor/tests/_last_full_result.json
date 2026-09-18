@@ -67,6 +67,16 @@
       "pass": 7,
       "fail": 0
     },
+    "methodInject": {
+      "ok": true,
+      "pass": 10,
+      "fail": 0
+    },
+    "declHoistValue": {
+      "ok": true,
+      "pass": 9,
+      "fail": 0
+    },
     "chunkedSearch": {
       "ok": true,
       "pass": 4,
@@ -80,9 +90,9 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 232678,
-      "searchBytes": 232671,
-      "savedBytes": 7
+      "ruleBytes": 232672,
+      "searchBytes": 232667,
+      "savedBytes": 5
     },
     "bulk": {
       "ok": true,

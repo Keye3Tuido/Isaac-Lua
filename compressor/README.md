@@ -90,7 +90,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.6  多重赋值拆分（非 local 多赋值 → 单赋值序列；编码层兑现节省）
 1.6b if-not 二择（if not C then A else B → if C then B else A，省 not）
 1.7  变量复用（活跃区间不交 → 共享名 + 省 local；含循环内丢弃变量 `_`；SSA 等价校验）
-1.7b 声明上提（顶层局部上提到别名头作前向 nil 占位 + 降级 local）
+1.7b 声明上提（顶层局部上提到别名头作前向 nil 占位 + 降级 local；支持值粒度部分上提：不引用头部/同语句变量的纯访问链/字面量值直接并入头部值列表，仅引用头部变量的值走占位）
 1.7c prefix 合并（声明上提完成后，别名头与紧邻 body local 合并省 local 关键字）
 1.7c2 块包装(二次)（prefix 合并后重跑，捕获新暴露的重复块）
 1.7d 尾值符号收尾（多值赋值 local 里把"以引号/花括号结尾"的纯字面量排到最后，省后续关键字前的空格）
@@ -153,7 +153,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 - **多重赋值拆分** — 非 local 多重赋值安全条件下拆为单赋值序列；编码层每个非末值符号收尾兑现 1 字节省
 - **if-not 二择** — `if not C then A else B end` → `if C then B else A end`，省 `not`（约 4 字）；`canonical` 内置归一验证
 - **变量复用** — 活跃区间不交的局部共享名字，后者 `local` 降级为赋值；支持循环体内复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`）；SSA 等价校验
-- **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证。
+- **声明上提** — 顶层局部上提到别名头作前向 nil 占位 + 原 `local` 降级为赋值；`canonical` 死前向声明归一验证。**值粒度部分上提（mixed 路径）**：对 `local g,h,i=V0,a.M1,a.M2` 这类混合声明按值分类——不引用头部/同语句声明变量、形态为纯访问链/字面量（不含拼接/调用/函数）的值（V0）直接并入头部值列表（`local a,g,...=X,V0`），仅引用头部变量的值对应的变量（h,i）前向 nil 占位、原地降级为赋值补齐（`h,i=a.M1,a.M2`）。与 foldFwdNilInline（下沉）收敛不打架：占位 RHS 必引用头部/同语句 binding（refsAnyBinding 拒绝沉回），inline 值非 nil 占位不参与下沉。mixed 语句限制：变量数 ≤4 且与头部（传递）相邻（inline 固定收益只是省一个 `local `，大语句对头部值列表结构扰动大、易干扰后续字符串/成员因子分解）。full（含 mixed）/legacy（纯占位旧行为）双候选分别过三重验证取更短者，保证不退旧收益
 - **前向 nil 内联（声明下沉）** — 声明上提的逆变换：`local a,f,g=X f,g=Y,Z`（f,g 为 nil 占位）按位并回 `local a,f,g=X,Y,Z`；支持多目标赋值整体下沉（全部目标均为同条 local 的 nil 占位、赋值前不被读写、RHS 不引用同条 local 变量时整条并入），省 ` f,g=`；canonical fwdNil 归一验证
 - **重复声明删除（禁用）** — 文本相同不能证明求值时机和副作用相同；安全模式保留重复 `local` 声明
 
@@ -208,11 +208,12 @@ node tests/test_transparent_elision.js  # 透明别名消解专项
 node tests/test_canonical_fwdnil.js     # 死前向声明归一专项（含多目标赋值形态）
 node tests/test_fwdnil_merge.js         # 前向nil多目标下沉 + 链别名映射传播回归（noMetatable 路径）
 node tests/test_method_inject.js        # foldMethods/foldMemberField 注入已有 local 形态 + 任意 base 成员字段 + 安全负例
+node tests/test_declhoist_value.js      # 声明上提值粒度部分上提（mixed 路径）+ 收敛/安全负例
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```
 
-**当前状态**：基础 101/101、边界 40/40、仓库真实语料 525/525 块（逐块单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、方法注入/成员字段base 10/10、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大块）parse 次数 641，输出 15479 字节。
+**当前状态**：基础 101/101、边界 40/40、仓库真实语料 525/525 块（逐块单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、方法注入/成员字段base 10/10、声明上提值粒度 9/9、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大块）parse 次数 641，输出 15479 字节。
 
 **语料测试口径**：仓库真实代码按「每个代码块单独压缩」进行——语料取**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出，与站点 / kb.json 同口径），不是仓库文件里的原始 `l` 行：模板引用块在源文件里没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句。既不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐块测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 
@@ -223,7 +224,7 @@ node tests/snapshot.js --check          # 全语料字节级回归比对（改�
 **设计原则**：只做"可机器证明等价"的技巧，全部带"只缩短才提交"实测闸门。
 
 **具体限制**：
-- **声明上提** — 仅顶层块内、别名头之后、未被闭包捕获、不在循环体的局部；死前向声明归一验证。不做**索引/调用表达式冗余存储消除**（如重复 `A=a[c]`），因重新求值可能触发 `__index` 副作用
+- **声明上提** — 仅顶层块内、别名头之后、不在循环体的局部；死前向声明归一验证。纯占位路径要求未被闭包捕获（成员链别名例外）；值粒度部分上提（mixed）额外要求：语句变量数 ≤4、与头部相邻、inline 值为纯访问链/字面量且引用隔离，被闭包捕获的占位变量由 canonical fwdNil 归一严格验证。不做**索引/调用表达式冗余存储消除**（如重复 `A=a[c]`），因重新求值可能触发 `__index` 副作用
 - **透明别名消解** — 仅"只读、从不被赋值、init 溯源到全局"的局部；同名 binding 全部满足 + 单声明单别名才消解。`canonical` copy-propagation 双侧归一验证
 - **变量复用** — 仅 SSA 版本化等价能确认时应用；循环体内可复用丢弃变量（如 `for _,k in pairs(..)` 的 `_`，其活跃区间在循环头结束）；跨复杂控制流保守判负则回退
 - **多重赋值拆分** — 仅非 local 多重赋值；目标含索引/成员或目标耦合（`a,b=b,a`）时跳过

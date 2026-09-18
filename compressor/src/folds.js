@@ -1550,85 +1550,192 @@
       })(ast.body);
       function inLoop(pos){ for(var i=0;i<loopRanges.length;i++){ if(pos>=loopRanges[i][0]&&pos<loopRanges[i][1]) return true; } return false; }
 
-      // 候选：顶层块内、别名头之后声明的 LocalStatement 里的变量绑定。
-      // 收集每条顶层 LocalStatement（在 header 之后）及其变量绑定。
-      var hoistVars=[];   // {binding, varNode, stmt, posInStmt}
-      var stmtSet=new Set();
+      // init 是否引用了禁止集合里的 binding（值并入头部时，头部/同语句声明的变量在 RHS
+      // 求值点尚未进入作用域，引用它们的值必须走占位路径，否则读到的是外层/旧值）。
+      function refsBinding(node, bindingSet){
+        var found=false;
+        (function w(n){
+          if(found||!n||typeof n!=='object')return;
+          if(Array.isArray(n)){for(var i=0;i<n.length;i++)w(n[i]);return;}
+          if(n.type==='Identifier'){ var b=info.varOf.get(n); if(b && bindingSet.has(b)) found=true; return; }
+          for(var k in n){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(n,k)) w(n[k]); }
+        })(node);
+        return found;
+      }
+
+      // 候选：顶层块内、别名头之后声明的 LocalStatement。【值粒度】分类每个变量：
+      //  - inline：init 不引用任何「头部语句或任一候选语句声明的 binding」，且该语句
+      //    在上提后仍与头部相邻（求值点提前但不跨越任何语句）→ (名字,值) 直接并入头部对齐区；
+      //  - placeholder：其余合格变量 → 名字作前向 nil 占位进头部，值留在原地赋值补齐；
+      //  - 不合格变量（嵌套作用域/多声明等）→ 保留在原 local 里不动。
+      var forbidden=new Set();   // 头部 + 所有候选语句声明的 binding
+      headerStmt.variables.forEach(function(v){ if(v.type==='Identifier'){ var hb=info.varOf.get(v); if(hb) forbidden.add(hb); } });
+      var candStmts=[];   // {st, stIdx, vars:[{binding,varNode,initNode,eligible}]}
       for(var si=headerIdx+1; si<ast.body.length; si++){
         var st=ast.body[si];
         if(st.type!=='LocalStatement' || !st.variables || !st.init) continue;
         if(st.init.length!==st.variables.length) continue;     // 多/少值截断，跳过整条
         if(inLoop(st.range[0])) continue;
+        var vars=[], any=false;
         for(var vi=0; vi<st.variables.length; vi++){
           var vn=st.variables[vi];
           if(vn.type!=='Identifier') continue;
           var b=info.varOf.get(vn);
-          if(!b) continue;
-          if(b.scope.id!==topId) continue;       // 仅顶层
-          // 被闭包捕获的变量通常不上提（上提会把它从只读变重赋值，破坏后续只读内联/死纯折叠）。
-          // 但「成员链别名」例外：它们由 canonical 还原为整链访问，不依赖只读状态，
-          // 上提后可并入首条 local（如 f[h] 反转后的 l,m），故允许。
-          var _isChainAlias = priorAlias && priorAlias.chainAliasByLocal && priorAlias.chainAliasByLocal.hasOwnProperty(b.name);
-          if(b.captured && !_isChainAlias) continue;
-          if(b.decls.length!==1) continue;
-          hoistVars.push({binding:b, varNode:vn, stmt:st, posInStmt:vi});
-          stmtSet.add(st);
+          var eligible = !!(b && b.scope.id===topId && b.decls.length===1);
+          // 被闭包捕获不再一票否决：inline 保持只读单声明不受影响；placeholder 变为
+          // 「声明+后赋值」，正确性由 canonical 的 fwdNil 归一严格验证（捕获闭包若横在
+          // 声明与赋值之间会阻挡归一，自动拒绝）。
+          if(b && eligible) forbidden.add(b);
+          vars.push({binding:b, varNode:vn, initNode:st.init[vi], eligible:eligible});
+          if(eligible) any=true;
         }
+        if(any) candStmts.push({st:st, stIdx:si, vars:vars});
       }
-      if(!hoistVars.length) return null;
+      if(!candStmts.length) return null;
 
-      // 为避免与别名头重名：收集头部现有名字 + 全局名（保守）。上提的变量名都来自既有局部，
-      // 它们已与头部别名经过 planAll 的统一着色不冲突，这里仅防御性检查不重复追加同名。
+      // 为避免与别名头重名：收集头部现有名字（防御性检查不重复追加同名）。
       var headerNames=new Set();
       headerStmt.variables.forEach(function(v){ if(v.type==='Identifier') headerNames.add(v.name); });
 
-      // 生成候选 edits：
-      //  ① 头部名列表尾部追加 `,X1,X2,...`（每个待上提变量名，去重）；不加 init（自动 nil）。
-      //     但 Lua 要求 #init<=#vars 时尾随变量为 nil——合法。为保险，头部保持原样仅加名字。
-      //  ② 每条待降级 LocalStatement：若其【所有】变量都被上提 → 去掉 'local '（变为赋值序列，
-      //     但多变量 local 去掉 local 后是 `A,T=v1,v2` 多重赋值，仍合法且等价）；
-      //     若仅部分变量被上提（这里全部上提，因为我们收集了该 stmt 的所有合格变量；
-      //     若有不合格变量则不能简单去 local）——需逐条判断。
-      var appendNames=[];
-      var appendSeen=new Set();
-      var edits=[];
-      var hoistCount=0;
+      // 头部对齐区（#init==#vars 已校验）的插入位置：跳过末尾"以符号收尾的纯字面量"
+      // 值对（字符串/表构造），并入的值插到它们之前，头部保持符号收尾可省一个分隔
+      // 空格（与 foldTailSymbol 同规则；纯字面量求值无副作用，交换顺序安全）。
+      function isSymbolTailLiteral(n){ return n && (n.type==='StringLiteral'||n.type==='TableConstructorExpression'); }
+      var alignCount=headerStmt.variables.length;
+      var tailLit=0;
+      while(tailLit<alignCount && isSymbolTailLiteral(headerStmt.init[alignCount-1-tailLit])) tailLit++;
 
-      // 按语句聚合
-      var byStmt=new Map();
-      hoistVars.forEach(function(h){ if(!byStmt.has(h.stmt)) byStmt.set(h.stmt, []); byStmt.get(h.stmt).push(h); });
+      // inline 值的形态限制：仅纯访问链（Identifier / 点或索引成员链）与字面量。
+      // 拼接/调用/函数等复杂表达式不进头部——拼接值会干扰头部字符串值的仿射因子分解，
+      // 复杂表达式求值点提前的副作用风险也更高（canonical 兜底，但保守更稳）。
+      function isInlineableExpr(n){
+        if(!n) return false;
+        switch(n.type){
+          case 'Identifier': case 'NumericLiteral': case 'StringLiteral':
+          case 'BooleanLiteral': case 'NilLiteral': return true;
+          case 'MemberExpression': return isInlineableExpr(n.base);
+          case 'IndexExpression': return isInlineableExpr(n.base) && isInlineableExpr(n.index);
+          default: return false;
+        }
+      }
+      // 候选构建：mode='full' 允许 mixed 路径（语句含可 inline 值时，合格变量全部参与，
+      // 被闭包捕获也允许占位，canonical fwdNil 归一严格验证）；mode='legacy' 仅传统纯占位
+      // 路径（旧行为：要求全部变量合格且不被闭包捕获，成员链别名例外）。
+      // 两种模式各构建一个候选，分别过三重验证后取更短者——mixed 语句把占位名成本拉进
+      // 原子候选，可能整体变长或不如纯 legacy，双候选取短保证不回退旧收益。
+      function buildPlan(mode){
+        var inlineNameList=[], inlineValList=[], placeholderNameList=[];
+        var edits=[];
+        var hoistCount=0;
+        var abort=false;
+        var addedNames=new Set();
+        var frontier=headerIdx+1;   // inline 邻接前沿：只有与头部（传递）相邻的语句才允许 inline
 
-      var abort=false;
-      byStmt.forEach(function(list, st){
-        if(abort) return;
-        // 只有当该 LocalStatement 的【全部】变量都在候选里，才能整体去掉 'local '。
-        if(list.length!==st.variables.length) return;   // 部分变量不合格 → 跳过该条（保守）
-        // 头部追加这些名字
-        list.forEach(function(h){
-          if(!appendSeen.has(h.binding.name) && !headerNames.has(h.binding.name)){
-            appendSeen.add(h.binding.name); appendNames.push(h.binding.name);
-          } else if(headerNames.has(h.binding.name)){
-            abort=true;   // 与头部已有名字冲突，放弃整次（罕见）
+        candStmts.forEach(function(cs){
+          if(abort) return;
+          var st=cs.st;
+          var allowInline = (mode==='full') && (frontier===cs.stIdx);
+          // 先判定本语句是否有可 inline 的值（邻接 + 值不引用禁止集合 + 非重名）。
+          // 规模限制：mixed 路径的固定收益只是省一个 `local `（6 字），语句变量越多
+          // 占位名成本越高、对头部值列表结构扰动越大（干扰后续字符串/成员因子分解），
+          // 保守限制 mixed 语句变量数 ≤4（目标场景都是小语句）。
+          var hasInline=false;
+          if(allowInline && cs.vars.length<=4){
+            cs.vars.forEach(function(v){
+              if(!v.eligible) return;
+              var name=v.binding.name;
+              if(headerNames.has(name)||addedNames.has(name)) return;
+              if(!refsBinding(v.initNode, forbidden) && isInlineableExpr(v.initNode)) hasInline=true;
+            });
           }
+          if(!hasInline){
+            var allOk=cs.vars.every(function(v){
+              if(!v.eligible) return false;
+              if(v.binding.captured){
+                var _isChainAlias = priorAlias && priorAlias.chainAliasByLocal && priorAlias.chainAliasByLocal.hasOwnProperty(v.binding.name);
+                if(!_isChainAlias) return false;
+              }
+              return true;
+            });
+            if(!allOk){ frontier=-1; return; }   // 保守跳过该条（含部分变量不合格）
+          }
+          var localRemain=[], assignPart=[];
+          cs.vars.forEach(function(v){
+            if(abort) return;
+            var name=v.binding ? v.binding.name : v.varNode.name;
+            var initText=src.slice(v.initNode.range[0], v.initNode.range[1]);
+            if(!v.eligible){ localRemain.push({name:name, init:initText}); return; }
+            if(headerNames.has(name)){ abort=true; return; }
+            // 同名不同 binding（变量复用形态，如多条 `local A=...`）：名字只进头部一次
+            // （占位语义，canonical SSA 验证复用安全），不可走 inline（对齐值对会重复声明）。
+            var dup=addedNames.has(name);
+            var canInline = hasInline && !dup && isInlineableExpr(v.initNode) && !refsBinding(v.initNode, forbidden);
+            if(canInline){
+              inlineNameList.push(name); inlineValList.push(initText);
+              addedNames.add(name);
+            }else{
+              if(!dup){ placeholderNameList.push(name); addedNames.add(name); }
+              assignPart.push({name:name, init:initText});
+            }
+            hoistCount++;
+          });
+          if(abort) return;
+          var pieces=[];
+          if(localRemain.length)
+            pieces.push('local '+localRemain.map(function(p){return p.name;}).join(',')
+                        +'='+localRemain.map(function(p){return p.init;}).join(','));
+          if(assignPart.length)
+            pieces.push(assignPart.map(function(p){return p.name;}).join(',')
+                        +'='+assignPart.map(function(p){return p.init;}).join(','));
+          var newText=pieces.join(' ');
+          var oldText=src.slice(st.range[0], st.range[1]);
+          if(newText!==oldText) edits.push({start:st.range[0], end:st.range[1], name:newText});
+          // 整条 inline（语句被删）→ 前沿推进；否则后续语句不再允许 inline
+          frontier = (!localRemain.length && !assignPart.length) ? cs.stIdx+1 : -1;
         });
-        // 去掉该语句的 'local '（前 6 字）。降级后为 `A=v` 或 `A,T=v1,v2`（多重赋值，合法）。
-        if(src.slice(st.range[0], st.range[0]+6)!=='local ') { abort=true; return; }
-        edits.push({start:st.range[0], end:st.range[0]+6, name:''});
-        hoistCount+=list.length;
-      });
-      if(abort || !appendNames.length) return null;
+        if(abort || (!inlineNameList.length && !placeholderNameList.length)) return null;
 
-      // 头部名列表尾部注入 `,X1,X2,...`
-      edits.push({start:headerNamesEnd, end:headerNamesEnd, name:','+appendNames.join(',')});
+        // 头部注入：inline 的 (名字,值) 插到尾部纯字面量值对之前（或追加到对齐区末尾），
+        // 占位名字追加到名单最末（无对应值，自动 nil）。
+        if(tailLit>0){
+          if(inlineNameList.length){
+            var insN=headerStmt.variables[alignCount-tailLit].range[0];
+            var insV=headerStmt.init[alignCount-tailLit].range[0];
+            edits.push({start:insN, end:insN, name:inlineNameList.join(',')+','});
+            edits.push({start:insV, end:insV, name:inlineValList.join(',')+','});
+          }
+          if(placeholderNameList.length)
+            edits.push({start:headerNamesEnd, end:headerNamesEnd, name:','+placeholderNameList.join(',')});
+        }else{
+          var allNames=inlineNameList.concat(placeholderNameList);
+          edits.push({start:headerNamesEnd, end:headerNamesEnd, name:','+allNames.join(',')});
+          if(inlineValList.length)
+            edits.push({start:headerEnd, end:headerEnd, name:','+inlineValList.join(',')});
+        }
+        return {edits:edits, hoistCount:hoistCount, inlineCount:inlineNameList.length};
+      }
 
-      var candidate=applyEdits(src, edits);
-      if(candidate.length>=src.length) return null;
-      // 真·Lua 语法
-      if(luaValidate && luaValidate(candidate)) return null;
-      // canonical 等价（借助 forward-nil 归一）
-      var ok=false;
-      try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
-      if(!ok) return null;
+      function tryCandidate(plan){
+        var candidate=applyEdits(src, plan.edits);
+        if(candidate.length>=src.length) return null;
+        if(luaValidate && luaValidate(candidate)) return null;   // 真·Lua 语法
+        var ok=false;
+        try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
+        if(!ok) return null;                                     // canonical 等价（forward-nil 归一）
+        return candidate;
+      }
+
+      var candidate=null, usedPlan=null;
+      var planFull=buildPlan('full');
+      if(planFull){ var cF=tryCandidate(planFull); if(cF){ candidate=cF; usedPlan=planFull; } }
+      var planLegacy=buildPlan('legacy');
+      if(planLegacy){
+        var cL=tryCandidate(planLegacy);
+        if(cL && (!candidate || cL.length<candidate.length)){ candidate=cL; usedPlan=planLegacy; }
+      }
+      if(!candidate) return null;
+      var hoistCount=usedPlan.hoistCount;
+
       assertParses(candidate, '阶段1.7b/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7b/等价', steps);
       if(rec) rec('声明上提(提交)', src.length, candidate.length, '上提 '+hoistCount+' 个变量到别名头并降级其 local');
