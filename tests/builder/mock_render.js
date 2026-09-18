@@ -277,6 +277,19 @@ named.searchInput.value = '工具第二段';
 vm.runInContext('handleSearch()', sandbox);
 check('工具条目注释搜索命中 #u1s1', searchHtml().indexOf('#u1s1') !== -1);
 
+// ⑧b 同文件多条命中：左侧文件标题合并为一格，右侧每条命中整行可点
+named.searchInput.value = '道具';
+vm.runInContext('handleSearch()', sandbox);
+const html = searchHtml();
+check('同文件两条命中：文件标题只渲染一格',
+    (html.match(/class="search-file"/g) || []).length === 1);
+check('同文件两条命中：右侧各占一行',
+    (html.match(/class="search-item"/g) || []).length === 2);
+check('每条命中行整行是链接（#c1s1 / #c1s2）',
+    html.indexOf('href="#c1s1"') !== -1 && html.indexOf('href="#c1s2"') !== -1);
+check('左侧合并格链接到文件本身（#c1）', html.indexOf('href="#c1"') !== -1);
+check('计数按命中条数（2）', named.searchCount.textContent === 2);
+
 named.searchInput.value = '样例';
 vm.runInContext('handleSearch()', sandbox);
 check('标题搜索命中文件「样例挑战」', searchHtml().indexOf('样例') !== -1 && searchHtml().indexOf('#c1"') !== -1);

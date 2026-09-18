@@ -939,27 +939,38 @@ function matchSnippet(text, query) {
     return head + highlightHtml(text.slice(start, end), query) + tail;
 }
 
-// 单条搜索结果 → 两栏行：左 = 文件标题，右 = 关键字匹配
-function renderSearchRow(r, t) {
-    const link = '<a class="search-file" href="#' + r.fileId + r.secId + '">'
-        + '<span class="search-file-num">' + escapeHtml(r.fileNum) + '</span>'
-        + '<span class="search-file-title">' + escapeHtml(r.title) + '</span></a>';
-    let match;
+// 单条命中的「关键字匹配」栏文本
+function searchMatchText(r, t) {
     if (r.kind === 'file') {
         // 文件级：命中编号则展示编号，否则展示标题
-        match = r.fileNum.toLowerCase().indexOf(t) !== -1
+        return r.fileNum.toLowerCase().indexOf(t) !== -1
             ? '编号 ' + highlightHtml(r.fileNum, t)
             : highlightHtml(r.title, t);
-    } else if (r.comment && r.comment.toLowerCase().indexOf(t) !== -1) {
-        match = matchSnippet(r.comment, t);
-    } else if (r.tpl && r.tpl.toLowerCase().indexOf(t) !== -1) {
-        match = '模板·' + highlightHtml(r.tpl, t);
-    } else if (r.name && r.name.toLowerCase().indexOf(t) !== -1) {
-        match = '名称 ' + highlightHtml(r.name, t);
-    } else {
-        match = matchSnippet(r.comment || r.tpl || r.name || '', t);
     }
-    return '<div class="search-row">' + link + '<span class="search-match">' + match + '</span></div>';
+    if (r.comment && r.comment.toLowerCase().indexOf(t) !== -1) return matchSnippet(r.comment, t);
+    if (r.tpl && r.tpl.toLowerCase().indexOf(t) !== -1) return '模板·' + highlightHtml(r.tpl, t);
+    if (r.name && r.name.toLowerCase().indexOf(t) !== -1) return '名称 ' + highlightHtml(r.name, t);
+    return matchSnippet(r.comment || r.tpl || r.name || '', t);
+}
+
+// 搜索结果 → 两栏：左 = 文件标题（同文件的命中合并成一格），右 = 逐条关键字匹配。
+// 右侧每条命中整行都是链接，点行内任意位置即跳到该条目锚点。
+function renderSearchResults(matches, t) {
+    const order = [], groups = {};
+    for (const r of matches) {
+        if (!groups[r.fileId]) { groups[r.fileId] = { head: r, items: [] }; order.push(r.fileId); }
+        groups[r.fileId].items.push(r);
+    }
+    return order.map(id => {
+        const g = groups[id];
+        const head = '<a class="search-file" href="#' + id + '">'
+            + '<span class="search-file-num">' + escapeHtml(g.head.fileNum) + '</span>'
+            + '<span class="search-file-title">' + escapeHtml(g.head.title) + '</span></a>';
+        const items = g.items.map(r =>
+            '<a class="search-item" href="#' + r.fileId + r.secId + '">'
+            + '<span class="search-match">' + searchMatchText(r, t) + '</span></a>').join('');
+        return '<div class="search-row">' + head + '<div class="search-items">' + items + '</div></div>';
+    }).join('');
 }
 
 let searchTjTimer;
@@ -993,7 +1004,7 @@ function handleSearch() {
     if (otherSection) otherSection.style.display = 'none';
     if (searchSection) {
         searchSection.style.display = matches.length ? '' : 'none';
-        if (searchList) searchList.innerHTML = matches.map(r => renderSearchRow(r, t)).join('');
+        if (searchList) searchList.innerHTML = renderSearchResults(matches, t);
         if (searchCount) searchCount.textContent = matches.length;
     }
     if (noResult) noResult.style.display = matches.length ? 'none' : 'block';
