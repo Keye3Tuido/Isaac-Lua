@@ -141,7 +141,7 @@
     //  （压缩前搜索，能发现更长的重复模式；提取后再跑完整规则系统）
     // ================================================================
 
-    function tryRawExprExtract(origPre, best, deadline, verbose) {
+    function tryRawExprExtract(origPre, best, budgetCtl, verbose) {
       if (origPre.length < 80) return null; // 太短不值得
 
       // 在原始输入端解析
@@ -218,7 +218,7 @@
 
       var maxGroups = Math.min(groups.length, 5);
       for (var gi = 0; gi < maxGroups; gi++) {
-        if (Date.now() >= deadline) break;   // 仅当显式传了 budget 才受墙钟限制
+        if (budgetCtl.out()) break;   // 预算（墙钟 deadline 或工作配额 maxCandidates）耗尽即停
         var g = groups[gi];
 
         var alias = pickUnusedName(origPre, takenNames);
@@ -256,6 +256,7 @@
 
         // 跑完整规则系统
         try {
+          budgetCtl.spend();
           var cand = compress(modified, SEARCH_COMPRESS_OPTS);
           if (cand && cand.ok && cand.bodyLength < best.bodyLength) {
             var candBody = bodyOf(cand);
@@ -506,7 +507,8 @@
 
     function searchOptimize(input, opts) {
       opts = opts || {};
-      // 不默认设时间上限：按 K（束宽）+ 收敛（连续两轮无改善）严格限制；仅显式传 budget 才设墙钟 deadline（供测试用）。
+      // 不默认设时间上限：按 K（束宽）+ 收敛（连续两轮无改善）严格限制；仅显式传 budget（墙钟）
+      // 或 maxCandidates（候选压缩次数，跨机器确定）才设限（供测试用），两者可共存、先到先停。
       var budget = opts.budget;
       var verbose = !!opts.verbose;
       // 束宽（搜索优化级数）：0 = 禁用；1+ = beam search 的候选束宽度
@@ -526,6 +528,13 @@
       var startTime = Date.now();
       var deadline = (opts._deadline != null) ? opts._deadline
                    : ((budget != null && budget >= 0) ? (startTime + budget) : Infinity);
+      // 工作配额（跨机器确定）：maxCandidates = 候选压缩次数上限。墙钟 budget 在慢机器上
+      // 探索变浅、结果随负载漂移；次数配额在任何机器上于同一点耗尽。两者可共存，先到先停。
+      var maxCandidates = (opts.maxCandidates !== undefined) ? opts.maxCandidates : null;
+      var spent = 0;
+      function budgetOut(){ return (maxCandidates !== null && spent >= maxCandidates) || Date.now() >= deadline; }
+      function compressW(code, o){ spent++; return compress(code, o); }   // 每次候选压缩计 1 次工作
+      var budgetCtl = { out: budgetOut, spend: function(){ spent++; } };
 
       // 原始预处理代码 — canonical 等价基准
       var origPre;
@@ -560,12 +569,12 @@
           return {cfg:Object.assign({blockMaxLen:8}, fo), full:false};
         }));
       for (var bci = 0; bci < baseCfgs.length; bci++) {
-        if (Date.now() >= deadline) break;
-        try { addCandidate(compress(input, Object.assign({}, baseCfgs[bci].full ? cOpts : fastOpts, baseCfgs[bci].cfg))); } catch (e) {}
+        if (budgetOut()) break;
+        try { addCandidate(compressW(input, Object.assign({}, baseCfgs[bci].full ? cOpts : fastOpts, baseCfgs[bci].cfg))); } catch (e) {}
       }
       if (!beam.length) return compress(input, opts);
       try {
-        var rawResult = tryRawExprExtract(origPre, beam[0].result, deadline, verbose);
+        var rawResult = tryRawExprExtract(origPre, beam[0].result, budgetCtl, verbose);
         if (rawResult) addCandidate(rawResult);
       } catch (e) {}
 
@@ -578,7 +587,7 @@
       var maxRounds = 6;   // 轮次上限；正常靠"连续两轮无改善"收敛
       var rounds = 0;
       var noImprove = 0;
-      while (rounds < maxRounds && Date.now() < deadline) {
+      while (rounds < maxRounds && !budgetOut()) {
         rounds++;
         var prevBestLen = best.bodyLength;
         var prevBeamLen = beam.length;
@@ -591,17 +600,17 @@
             var mods;
             try { mods = move.apply(cand.body, origPre, candAlias, move.cand); } catch (e) { mods = []; }
             for (var xi = 0; xi < mods.length; xi++) {
-              if (Date.now() >= deadline) break;
+              if (budgetOut()) break;
               var mod = mods[xi];
-              try { addCandidate(compress(mod.code, fastOpts)); } catch (e) {}
+              try { addCandidate(compressW(mod.code, fastOpts)); } catch (e) {}
               // 穿插：对一级变换结果再套一层不同 move（组合变换，深度 2）
               for (var m2 = 0; m2 < MOVES.length; m2++) {
                 if (m2 === mi) continue;
                 var composed;
                 try { composed = MOVES[m2].apply(mod.code, origPre, mod.aliasMap, 1); } catch (e) { composed = []; }
                 for (var ci = 0; ci < composed.length; ci++) {
-                  if (Date.now() >= deadline) break;
-                  try { addCandidate(compress(composed[ci].code, fastOpts)); } catch (e) {}
+                  if (budgetOut()) break;
+                  try { addCandidate(compressW(composed[ci].code, fastOpts)); } catch (e) {}
                 }
               }
             }
@@ -640,7 +649,7 @@
       var _fixedBest = best;
       var _visited = new Set();
       _visited.add(origPre);
-      while (Date.now() < deadline) {
+      while (!budgetOut()) {
         var _fb = bodyOf(_fixedBest);
         if (_visited.has(_fb)) break;   // 防循环（平局来回切换）
         _visited.add(_fb);
@@ -672,6 +681,13 @@
                    : ((budget != null && budget >= 0) ? (startTime + budget) : Infinity);
       var onStep = opts.onStep, onDone = opts._done, onError = opts._error;
       var YIELD = 16;   // 一帧（约 16ms），确保浏览器在每步之间重绘徽标
+      // 工作配额（与同步路径同语义）：maxCandidates = 候选压缩次数上限，跨机器确定；
+      // 与墙钟 budget 可共存，先到先停。
+      var maxCandidates = (opts.maxCandidates !== undefined) ? opts.maxCandidates : null;
+      var spent = 0;
+      function budgetOut(){ return (maxCandidates !== null && spent >= maxCandidates) || Date.now() >= deadline; }
+      function compressW(code, o){ spent++; return compress(code, o); }
+      var budgetCtl = { out: budgetOut, spend: function(){ spent++; } };
 
       var origPre;
       try { origPre = preprocess(input); } catch(e){ if(onError) onError(e); return; }
@@ -730,7 +746,7 @@
         var _fixedBest = best;
         var _visited = new Set();
         _visited.add(origPre);
-        while (Date.now() < deadline) {
+        while (!budgetOut()) {
           var _fb = bodyOf(_fixedBest);
           if (_visited.has(_fb)) break;
           _visited.add(_fb);
@@ -758,7 +774,7 @@
         var improved = best.bodyLength < prevBestLen;
         var grew = beam.length > prevBeamLen;
         if(improved) noImprove = 0; else noImprove++;
-        if((!improved && !grew) || noImprove >= 2 || rounds >= maxRounds){ finish(); return; }
+        if((!improved && !grew) || noImprove >= 2 || rounds >= maxRounds || budgetOut()){ finish(); return; }
         rounds++;
         prevBestLen = best.bodyLength;
         prevBeamLen = beam.length;
@@ -814,13 +830,14 @@
 
         // ---- 阶段：压缩当前 mod ----
         if(rs.phase === 'mod'){
-          if(rs.xi >= rs.mods.length){
+          // 配额耗尽：跳过本 move 剩余候选（对齐同步路径 xi 循环的 break）
+          if(rs.xi >= rs.mods.length || budgetOut()){
             rs.mi++; rs.mods = null; rs.phase = 'apply'; rs.m2 = 0; rs.composed = null; rs.ci = 0; rs.applying = false;
             stepCandidate();
             return;
           }
           var mod = rs.mods[rs.xi];
-          try{ addCandidate(compress(mod.code, fastOpts)); }catch(e){}
+          try{ addCandidate(compressW(mod.code, fastOpts)); }catch(e){}
           rs.phase = 'capply'; rs.m2 = 0; rs.composed = null; rs.ci = 0;
           onStep(candLabel());
           setTimeout(processNext, YIELD);
@@ -851,13 +868,14 @@
 
         // ---- 阶段：压缩组合候选 ----
         if(rs.phase === 'cmod'){
-          if(rs.ci >= rs.composed.length){
+          // 配额耗尽：跳过本 mod 剩余组合（对齐同步路径 ci 循环的 break；后续 m2 迭代同样跳过压缩）
+          if(rs.ci >= rs.composed.length || budgetOut()){
             rs.m2++; rs.composed = null; rs.phase = 'capply'; rs.ci = 0; rs.applying = false;
             stepCandidate();
             return;
           }
           var comp = rs.composed[rs.ci++];
-          try{ addCandidate(compress(comp.code, fastOpts)); }catch(e){}
+          try{ addCandidate(compressW(comp.code, fastOpts)); }catch(e){}
           onStep(candLabel());
           setTimeout(processNext, YIELD);
           return;
@@ -866,17 +884,18 @@
 
       function processNext(){
         try {
-          if(Date.now() >= deadline && budget != null){ finish(); return; }
+          if(budgetOut()){ finish(); return; }
           if(phase === 'baseline'){
+            if(baseIdx < baseCfgs.length && budgetOut()) baseIdx = baseCfgs.length;   // 配额耗尽：跳过剩余基线（对齐同步路径）
             if(baseIdx < baseCfgs.length){
               onStep('正在建立搜索列表 ('+(baseIdx+1)+'/'+baseCfgs.length+')');
               var bc = baseCfgs[baseIdx++];
-              addCandidate(compress(input, Object.assign({}, bc.full ? cOpts : fastOpts, bc.cfg)));
+              addCandidate(compressW(input, Object.assign({}, bc.full ? cOpts : fastOpts, bc.cfg)));
               setTimeout(processNext, YIELD);
               return;
             }
             if(!beam.length){ onDone(compress(input, opts)); return; }
-            try { var raw = tryRawExprExtract(origPre, beam[0].result, deadline, false); if(raw) addCandidate(raw); } catch(e){}
+            try { var raw = tryRawExprExtract(origPre, beam[0].result, budgetCtl, false); if(raw) addCandidate(raw); } catch(e){}
             beam.sort(function(a,b){ return a.result.bodyLength - b.result.bodyLength; });
             best = beam[0].result;
             prevBestLen = best.bodyLength;

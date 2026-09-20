@@ -101,8 +101,8 @@
     "search": {
       "ok": true,
       "ruleBytes": 232672,
-      "searchBytes": 232667,
-      "savedBytes": 5
+      "searchBytes": 232653,
+      "savedBytes": 19
     },
     "bulk": {
       "ok": true,

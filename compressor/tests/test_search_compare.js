@@ -34,7 +34,7 @@ for (const f of files) {
     try { baseline = LuaMin.compress(cleaned); } catch (e) { continue; }
     if (!baseline || !baseline.ok) continue;
 
-    try { search = LuaMin.searchOptimize(cleaned, { budget: 600 }); } catch (e) { search = null; }
+    try { search = LuaMin.searchOptimize(cleaned, { maxCandidates: 10 }); } catch (e) { search = null; }
     if (!search || !search.ok) { baselineTotal += baseline.bodyLength; searchTotal += baseline.bodyLength; continue; }
 
     baselineTotal += baseline.bodyLength;
