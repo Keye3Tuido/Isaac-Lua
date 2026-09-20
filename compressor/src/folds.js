@@ -2,15 +2,45 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'folds', install:function(C){
-    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess, lex=C.lex;
+    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, createNameAllocator=C.createNameAllocator, collectTakenNames=C.collectTakenNames, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, unquoteShort=C.unquoteShort, canSingleQuote=C.canSingleQuote, needsSepAfter=C.needsSepAfter, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess, lex=C.lex;
 
     function canCommit(originalCode, candidate, aliasMap){
       if(luaValidate && luaValidate(candidate)) return false;
       try{
-        parse(candidate);
+        // 无需单独 parse(candidate)：canonical 内部即 parse，解析失败同样在此被捕获
         return canonical(originalCode)===canonical(candidate, aliasMap);
       }catch(e){ return false; }
     }
+    // aliasMap 工厂：fold 构造新 aliasMap 的唯一入口。基表 8 字段全量携带
+    // （缺省按类型给空值），overrides 只替换指定字段——「chainAliasByLocal/transparentAliases
+    // 必须逐字传递」的不变量由此结构性保证（漏传会使 canonical 等价校验恒失败）。
+    // prefixFold/stringAlias/chainAlias 三个映射沿用旧惯例做防御性浅拷贝，其余字段按引用携带。
+    //
+    // dropLeading（头部别名声明语句数）是下游保护范围的唯一依据（foldReuse 的 protectN、
+    // foldLocals 的跳过区间、各注入探针等），错算会静默腐蚀后续 fold。故在工厂出口统一
+    // 校验为非负整数，错算即抛（编程错误，不是候选拒绝）；delta 计算全部经下方两个助手，
+    // 不再各 fold 手算。
+    function extendAliasMap(priorAlias, overrides){
+      var m={
+        byName: (priorAlias&&priorAlias.byName)||{},
+        memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
+        factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
+        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+        stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
+        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
+        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
+        dropLeading: (priorAlias&&priorAlias.dropLeading)||0
+      };
+      if(overrides) for(var k in overrides){ if(Object.prototype.hasOwnProperty.call(overrides,k)) m[k]=overrides[k]; }
+      var dl=m.dropLeading;
+      if(typeof dl!=='number'||dl!==dl||dl<0||Math.floor(dl)!==dl)
+        throw new Error('extendAliasMap: dropLeading 必须是非负整数，得到 '+dl);
+      return m;
+    }
+    // dropLeading 记账助手：bumpDrop 新增 n 条头部独立声明（注入现有 batched local 时 n=0）；
+    // clampDrop 删除 removed 条头部声明（钳到 0 不下溢）。
+    function bumpDrop(priorAlias, n){ return ((priorAlias&&priorAlias.dropLeading)||0)+n; }
+    function clampDrop(priorAlias, removed){ return Math.max(0,((priorAlias&&priorAlias.dropLeading)||0)-removed); }
     function preprocess(input){
       var lines=input.replace(/\r\n?/g,'\n').split('\n');
       var stripped=lines.map(function(line){
@@ -55,15 +85,8 @@
       sites.forEach(function(s){ (byMethod[s.method]=byMethod[s.method]||[]).push(s); });
 
       // 已占用名字：解析 src 的所有标识符（保守地全部纳入）+ 关键字
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function collectNames(n){
-        if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){n.forEach(collectNames);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       // 选取要折叠的方法（频次≥2 才有意义；单次折叠 self 重复几乎总是变长）
       var chosen=[]; // {method, alias, sites}
@@ -156,18 +179,12 @@
       }
 
       // 语法 + 等价校验（把新 method 别名也并入 memberByLocal 还原）
-      var newAlias = {
-        byName: (priorAlias&&priorAlias.byName)||{},
+      var newAlias = extendAliasMap(priorAlias, {
         memberByLocal: memberByLocal,
-        factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
-        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
-        stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
-        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
-        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
         // 注入到现有 batched local 时不产生新的 local 语句，dropLeading 不增；
         // 退路独立 local 时 +1
-        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
-      };
+        dropLeading: bumpDrop(priorAlias, dropDelta)
+      });
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'method-fold/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
@@ -207,15 +224,8 @@
       })(ast.body);
 
       // 已占名字（不与现有标识符 / 关键字冲突）
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function collectNames(n){
-        if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){n.forEach(collectNames);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       // 候选前缀枚举：对每个 field 名拆出所有长度 ≥2 的前缀，找命中最多 + 长度最长的，
       // 进一步用乐观估算 (|P|−|U|−6)*sites − (|U|+|P|+4) > 0 预筛；最终仍由 candidate.length 闸门决定。
@@ -498,18 +508,13 @@
         return null;
       }
 
-      var newAlias = {
-        byName: (priorAlias&&priorAlias.byName)||{},
-        memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
+      var newAlias = extendAliasMap(priorAlias, {
         factorLocals: ((priorAlias&&priorAlias.factorLocals)||[]).concat(Object.keys(newPrefixMap)),
         prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}, newPrefixMap),
-        stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}),
-        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
-        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
         // 注入到现有 batched local 时不产生新的 local 语句，dropLeading 不增；
         // 退路独立 local 时 +1
-        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
-      };
+        dropLeading: bumpDrop(priorAlias, dropDelta)
+      });
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'field-prefix/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
@@ -588,14 +593,10 @@
         if(!n||typeof n!=='object') return;
         if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
         if(n.type==='StringLiteral' && !inHeader(n)){
-          var raw=n.raw;
-          if(typeof raw==='string' && raw.length>=4 && (raw[0]==="'"||raw[0]==='"')){
-            var content=raw.slice(1,-1);
-            // 任意内容（不再限制标识符样），但要求能安全回填进单引号声明：不含 ' \ 与换行。
-            if(content.length>=3 && content.indexOf("'")<0 && content.indexOf('\\')<0
-               && content.indexOf('\n')<0 && content.indexOf('\r')<0){
-              (lit2sites[content]=lit2sites[content]||[]).push({start:n.range[0], end:n.range[1], callArg:callArgNodes.has(n)});
-            }
+          var content=unquoteShort(n.raw);
+          // 任意内容（不再限制标识符样），但要求能安全回填进单引号声明（canSingleQuote）。
+          if(content!==null && n.raw.length>=4 && content.length>=3 && canSingleQuote(content)){
+            (lit2sites[content]=lit2sites[content]||[]).push({start:n.range[0], end:n.range[1], callArg:callArgNodes.has(n)});
           }
           return;
         }
@@ -615,15 +616,8 @@
       });
 
       // 已占名（防冲突）
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function collectNames(n){
-        if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){n.forEach(collectNames);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       // 选择候选：每个分配一个名，按真实 |u| 复核收益；不赚则跳过。
       var chosen=[];   // {content, sites, alias}
@@ -652,7 +646,7 @@
         newStringMap[c.alias]=c.content;
         c.sites.forEach(function(s){
           var name = s.callArg ? ('('+c.alias+')') : c.alias;
-          var spacer = (!s.callArg && s.end < src.length && isNamePart(src[s.end])) ? ' ' : '';
+          var spacer = (!s.callArg && needsSepAfter(c.alias[c.alias.length-1], src[s.end])) ? ' ' : '';
           edits.push({start:s.start, end:s.end, name:name + spacer});
         });
       });
@@ -683,16 +677,10 @@
         return null;
       }
 
-      var newAlias = {
-        byName: (priorAlias&&priorAlias.byName)||{},
-        memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
-        factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
-        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+      var newAlias = extendAliasMap(priorAlias, {
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}, newStringMap),
-        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
-        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
-        dropLeading: ((priorAlias&&priorAlias.dropLeading)||0) + dropDelta
-      };
+        dropLeading: bumpDrop(priorAlias, dropDelta)
+      });
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'string-alias/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4/等价', steps);
@@ -734,13 +722,9 @@
         if(!n||typeof n!=='object') return;
         if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
         if(n.type==='StringLiteral' && !inHeader(n) && !callArgNodes.has(n)){
-          var raw=n.raw;
-          if(typeof raw==='string' && raw.length>=4 && (raw[0]==="'"||raw[0]==='"')){
-            var content=raw.slice(1,-1);
-            if(content.length>=2 && content.indexOf("'")<0 && content.indexOf('\\')<0
-               && content.indexOf('\n')<0 && content.indexOf('\r')<0){
-              strs.push({content:content, start:n.range[0], end:n.range[1], tail:content, factors:[]});
-            }
+          var content=unquoteShort(n.raw);
+          if(content!==null && n.raw.length>=4 && content.length>=2 && canSingleQuote(content)){
+            strs.push({content:content, start:n.range[0], end:n.range[1], tail:content, factors:[]});
           }
           return;
         }
@@ -749,15 +733,8 @@
 
       if(strs.length<2) return null;
 
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function cn(n){
-        if(!n||typeof n!=='object') return;
-        if(Array.isArray(n)){n.forEach(cn);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) cn(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       var factorNames=[], factorAffixes=[];
       var rounds=0;
@@ -812,16 +789,10 @@
 
       var newFactorMap=Object.create(null);
       for(var fi=0; fi<factorNames.length; fi++){ newFactorMap[factorNames[fi]]=factorAffixes[fi]; }
-      var newAlias={
-        byName: (priorAlias&&priorAlias.byName)||{},
-        memberByLocal: (priorAlias&&priorAlias.memberByLocal)||{},
-        factorLocals: (priorAlias&&priorAlias.factorLocals)||[],
-        prefixFoldByLocal: Object.assign({}, (priorAlias&&priorAlias.prefixFoldByLocal)||{}),
+      var newAlias=extendAliasMap(priorAlias, {
         stringAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.stringAliasByLocal)||{}, newFactorMap),
-        chainAliasByLocal: Object.assign({}, (priorAlias&&priorAlias.chainAliasByLocal)||{}),
-        transparentAliases: (priorAlias&&priorAlias.transparentAliases)||{},
-        dropLeading: priorDrop+1
-      };
+        dropLeading: bumpDrop(priorAlias, 1)
+      });
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'str-factor/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, '阶段1.4c/等价', steps);
@@ -842,15 +813,8 @@
       var stmts=ast.body.slice(priorDrop);
       if(stmts.length<2) return null;
 
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function cn(n){
-        if(!n||typeof n!=='object') return;
-        if(Array.isArray(n)){n.forEach(cn);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) cn(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       var LEAF={Identifier:1,NumericLiteral:1,StringLiteral:1,BooleanLiteral:1,NilLiteral:1};
       function shapeOf(node){
@@ -1178,6 +1142,7 @@
         return found;
       }
       var edits=[];
+      var consumed=new Set();   // 已被合并编辑消费的语句：不再深入其函数体（否则内层合并编辑会落在外层区间内，与外层重叠）
       function processBlock(stmts, skip){
         var i=skip||0;
         while(i<stmts.length){
@@ -1187,7 +1152,7 @@
           if(run.length>=2) tryMergeRun(run);
           i=j;
         }
-        for(var k=0;k<stmts.length;k++) descend(stmts[k]);
+        for(var k=0;k<stmts.length;k++) if(!consumed.has(stmts[k])) descend(stmts[k]);
       }
       function descend(st){
         switch(st.type){
@@ -1235,6 +1200,7 @@
           for(var e=0;e<inits.length;e++) allExprs.push(src.slice(inits[e].range[0],inits[e].range[1]));
         }
         var merged='local '+allNames.join(',')+ (allExprs.length? ('='+allExprs.join(',')):'');
+        group.forEach(function(st){ consumed.add(st); });
         edits.push({start:group[0].range[0], end:group[group.length-1].range[1], name:merged});
       }
 
@@ -1345,13 +1311,8 @@
       for(var i=0;i<edits.length;i++){ if(edits[i].name==='' && src.slice(edits[i].start,edits[i].end)!=='local ') return null; }
       var candidate=applyEdits(src, edits);
       if(candidate.length>=src.length){ if(rec) rec('变量复用(放弃: 不缩短)', src.length, src.length, '候选 '+candidate.length+' ≥ '+src.length); return null; }
-      // 语法必须通过（真·Lua）
-      var synErr = luaValidate ? luaValidate(candidate) : null;
-      if(synErr){ return null; }
-      // SSA 等价：非抛出式试探，未通过则放弃（优雅回退，不污染 steps）
-      var ok=false;
-      try{ ok = (canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
-      if(!ok) return null;
+      // 语法(真·Lua)+SSA 等价：非抛出式试探，未通过则放弃（优雅回退，不污染 steps）
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
       // 通过后，正式记录可见的校验步骤
       assertParses(candidate, '阶段1.7/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7/等价', steps);
@@ -1499,10 +1460,7 @@
       if(!edits.length) return null;
       var candidate=applyEdits(src, edits);
       if(candidate.length>=src.length) return null;
-      if(luaValidate && luaValidate(candidate)) return null;
-      var ok=false;
-      try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
-      if(!ok) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
       assertParses(candidate, '阶段1.4c2/fwdnil/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.4c2/fwdnil/等价', steps);
       if(rec) rec('前向nil内联(提交)', src.length, candidate.length, '下沉 '+edits.filter(function(e){return e.name==='';}).length+' 条前向nil赋值到声明');
@@ -1718,10 +1676,8 @@
       function tryCandidate(plan){
         var candidate=applyEdits(src, plan.edits);
         if(candidate.length>=src.length) return null;
-        if(luaValidate && luaValidate(candidate)) return null;   // 真·Lua 语法
-        var ok=false;
-        try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
-        if(!ok) return null;                                     // canonical 等价（forward-nil 归一）
+        // 真·Lua 语法 + canonical 等价（forward-nil 归一）
+        if(!canCommit(originalCode, candidate, priorAlias)) return null;
         return candidate;
       }
 
@@ -1746,7 +1702,8 @@
     function foldIfNot(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
 
-      // 收集合格 IfStatement（不嵌套地由 applyEdits 跳过重叠；这里全收，靠等价校验兜底）
+      // 收集合格 IfStatement。命中即整体重写、不再深入其子树——嵌套的合格 if
+      // 会落在外层编辑的区间内（重叠），由外层重写原样携带，留给下一轮 while 处理。
       var edits=[];
       (function walk(n){
         if(!n||typeof n!=='object') return;
@@ -1769,6 +1726,7 @@
             var elseText = (notCount%2===1) ? aText : bText;
             var rebuilt = 'if '+condText+' then '+thenText+' else '+elseText+' end';
             edits.push({start:n.range[0], end:n.range[1], name:rebuilt});
+            return;   // 不再深入已重写节点的子树（防止产生与外层重叠的编辑）
           }
         }
         for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
@@ -1778,10 +1736,7 @@
 
       var candidate=applyEdits(src, edits);
       if(candidate.length>=src.length) return null;            // 只缩短才提交
-      if(luaValidate && luaValidate(candidate)) return null;   // 真·Lua 语法
-      var ok=false;
-      try{ ok=(canonical(originalCode)===canonical(candidate, priorAlias)); }catch(e){ ok=false; }
-      if(!ok) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;   // 真·Lua 语法 + canonical 等价
       assertParses(candidate, '阶段1.6b/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.6b/等价', steps);
       if(rec) rec('if-not二择(提交)', src.length, candidate.length, '去 not 并对调分支体 '+edits.length+' 处');
@@ -1870,8 +1825,7 @@
           edits.push({start:st.range[0],end:st.range[1],name:''});
           b.uses.forEach(function(u){
             var nx=(u.range[1]<src.length)?src[u.range[1]]:undefined;
-            var last=lit[lit.length-1];
-            var spacer=(nx!==undefined&&(isNamePart(nx)||(nx==='.'&&last>='0'&&last<='9')))?' ':'';
+            var spacer=needsSepAfter(lit[lit.length-1], nx)?' ':'';
             edits.push({start:u.range[0],end:u.range[1],name:lit+spacer});
           });
         }
@@ -1924,7 +1878,7 @@
       function fmt(v){
         if(v.kind==='int') return String(v.v);
         if(v.kind==='str'){
-          if(v.v.indexOf("'")>=0||v.v.indexOf('\\')>=0||v.v.indexOf('\n')>=0||v.v.indexOf('\r')>=0) return null;
+          if(!canSingleQuote(v.v)) return null;
           return "'"+v.v+"'";
         }
         return null;
@@ -2235,15 +2189,8 @@
         }
         for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
       })(ast.body);
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function cn(n){
-        if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){n.forEach(cn);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) cn(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
       var chosen=[];
       ['false','true'].forEach(function(v){
         var group=sites[v];
@@ -2369,6 +2316,7 @@
               if(symEnd(lt) && nameEnd(rt)){
                 var rebuilt=(op==='=='||op==='~=')?(rt+op+lt):(rt+FLIP[op]+lt);
                 edits.push({start:n.range[0],end:n.range[1],name:rebuilt});
+                return;   // 已整体重写该比较：不再深入其操作数（嵌套比较会落在外层区间内，重叠；留给外层文本原样携带）
               }
             }
           }
@@ -2663,15 +2611,8 @@
       })(ast.body);
 
       // 已占用名字
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function collectNames(n){
-        if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){n.forEach(collectNames);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) collectNames(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       // 判定一条链是否"纯"
       function isPureChain(site){
@@ -2815,7 +2756,7 @@
       });
       var edits=delEdits.slice(), chainAliasByLocal={};
       // 先所有"插入声明"，再所有"替换使用点"：两者同起点时（如整链在代码开头、无头部声明），
-      // 插入必须排在替换之前，否则会被 applyEdits 的重叠跳过。
+      // 插入必须排在替换之前（稳定排序保持 push 序），否则替换先应用、插入落在区间内会被 applyEdits 判重叠抛错。
       chosen.forEach(function(c){
         chainAliasByLocal[c.alias]=c.text;
         // 插入位置若紧跟标识符（如头部 local b=Isaac 的结尾），需前置空格，否则粘连成非法标识符
@@ -2843,16 +2784,12 @@
           if(priorAlias.memberByLocal.hasOwnProperty(mbl) && !consumedIndexAlias.hasOwnProperty(mbl)) newMemberByLocal[mbl]=priorAlias.memberByLocal[mbl];
         }
       }
-      var newAlias={
+      var newAlias=extendAliasMap(priorAlias, {
         byName:newByName,
         memberByLocal:newMemberByLocal,
-        factorLocals:(priorAlias&&priorAlias.factorLocals)||[],
-        prefixFoldByLocal:Object.assign({},(priorAlias&&priorAlias.prefixFoldByLocal)||{}),
-        stringAliasByLocal:Object.assign({},(priorAlias&&priorAlias.stringAliasByLocal)||{}),
         chainAliasByLocal:Object.assign({},(priorAlias&&priorAlias.chainAliasByLocal)||{},chainAliasByLocal),
-        transparentAliases:(priorAlias&&priorAlias.transparentAliases)||{},
-        dropLeading:Math.max(0,((priorAlias&&priorAlias.dropLeading)||0)-removedDropLeading)
-      };
+        dropLeading:clampDrop(priorAlias, removedDropLeading)
+      });
       if(!canCommit(originalCode, candidate, newAlias)){
         return null;
       }
@@ -2989,15 +2926,8 @@
       var groups=new Map();
       collectMemberAccess(ast, groups);
 
-      var taken=new Set(); Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      (function cn(n){
-        if(!n||typeof n!=='object')return;
-        if(Array.isArray(n)){n.forEach(cn);return;}
-        if(n.type==='Identifier'&&n.name) taken.add(n.name);
-        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) cn(n[k]); }
-      })(ast.body);
-      var POOL=candidateGenerator();
-      function nextName(){ for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } } return null; }
+      var taken=collectTakenNames(ast.body);
+      var nextName=createNameAllocator(taken);
 
       var chosen=[];
       Array.from(groups.keys()).sort(function(a,b){return groups.get(b).length-groups.get(a).length;}).forEach(function(field){
@@ -3066,16 +2996,10 @@
       }
       if(candidate.length>=src.length) return null;
 
-      var newAlias={
-        byName:(priorAlias&&priorAlias.byName)||{},
+      var newAlias=extendAliasMap(priorAlias, {
         memberByLocal:memberByLocal,
-        factorLocals:(priorAlias&&priorAlias.factorLocals)||[],
-        prefixFoldByLocal:Object.assign({},(priorAlias&&priorAlias.prefixFoldByLocal)||{}),
-        stringAliasByLocal:Object.assign({},(priorAlias&&priorAlias.stringAliasByLocal)||{}),
-        chainAliasByLocal:Object.assign({},(priorAlias&&priorAlias.chainAliasByLocal)||{}),
-        transparentAliases:(priorAlias&&priorAlias.transparentAliases)||{},
-        dropLeading:((priorAlias&&priorAlias.dropLeading)||0)+dropDelta
-      };
+        dropLeading:bumpDrop(priorAlias, dropDelta)
+      });
       if(!canCommit(originalCode, candidate, newAlias)) return null;
       assertParses(candidate, 'member-field/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, newAlias, 'member-field/等价', steps);
@@ -3135,5 +3059,7 @@
     }
 
     C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline;
+    // 共享基础设施（供测试/调试直接单测；生产中经各 fold 内部使用）
+    C.extendAliasMap=extendAliasMap; C.bumpDrop=bumpDrop; C.clampDrop=clampDrop; C.canCommit=canCommit;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

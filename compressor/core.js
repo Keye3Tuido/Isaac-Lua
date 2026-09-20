@@ -159,6 +159,28 @@
     return !(toks[0].value===aVal && toks[0].end===aVal.length);
   }
 
+  // ---- folds 热路径上的廉价字符级安全判定（needSpace 是全 token 级精确判定、需重词法）----
+  // 短字符串还原：raw 为 '...'/"..." 形态时返回内容，否则（长字符串/缺 raw）返回 null。
+  // 长字符串 [[...]] 在 Lua 里不处理转义，与短字符串内容含义不同，刻意排除。
+  function unquoteShort(raw){
+    if(typeof raw!=='string'||raw.length<2) return null;
+    var q=raw[0];
+    if(q!=="'"&&q!=='"') return null;
+    return raw.slice(1,-1);
+  }
+  // 内容能否安全回填进单引号字面量：不含 ' \ 与换行（含这些字符回填会非法/变义）。
+  function canSingleQuote(s){
+    return s.indexOf("'")<0 && s.indexOf('\\')<0 && s.indexOf('\n')<0 && s.indexOf('\r')<0;
+  }
+  // 粘连守卫（右向）：把「以 lastCh 收尾」的文本插到 nextCh 之前，二者直接相邻是否会被
+  // 误并为一个 token。规则：nextCh 是名字字符（字母/数字/下划线）则粘连；或 lastCh 是
+  // 数字且 nextCh 是 '.'（内联 1 后紧跟 .x → 拼成 1.x，真·Lua 判畸形数字）。
+  // 近似方向必须保守：多给空格无害（编码层 minimizeSpacing 会收回），漏给才出错。
+  function needsSepAfter(lastCh, nextCh){
+    if(!nextCh) return false;
+    return isNamePart(nextCh) || (nextCh==='.' && isDigit(lastCh));
+  }
+
   // ---------- 模块安装器加载 ----------
   // 各 src/*.js part 会把 {name, install} 推入 root.__LuaMinParts。
   // 浏览器侧由 index.html 的 <script> 预先加载；Node 侧在此 require。
@@ -200,6 +222,9 @@
       isNameStart: isNameStart,
       isNamePart: isNamePart,
       isSpace: isSpace,
+      unquoteShort: unquoteShort,
+      canSingleQuote: canSingleQuote,
+      needsSepAfter: needsSepAfter,
       luaValidate: luaValidate,
       luaparse: luaparse,
       fengari: fengari
@@ -226,7 +251,18 @@
       _needSpace: needSpace,
       _planAll: C.planAll,
       _applyEdits: C.applyEdits,
-      _collectGlobalNames: C.collectGlobalNames
+      _collectGlobalNames: C.collectGlobalNames,
+      _validateFoldOrder: C.validateFoldOrder,
+      _DEFAULT_FOLD_ORDER: C.DEFAULT_FOLD_ORDER,
+      _createNameAllocator: C.createNameAllocator,
+      _collectTakenNames: C.collectTakenNames,
+      _extendAliasMap: C.extendAliasMap,
+      _bumpDrop: C.bumpDrop,
+      _clampDrop: C.clampDrop,
+      _canCommit: C.canCommit,
+      _unquoteShort: C.unquoteShort,
+      _canSingleQuote: C.canSingleQuote,
+      _needsSepAfter: C.needsSepAfter
     };
   }
 

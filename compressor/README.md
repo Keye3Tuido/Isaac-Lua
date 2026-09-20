@@ -64,7 +64,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 真·Lua + luaparse 双重语法校验
    ↓
 【阶段 1：结构优化】
-（以下 fold 顺序为默认序；`opts.foldOrder` 可重排这些抽取类 fold，搜索层据此探索不同顺序取最短）
+（以下 fold 顺序为默认序；`opts.foldOrder` 可重排这些抽取类 fold，搜索层据此探索不同顺序取最短；有实证的硬顺序前提由 `src/compress.js` 的 FOLD_ORDER_RULES 契约机器校验，违例在压缩入口直接抛错）
 1.1  统一规划：局部重命名 + 全局/成员折叠 + 仿射因子 + 透明别名消解
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.1b 括号转点（obj["Field"] → obj.Field，关键词字段除外）
@@ -133,7 +133,7 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 **局部规范化**（阶段 1.1b~1.1h）：
 - **括号转点** — `obj["Field"]` → `obj.Field`（关键词字段如 `t["end"]` 除外，避免非法语法）
 - **只读内联** — 只读字面量/常量别名 copy-propagation（`local t=1000000` 读处还原为字面量）+ 死纯局部消除
-- **成员链冗余消除（CSE）** — 把重复出现的**纯点访问链** `base.f1.f2…` 提取为局部别名（`print(t.a.b.c) print(t.a.b.c)` → `local v=t.a.b.c print(v) print(v)`）。安全性：safe 模式下要求 base 是可证明无 `__index`/`__newindex` 元表的局部（字面量表构造、从不重赋值/写成员/逃逸、全程无 `setmetatable`），深链逐级经字面量表构造；`noMetatable` 模式（opts）假定所有变量（含全局）无元表，只保留"从不写/重赋值"的稳定性要求。`canonical` 的整链别名（`chainAliasByLocal`）双侧还原验证等价。后续任何构造新 aliasMap 的折叠 pass（method 折叠/字段前缀/字面量内联/字符串因子等）都必须原样传播 `chainAliasByLocal` 与 `transparentAliases`，否则其 canonical 等价校验会恒失败而永远不敢提交
+- **成员链冗余消除（CSE）** — 把重复出现的**纯点访问链** `base.f1.f2…` 提取为局部别名（`print(t.a.b.c) print(t.a.b.c)` → `local v=t.a.b.c print(v) print(v)`）。安全性：safe 模式下要求 base 是可证明无 `__index`/`__newindex` 元表的局部（字面量表构造、从不重赋值/写成员/逃逸、全程无 `setmetatable`），深链逐级经字面量表构造；`noMetatable` 模式（opts）假定所有变量（含全局）无元表，只保留"从不写/重赋值"的稳定性要求。`canonical` 的整链别名（`chainAliasByLocal`）双侧还原验证等价。构造新 aliasMap 的折叠 pass 统一经 folds.js 的 `extendAliasMap` 工厂（8 字段全量携带 + 覆盖式修改），`chainAliasByLocal` 与 `transparentAliases` 的逐字传播由工厂结构性保证——不会因漏传导致 canonical 等价校验恒失败而永远不敢提交
 - **尾值符号收尾** — 多值赋值 `local a,b='hello',1 …` 把以符号（引号/花括号）结尾的纯字面量值排到最后 → `local b,a=1,'hello'…`，使后续关键字前可省一个空格。仅重排纯字面量（求值顺序无关），`canonical` 的只读字面量别名归一验证等价
 - **常量折叠** — 整数 `±`、字符串 `..`、`not` 布尔；**递归求值**折叠嵌套常量（`1+2*3` → `7` 一次到位，保证幂等）；折叠后必须更短才提交
 - **常量条件折叠** — `if true/false then A else B end` → `A`/`B`（分支无局部声明时直接展开）；分支含局部声明时才用 `do..end` 包裹保留作用域；空分支直接删除；`canonical` 的 IfStatement 归一 + 空 Do 块展开验证等价
@@ -209,6 +209,8 @@ node tests/test_canonical_fwdnil.js     # 死前向声明归一专项（含多�
 node tests/test_fwdnil_merge.js         # 前向nil多目标下沉 + 链别名映射传播回归（noMetatable 路径）
 node tests/test_method_inject.js        # foldMethods/foldMemberField 注入已有 local 形态 + 任意 base 成员字段 + 安全负例
 node tests/test_declhoist_value.js      # 声明上提值粒度部分上提（mixed 路径）+ 收敛/安全负例
+node tests/test_fold_order_contract.js  # fold 顺序契约（FOLD_ORDER_RULES）：默认顺序/搜索预设过校验，违例抛错
+node tests/test_shared_helpers.js       # 共享助手单测：名称分配器/aliasMap 工厂+dropLeading 校验/字符串与粘连守卫/applyEdits 契约
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```

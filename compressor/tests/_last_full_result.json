@@ -77,6 +77,16 @@
       "pass": 9,
       "fail": 0
     },
+    "foldOrder": {
+      "ok": true,
+      "pass": 10,
+      "fail": 0
+    },
+    "sharedHelpers": {
+      "ok": true,
+      "pass": 41,
+      "fail": 0
+    },
     "chunkedSearch": {
       "ok": true,
       "pass": 4,
@@ -117,7 +127,7 @@
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 641,
+      "parseCount": 624,
       "inputBytes": 15899,
       "outputBytes": 15479
     }

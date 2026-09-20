@@ -3,6 +3,41 @@
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
     var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField, foldGlobalViaG=C.foldGlobalViaG, foldFwdNilInline=C.foldFwdNilInline;
+    // ---- 共享配置（搜索层 search.js 经 C 引用，保持单一来源）----
+    // 默认 fold 顺序：与旧管线逐字一致；opts.foldOrder 可覆盖（搜索层对顺序做 beam 用）。
+    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','globalViaG','tailSymbol'];
+    // 全局折叠预筛选阈值：默认 [2,8]（快）；搜索层用更宽的 [2..9] 探索更多优化空间（语义不同，分列两个常量）。
+    var DEFAULT_THRESHOLDS = [2,8];
+    var SEARCH_THRESHOLDS = [2,3,4,5,6,7,8,9];
+    // fold 顺序契约：只编码有实证（注释/提交历史）的硬前提，勿过度约束——
+    // 搜索层合法地探索顺序变体（reorderFold 预设），只有真正卡住后续 pass 的顺序才入约。
+    // 每条 {fold, after:[...]}：fold 必须排在 after 所列各项之后；某一方未出现在
+    // 生效顺序里（部分顺序）则该条自动失效。
+    // 证据：fwdNilInline 两遍归一（commit ba57143 + 下方 fwdNilInlineStage 注释）——
+    //   ① 输入归一必须先于 locals 合并（先把输入前向 nil 收进声明，被 d=... 隔开的
+    //     local 才相邻可合并），也先于 declHoist（否则其「头部 #init==#vars」前置被
+    //     输入前向 nil 卡住）；
+    //   ② 上提收尾必须在 declHoist 之后（上提后续 local 会制造前向 nil，须再收一遍）。
+    var FOLD_ORDER_RULES = [
+      { fold:'locals',            after:['fwdNilInline'] },
+      { fold:'declHoist',         after:['fwdNilInline'] },
+      { fold:'fwdNilInlineFinal', after:['declHoist'] }
+    ];
+    // 校验生效顺序（默认或 opts.foldOrder）是否满足契约；违例抛错，防止静默破坏收敛前提。
+    function validateFoldOrder(foldOrder){
+      var pos={};
+      for(var i=0;i<foldOrder.length;i++) pos[foldOrder[i]]=i;
+      for(var r=0;r<FOLD_ORDER_RULES.length;r++){
+        var rule=FOLD_ORDER_RULES[r];
+        if(pos[rule.fold]===undefined) continue;
+        for(var a=0;a<rule.after.length;a++){
+          var dep=rule.after[a];
+          if(pos[dep]===undefined) continue;
+          if(pos[dep]>pos[rule.fold])
+            throw new Error('fold 顺序违反契约：'+rule.fold+' 必须排在 '+dep+' 之后（依据见 FOLD_ORDER_RULES 注释；foldOrder: '+foldOrder.join(',')+'）');
+        }
+      }
+    }
     function compress(input, opts){
       opts = opts || {};
       var doRename = opts.rename !== false;
@@ -12,6 +47,12 @@
 
       var pre=preprocess(input);
       if(!/\S/.test(pre)) throw new Error('输入为空（剥离 l/lua 前缀后无内容）');
+
+      // 生效 fold 顺序：默认与旧管线逐字一致；opts.foldOrder 可覆盖（搜索层对顺序做 beam 用）。
+      // 契约校验放在跑任何流水线之前：违例直接抛清晰错误（若在 pickBest 内抛会被多阈值
+      // catch 吞成「所有阈值配置均压缩失败」），且纯数组判定不引入额外 parse。
+      var foldOrder = (opts.foldOrder && opts.foldOrder.length) ? opts.foldOrder : DEFAULT_FOLD_ORDER;
+      validateFoldOrder(foldOrder);
 
       // 透明别名消解（elision）与既有的"重复声明删除"等手段在某些形态下互斥：
       // 消解后反而更长（如三条完全相同的声明，保留共享别名 + 去重更优）。遵循全局
@@ -299,8 +340,7 @@
           }
         }); };
 
-        var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','globalViaG','tailSymbol'];
-        var foldOrder = (opts.foldOrder && opts.foldOrder.length) ? opts.foldOrder : DEFAULT_FOLD_ORDER;
+        // foldOrder 已在 compress 入口定案并通过契约校验（闭包引用）
         for(var _fi=0; _fi<foldOrder.length; _fi++){
           var _fk = foldOrder[_fi];
           if(FOLD_DEFS[_fk]) FOLD_DEFS[_fk]();
@@ -366,7 +406,7 @@
       }
       // 多阈值取短：尝试多个全局折叠预筛选阈值，选最短结果；等长平局时取「更少全局别名」的规范形态。
       function pickBest(p){
-        var thresholds = opts.thresholds || [2,8];
+        var thresholds = opts.thresholds || DEFAULT_THRESHOLDS;
         var bestResult = null;
         var lastError = null;
 
@@ -428,5 +468,10 @@
     }
 
     C.compress=compress;
+    // 导出共享配置供搜索层使用（单一来源）
+    C.DEFAULT_FOLD_ORDER=DEFAULT_FOLD_ORDER;
+    C.DEFAULT_THRESHOLDS=DEFAULT_THRESHOLDS;
+    C.SEARCH_THRESHOLDS=SEARCH_THRESHOLDS;
+    C.validateFoldOrder=validateFoldOrder;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'canonical', install:function(C){
-    var luaparse=C.luaparse, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze;
+    var luaparse=C.luaparse, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, unquoteShort=C.unquoteShort;
 
     // Canonical output is immutable text. Cache only the alias-free form by exact source,
     // because alias-aware canonicalization depends on the complete alias map.
@@ -528,10 +528,9 @@
         if(node.type!=='StringLiteral') return null;
         var raw=node.raw;
         if(typeof raw!=='string'||raw.length<2) return raw;
-        var q=raw[0];
-        if(q==='"'||q==="'") return raw.slice(1,-1);
-        // 长字符串 [[...]] 在 Lua 里不处理转义，与 '...' / "..." 内容含义不同，不归一化。
-        return null;
+        // 长字符串 [[...]] 在 Lua 里不处理转义，与 '...' / "..." 内容含义不同，不归一化
+        //（unquoteShort 只认短字符串引号，长字符串返回 null）。
+        return unquoteShort(raw);
       }
       // 全局表访问归一：_G.X ≡ X（X 为全局名）——前提是 _G 是全局表且从未被赋值。
       // 两侧一致施加，使"全局名 Global"与"经 _G 的全局表访问 _G[alias]"（alias='Global'）收敛同一标准形，
@@ -669,7 +668,7 @@
           return {type:'Identifier', kind:'global', name:node.name};
         }
         // StringLiteral：归一为内容（去掉引号），消除 'X' 与 "X" 的差异。
-        // 长字符串 [[X]] 也由 stringContent 统一返回内容。
+        // 长字符串 [[X]] 不归一（stringContent 返回 null），按 raw 原样比较。
         if(node.type==='StringLiteral'){
           var sc=stringContent(node);
           return {type:'StringLiteral', content: sc!==null ? sc : node.raw};

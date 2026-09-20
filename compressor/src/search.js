@@ -32,9 +32,14 @@
     var foldFieldPrefix = C.foldFieldPrefix;
     var foldReuse = C.foldReuse;
     var foldDeclHoist = C.foldDeclHoist;
+    // 共享配置（compress.js 导出，单一来源）：默认 fold 顺序 + 搜索层宽阈值列表
+    var DEFAULT_FOLD_ORDER = C.DEFAULT_FOLD_ORDER;
+    var SEARCH_THRESHOLDS = C.SEARCH_THRESHOLDS;
+    // 子分支快速重压缩用单阈值
+    var FAST_THRESHOLDS = [8];
 
     // 搜索层 compress 选项：使用更宽的阈值列表探索更多优化空间
-    var SEARCH_COMPRESS_OPTS = { rename: true, encode: true, method: true, thresholds: [2,3,4,5,6,7,8,9] };
+    var SEARCH_COMPRESS_OPTS = { rename: true, encode: true, method: true, thresholds: SEARCH_THRESHOLDS };
 
     // ---------- 工具 ----------
 
@@ -57,8 +62,11 @@
       } catch (e) { return false; }
     }
 
-    // 收集已用名字
-    function collectNames(code) {
+    // 收集已用名字（词法级/token 级）：直接 lex 源码文本，不经 parse、不查 KEYWORDS 表、
+    // 用普通对象而非 Set。与 analyze.js 的 AST 级 collectTakenNames 语义刻意不同——
+    // 这里处理的是"尚未重压缩"的候选正文（可能还没法/还不想 parse），追求便宜；
+    // 漏检（如未出现的双字符关键字 do/if/in/or）由后续 isValid/canonicalEq 兜底。
+    function collectTokenNames(code) {
       var t = {};
       try {
         var toks = lex(code);
@@ -71,7 +79,7 @@
 
     // 分配一个不与已有名字冲突的短名
     function pickUnusedName(code, takenRef) {
-      var taken = takenRef || collectNames(code);
+      var taken = takenRef || collectTokenNames(code);
       var pool = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
       for (var i = 0; i < pool.length; i++) {
         if (!taken[pool[i]]) { taken[pool[i]] = true; return pool[i]; }
@@ -205,7 +213,7 @@
       if (!groups.length) return null;
       groups.sort(function(a, b) { return b.saving - a.saving; });
 
-      var takenNames = collectNames(origPre);
+      var takenNames = collectTokenNames(origPre);
       var bestResult = null;
 
       var maxGroups = Math.min(groups.length, 5);
@@ -304,7 +312,7 @@
       });
       if(!groups.length) return [];
       groups.sort(function(a,b){ return (b.text.length*b.sites.length)-(a.text.length*a.sites.length); });
-      var takenNames=collectNames(bestBody), results=[];
+      var takenNames=collectTokenNames(bestBody), results=[];
       var maxGroups=Math.min(groups.length, 6);
       for(var gi=0; gi<maxGroups && results.length<maxCand; gi++){
         var g=groups[gi];
@@ -468,7 +476,7 @@
 
     // 基线配置：多个互异起点（不同压缩参数 + 不同 fold 顺序），beam 从中分叉。
     // fold 顺序预设：把最"顺序敏感"的抽取类 fold 前移，探索"先A后B vs 先B后A"。
-    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','blockWrapper','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist'];
+    // （顺序基表 DEFAULT_FOLD_ORDER 来自 compress.js，随管线新增 fold 自动同步。）
     function reorderFold(moveKey, beforeKey){
       var o = DEFAULT_FOLD_ORDER.slice();
       var mi = o.indexOf(moveKey);
@@ -525,9 +533,8 @@
       if (!/\S/.test(origPre)) return compress(input, opts);
 
       // 搜索模式使用更宽的阈值列表，探索更多优化空间
-      var searchThresholds = [2,3,4,5,6,7,8,9];
-      var cOpts = Object.assign({}, opts, {thresholds: searchThresholds});
-      var fastOpts = Object.assign({}, opts, {thresholds: [8]});   // 子分支用单阈值快速重压缩
+      var cOpts = Object.assign({}, opts, {thresholds: SEARCH_THRESHOLDS});
+      var fastOpts = Object.assign({}, opts, {thresholds: FAST_THRESHOLDS});   // 子分支用单阈值快速重压缩
 
       log('beam search...');
       var beam = [];        // [{body, result}]
@@ -670,8 +677,8 @@
       try { origPre = preprocess(input); } catch(e){ if(onError) onError(e); return; }
       if(!/\S/.test(origPre)){ try{ onDone(compress(input, opts)); }catch(e){ if(onError)onError(e);} return; }
 
-      var cOpts = Object.assign({}, opts, {thresholds: [2,3,4,5,6,7,8,9]});
-      var fastOpts = Object.assign({}, opts, {thresholds: [8]});
+      var cOpts = Object.assign({}, opts, {thresholds: SEARCH_THRESHOLDS});
+      var fastOpts = Object.assign({}, opts, {thresholds: FAST_THRESHOLDS});
 
       var beam = [], seen = {}, best = null;
       var candCount = 0;

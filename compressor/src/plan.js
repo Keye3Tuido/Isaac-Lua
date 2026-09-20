@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'plan', install:function(C){
-    var KEYWORDS=C.KEYWORDS, candidateGenerator=C.candidateGenerator, collectMemberAccess=C.collectMemberAccess, analyzeMetatableFree=C.analyzeMetatableFree;
+    var KEYWORDS=C.KEYWORDS, candidateGenerator=C.candidateGenerator, collectMemberAccess=C.collectMemberAccess, analyzeMetatableFree=C.analyzeMetatableFree, createNameAllocator=C.createNameAllocator;
     function planAll(info, allGlobalNames, ast, allowElision, threshold, allowMemberFold, noMetatable){
       var bindings=info.bindings;
       threshold = threshold !== undefined ? threshold : 8;  // 默认 m+8（保守）
@@ -498,12 +498,7 @@
 
       var taken=new Set(avoid||[]);
       names.forEach(function(n){taken.add(n);});
-      Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
-      var POOL=candidateGenerator();
-      function nextFactorName(){
-        for(var p=0;p<POOL.length;p++){ if(!taken.has(POOL[p])&&!KEYWORDS[POOL[p]]){ taken.add(POOL[p]); return POOL[p]; } }
-        return null;
-      }
+      var nextFactorName=createNameAllocator(taken);
 
       var factorDecls=[]; // 'f=\'ROOMSHAPE_\''
       var factorNames=[];
@@ -567,14 +562,23 @@
       return best;
     }
 
+    // 编辑契约：半开区间 [start,end)，按 start 稳定排序后从左到右应用；
+    // 允许零长插入（start===end），允许紧贴上一段末尾（start===cur），
+    // 同一偏移的多个零长插入按 push 顺序全部生效。
+    // 除此之外的任何重叠（e.start<cur）一律视为调用方 bug：抛错，不静默丢弃
+    // （历史上静默跳过曾掩盖 foldIfNot 的嵌套重叠编辑——已在调用侧根治）。
     function applyEdits(src, edits){
       edits=edits.slice().sort(function(a,b){return a.start-b.start;});
-      var out='', cur=0;
+      var out='', cur=0, prevStart=0, prevEnd=0;
       for(var i=0;i<edits.length;i++){
         var e=edits[i];
-        if(e.start<cur) continue; // 防御：跳过重叠
+        if(e.start<cur){
+          throw new Error('applyEdits: 编辑重叠（调用方 bug）——排序后第 '+i+' 段 ['+e.start+','+e.end+')="'+
+            String(e.name).slice(0,30)+'" 与上一段 ['+prevStart+','+prevEnd+') 重叠；附近源码: '+
+            JSON.stringify(src.slice(Math.max(0,e.start-20), Math.min(src.length,e.end+20))));
+        }
         out+=src.slice(cur,e.start)+e.name;
-        cur=e.end;
+        prevStart=e.start; prevEnd=e.end; cur=e.end;
       }
       out+=src.slice(cur);
       return out;

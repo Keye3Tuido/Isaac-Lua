@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'analyze', install:function(C){
-    var luaparse=C.luaparse;
+    var luaparse=C.luaparse, KEYWORDS=C.KEYWORDS;
     function parse(src){
       return luaparse.parse(src,{luaVersion:'5.3',scope:false,locations:true,ranges:true,comments:false});
     }
@@ -211,6 +211,31 @@
       return pool;
     }
 
+    // 名称分配器：在 taken（已占用名集合，会在此并入全部关键字）上从候选名池顺序取名，
+    // 取中即标记占用、冲突跳过、池尽返回 null。plan/folds 各折叠共用它分配别名
+    // （此前各处手写同一段逻辑）。
+    function createNameAllocator(taken){
+      Object.keys(KEYWORDS).forEach(function(k){taken.add(k);});
+      var POOL=candidateGenerator();
+      return function(){
+        for(var i=0;i<POOL.length;i++){ if(!taken.has(POOL[i])&&!KEYWORDS[POOL[i]]){ taken.add(POOL[i]); return POOL[i]; } }
+        return null;
+      };
+    }
+
+    // AST 级占用名收集：子树内所有 Identifier 名（保守地全部纳入），返回 Set。
+    // 与搜索层 search.js 的 collectTokenNames 语义不同：那是词法级（token）收集，不经 parse。
+    function collectTakenNames(node){
+      var taken=new Set();
+      (function walk(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){n.forEach(walk);return;}
+        if(n.type==='Identifier'&&n.name) taken.add(n.name);
+        for(var k in n){ if(k!=='range'&&k!=='loc'&&Object.prototype.hasOwnProperty.call(n,k)) walk(n[k]); }
+      })(node);
+      return taken;
+    }
+
     // 收集 obj.Field 形式的成员访问（仅 indexer '.'），按字段名分组。
     // 记录每处的 baseEnd（base 结束位置=“.”所在）与 idEnd（字段名结束位置），
     // 改写时把 [baseEnd, idEnd) 这段（即 ".Field"）替换为 "[alias]"。
@@ -316,6 +341,6 @@
       return {stableBindings:stableBindings, pureBindings:pureBindings, setmetatableUsed:setmetatableUsed};
     }
 
-    C.parse=parse; C.analyze=analyze; C.collectGlobalNames=collectGlobalNames; C.candidateGenerator=candidateGenerator; C.collectMemberAccess=collectMemberAccess; C.analyzeMetatableFree=analyzeMetatableFree;
+    C.parse=parse; C.analyze=analyze; C.collectGlobalNames=collectGlobalNames; C.candidateGenerator=candidateGenerator; C.collectMemberAccess=collectMemberAccess; C.analyzeMetatableFree=analyzeMetatableFree; C.createNameAllocator=createNameAllocator; C.collectTakenNames=collectTakenNames;
   }});
 })(typeof window !== 'undefined' ? window : globalThis);
