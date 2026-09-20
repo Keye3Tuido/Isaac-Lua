@@ -109,7 +109,7 @@ check('真实数据含 name 字段的块（>0）', namedBlocks > 0);
 console.log('      （共 ' + totalBlocks + ' 块，其中 ' + namedBlocks + ' 块带 name）');
 
 // 挑一个带 名称 的挑战页渲染：12.永远迷失（前置块 名称: 安全包装/清理回调）
-vm.runInContext("showDetailView('12')", sandbox);
+vm.runInContext("showDetailView('c12')", sandbox);
 const badges = findByClass(named.codeArea, 'name-badge');
 check('详情页渲染出 name-badge（≥2）', badges.length >= 2);
 if (badges.length) check('首个名称标签文本为「安全包装」', badges[0].textContent === '安全包装');

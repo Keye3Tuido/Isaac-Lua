@@ -639,7 +639,9 @@ function currentRawText() {
         const c = rawComment(st);
         parts.push((c ? c + '\n' : '') + withLPrefix(st.getCode()));
     }
-    return parts.join('\n\n');
+    let out = parts.join('\n\n');
+    if (f.isChallenge) out = out.replace(/\n+$/, '') + '\n\n';   // 末尾归一为一个固定空行
+    return out;
 }
 
 // ========== 分享链接（短链探测） ==========

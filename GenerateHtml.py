@@ -1,3 +1,4 @@
+import copy
 import os
 import re
 import json
@@ -73,8 +74,16 @@ BAIDU_TJ_IDS = {
 # 目录即分类：lua/challenges → 挑战，lua/utils → 库
 CATEGORY_DIRS = [("challenges", True), ("utils", False)]
 
-# 挑战文件分隔线：固定字面量，全文件恰好一次
+# 挑战文件分隔线：固定字面量；挑战文件出现两次（元信息/正文/后置），
+# 自写前置区的旧格式与框架文件本身出现三次（元信息/前置/正文/后置）
 SEPARATOR = "--===--"
+
+# 挑战代码框架：utils 中的框架文件。挑战文件前置区为空（仅两条分隔线）时，
+# 构建器从该文件注入框架前置块（region=pre，编号 0,I,II…），并在文件后置区
+# 追加框架的 random-string 引用块（region=post，编号继前置续排）。
+# 兼容规则：挑战文件自己写了前置块（三条分隔线）则以文件为准，不注入也不追加。
+FRAMEWORK_FNAME = "TMPL.挑战代码框架.lua"
+RANDOM_STRING_TPL = "random-string-output"
 
 # YAML 头允许出现的键（未知键仅警告，便于发现笔误）
 KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "参数定义"}
@@ -237,15 +246,34 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
 
 
 def _parse_challenge(text, fname):
-    """挑战文件固定骨架：元信息 + 分隔线 + 前置块 + 分隔线 + 正文块 + 分隔线 + 后置块。"""
+    """挑战文件骨架：元信息 + 分隔线 + [前置块 + 分隔线] + 正文块 + 分隔线 + 后置块。
+
+    前置区可省略（分隔线两条：元信息/正文/后置）；省略时由构建器从框架文件
+    （FRAMEWORK_FNAME）注入框架前置块并在后置区追加 random-string 引用块。
+    自写前置区（分隔线三条）的文件以文件为准，不注入。
+    编号不在此处分配（注入会改变块序列），由 build() 里的 _number_blocks 统一分配。
+    文件末尾允许一个可选的 `--.` 终止行（拼装输出时还原）。"""
     lines = _split_lines(text)
+    has_terminator = False
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and lines[-1].strip() == "--.":
+        lines.pop()
+        has_terminator = True
     sep_at = [i for i, l in enumerate(lines) if l.strip() == SEPARATOR]
-    if len(sep_at) != 3:
+    if len(sep_at) not in (2, 3):
         raise SystemExit(
-            f"错误：挑战文件 {fname} 的分隔线 '{SEPARATOR}' 必须恰好出现三次"
-            f"（元信息/前置/正文/后置两两之间，实际 {len(sep_at)} 次）。"
+            f"错误：挑战文件 {fname} 的分隔线 '{SEPARATOR}' 必须出现两条"
+            f"（元信息/正文/后置，前置区由框架注入）或三条（自写前置区），实际 {len(sep_at)} 条。"
         )
-    s1, s2, s3 = sep_at
+    if len(sep_at) == 2:
+        s1, s2 = sep_at
+        pre_lines, body_lines, post_lines = [], lines[s1 + 1:s2], lines[s2 + 1:]
+        pre_offset = 0
+    else:
+        s1, s2, s3 = sep_at
+        pre_lines, body_lines, post_lines = lines[s1 + 1:s2], lines[s2 + 1:s3], lines[s3 + 1:]
+        pre_offset = s1 + 1
 
     # 元信息：第一个分隔线之前的连续普通注释，原样直通
     header = []
@@ -261,31 +289,34 @@ def _parse_challenge(text, fname):
         header.append(lines[i])
         i += 1
 
-    pre = _scan_blocks(lines[s1 + 1:s2], fname, strict=True, line_offset=s1 + 1)
-    body = _scan_blocks(lines[s2 + 1:s3], fname, strict=True, line_offset=s2 + 1)
-    post = _scan_blocks(lines[s3 + 1:], fname, strict=True, line_offset=s3 + 1)
-    if not pre:
-        raise SystemExit(f"错误：挑战文件 {fname} 缺少前置代码块。")
+    pre = _scan_blocks(pre_lines, fname, strict=True, line_offset=pre_offset)
+    body = _scan_blocks(body_lines, fname, strict=True, line_offset=s2 + 1)
+    post = _scan_blocks(post_lines, fname, strict=True, line_offset=(sep_at[-1] + 1))
     if not body:
         raise SystemExit(f"错误：挑战文件 {fname} 缺少正文代码块。")
     if not post:
-        raise SystemExit(f"错误：挑战文件 {fname} 缺少后置代码块。")
+        raise SystemExit(f"错误：挑战文件 {fname} 缺少后置代码块（重开块）。")
     for b in pre:
         b["region"] = "pre"
     for b in body:
         b["region"] = "body"
     for b in post:
         b["region"] = "post"
+    return header, pre + body + post, has_terminator
 
-    # 编号（字符串）：前置 0、I、II、III…（0 之后从 I 起），正文 1、2、3…，后置继前置继续取罗马数字
+
+def _number_blocks(blocks):
+    """编号（字符串）：前置 0、I、II、III…（0 之后从 I 起），正文 1、2、3…，
+    后置继前置继续取罗马数字。在框架注入之后统一分配。"""
+    pre = [b for b in blocks if b.get("region") == "pre"]
+    body = [b for b in blocks if b.get("region") == "body"]
+    post = [b for b in blocks if b.get("region") == "post"]
     for i, b in enumerate(pre):
         b["num"] = "0" if i == 0 else _roman(i)
     for i, b in enumerate(body):
         b["num"] = str(i + 1)
     for i, b in enumerate(post):
         b["num"] = _roman(len(pre) + i)
-    blocks = pre + body + post
-    return header, blocks
 
 
 def _parse_utils(text, fname):
@@ -315,10 +346,12 @@ def collect_lua_entries(lua_dir=LUA_DIR):
                 print(f"警告：文件名 {fname} 缺少标题部分（形如 编号.标题.lua），将以空标题收录。")
             with open(os.path.join(dir_path, fname), encoding="utf-8") as f:
                 raw = f.read()
-            if is_challenge:
-                header, blocks = _parse_challenge(raw, fname)
+            if is_challenge or fname == FRAMEWORK_FNAME:
+                # 框架文件虽在 utils（非挑战），但沿用挑战骨架（元信息/前置/正文/后置），
+                # 其前置区即框架前置块，后置区 = 重开引用 + random-string 引用
+                header, blocks, has_terminator = _parse_challenge(raw, fname)
             else:
-                header, blocks = [], _parse_utils(raw, fname)
+                header, blocks, has_terminator = [], _parse_utils(raw, fname), False
             lua_entries.append({
                 "id": num,
                 # key = 锚点/数据键：挑战 c<编号>、工具 u<编号>，两类目录各自独立编号
@@ -327,6 +360,7 @@ def collect_lua_entries(lua_dir=LUA_DIR):
                 "title": title,
                 "fname": fname,
                 "isChallenge": is_challenge,
+                "has_terminator": has_terminator,
                 "header": header,
                 "blocks": blocks,
             })
@@ -560,9 +594,44 @@ def _validate_deps(e):
                 )
 
 
+def _inject_framework(entries):
+    """框架注入：前置区为空的挑战文件注入框架前置块（深拷贝），并在后置区
+    追加框架的 random-string 引用块；自写前置块的文件不注入也不追加。
+    注入后对所有带 region 的条目统一分配编号。"""
+    framework = next((e for e in entries
+                      if not e["isChallenge"] and e["fname"] == FRAMEWORK_FNAME), None)
+    fw_pre = fw_random = None
+    if framework is not None:
+        fw_pre = [b for b in framework["blocks"] if b.get("region") == "pre"]
+        fw_random = next((b for b in framework["blocks"]
+                          if b.get("region") == "post"
+                          and str(b["meta"].get("模板")) == RANDOM_STRING_TPL), None)
+    for e in entries:
+        if not e["isChallenge"]:
+            continue
+        if any(b.get("region") == "pre" for b in e["blocks"]):
+            continue   # 自写前置区：以文件为准
+        if framework is None:
+            raise SystemExit(
+                f"错误：挑战文件 {e['fname']} 缺少前置代码块，"
+                f"且未找到框架文件 lua/utils/{FRAMEWORK_FNAME}。"
+            )
+        if not fw_pre:
+            raise SystemExit(f"错误：框架文件 {FRAMEWORK_FNAME} 缺少前置区代码块。")
+        if fw_random is None:
+            raise SystemExit(
+                f"错误：框架文件 {FRAMEWORK_FNAME} 的后置区缺少 {RANDOM_STRING_TPL} 引用块。"
+            )
+        e["blocks"] = copy.deepcopy(fw_pre) + e["blocks"] + [copy.deepcopy(fw_random)]
+    for e in entries:
+        if any(b.get("region") for b in e["blocks"]):
+            _number_blocks(e["blocks"])
+
+
 def build(lua_dir=LUA_DIR):
-    """完整构建管线：解析 → 模板注册 → 展开 → 校验。返回 (entries, registry)。"""
+    """完整构建管线：解析 → 框架注入 → 模板注册 → 展开 → 校验。返回 (entries, registry)。"""
     entries = collect_lua_entries(lua_dir)
+    _inject_framework(entries)
     registry = _register_templates(entries)
     for e in entries:
         for b in e["blocks"]:
@@ -589,7 +658,13 @@ def _assemble_raw(e):
         blocks_txt.append("\n".join(lines))
     header_txt = "\n".join(e["header"]).strip("\n")
     parts = ([header_txt] if header_txt else []) + blocks_txt
-    return "\n\n".join(parts) + "\n"
+    if e.get("has_terminator"):
+        parts.append("--.")
+    out = "\n\n".join(parts) + "\n"
+    # 挑战文件：末尾无论几个空行，归一为一个固定空行
+    if e["isChallenge"]:
+        out = out.rstrip("\n") + "\n\n"
+    return out
 
 
 def build_all_files(lua_entries):

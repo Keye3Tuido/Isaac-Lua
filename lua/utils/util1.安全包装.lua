@@ -93,5 +93,3 @@ if not(REPENTOGON or _MEC)then
     end
 end
 ]]
-
---.

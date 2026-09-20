@@ -62,3 +62,9 @@ l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,
 --[[
 模板: restart-game
 ]]
+
+--[[
+模板: random-string-output
+]]
+
+--.

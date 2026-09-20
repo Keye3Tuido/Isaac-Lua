@@ -631,4 +631,9 @@ l local a,S=GetPtrHash,{{0,1,2,28},{0,nil,2,nil},{nil,1,nil,28},{0,1,2,55,27,nil
 ]]
 l local A,M,C,P,T=Isaac.AddCallback,ModCallbacks,LevelCurse,PillEffect,{}A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_THE_LOST)end,P.PILLEFFECT_AMNESIA)A(T,M.MC_USE_PILL,function()Game():GetLevel():RemoveCurses(C.CURSE_OF_MAZE)end,P.PILLEFFECT_QUESTIONMARK)A(T,M.MC_POST_CURSE_EVAL,function(_,c)return~(C.CURSE_OF_THE_LOST|C.CURSE_OF_MAZE)&c end)
 
---.
+--[[
+作为模板: true
+模板id: random-string-output
+说明: 输出随机字符串。
+]]
+l Isaac.ConsoleOutput(tostring({}):match('%w%w%w%w$'))
