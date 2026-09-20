@@ -260,6 +260,6 @@ l local a,c,g,b,h,i=Isaac,ModCallbacks,EntityType.ENTITY_STONE_EYE,'GetGridPosit
 作为模板: true
 模板id: divine-intervention
 说明: |-
-  每个玩家的手指跟班处，获得多个迷你隐形神圣干预
+  在玩家周围生成隐形的神圣干预同心圆
 ]]
-l local b,c,h,k,n,i,a,m,K=Isaac,ModCallbacks,GetPtrHash,EffectVariant.DIVINE_INTERVENTION,Vector.Zero,'SpawnerEntity','Position'm,K=b.AddCallback,{}m(K,c.MC_FAMILIAR_UPDATE,function(d,f)d=f[i]and f[i]:GetData()[K]if d then d.p=f[a]end end,FamiliarVariant.FINGER)m(K,c.MC_POST_PLAYER_UPDATE,function(d,p)d=p:GetData()d[K]=d[K]or{p=n}d=d[K]for i=-5,5 do d[i]=d[i]or{}if not(d[i].e and d[i].e:Exists())then d[i].e=b.Spawn(EntityType.ENTITY_EFFECT,k,0,p[a],n,p)d[i].h=h(d[i].e)end end end)m(K,c.MC_POST_EFFECT_UPDATE,function(p,e,l,d,r)p=e[i]l=p and p:GetData()[K]d=h(e)if l then for i=-5,5 do if l[i].h==d then e.Visible=false e.Size=10 r=(l.p-p[a]):Rotated(10*i)e.Rotation=r:GetAngleDegrees()e[a]=p[a]+50*r:Normalized()end end end end,k)
+l local b,c,h,k,n,i,a,m,K=Isaac,ModCallbacks,GetPtrHash,EffectVariant.DIVINE_INTERVENTION,Vector,'SpawnerEntity','Position'm=b.AddCallback K={}m(K,c.MC_POST_PLAYER_UPDATE,function(d,p)d=p:GetData()d[K]=d[K]or{}d=d[K]for i=0,107 do d[i]=d[i]or{}if not(d[i].e and d[i].e:Exists())then d[i].e=b.Spawn(EntityType.ENTITY_EFFECT,k,0,p[a],n.Zero,p)d[i].h=h(d[i].e)end end end)m(K,c.MC_POST_EFFECT_UPDATE,function(p,e,l,d,j)p=e[i]l=p and p:GetData()[K]d=h(e)if l then for i=0,107 do if l[i].h==d then e.Visible=false e.Size=5 j=i>35 and 1 or 2 e.Rotation=5*j*i e[a]=p[a]+30*j*n.FromAngle(5*j*i)end end end end,k)
