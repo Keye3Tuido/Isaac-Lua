@@ -5,6 +5,8 @@
 覆盖：模板引用 / 参数默认值 / 列表参数 / 依赖（含 deps 输出字段） / 罗马数字编号 /
       名称（name 输出字段） / 说明无手工数字前缀（一律自动编号）与组装叠加 /
       块内参数（定义/展开/面板数据/缺默认值报错/占位符残留报错） /
+      块头解析器（全角冒号/免引号/行内映射逗号并回/引号转义/标量归一/
+      块标量/嵌套映射/普通注释误判/含模板标记的坏头硬报错） /
       缺分隔线报错 / 重复模板id报错 / 说明整段覆盖 / 未定义参数报错 /
       占位符未替换完全报错 / 空前置→框架注入（编号/region/深拷贝/依赖/展开，
       自写前置不注入） / main() 端到端 / verify_equivalence.py 的 PASS 与 FAIL /
@@ -326,6 +328,75 @@ class TestErrors(unittest.TestCase):
 
     def test_inline_param_leftover(self):
         assert_systemexit(self, "bad-inline-leftover", "未替换完全")
+
+
+class TestHeadParse(unittest.TestCase):
+    """块头解析器（parse_head）：宽松写法 + 与 YAML 子集的兼容行为。"""
+
+    def test_fullwidth_colon(self):
+        # 全角冒号空格可有可无；半角冒号需后随空格或行尾
+        h = G.parse_head(["模板：pause-on-focus-lost", "名称： 失焦暂停", "作为模板：true"])
+        self.assertEqual(h, {"模板": "pause-on-focus-lost", "名称": "失焦暂停", "作为模板": True})
+
+    def test_unquoted_slot_literal(self):
+        # {P2} 开头的说明按字面字符串，不再是解析错误
+        h = G.parse_head(["说明: {P2}失焦暂停功能"])
+        self.assertEqual(h, {"说明": "{P2}失焦暂停功能"})
+
+    def test_unquoted_text_with_fullwidth_punct(self):
+        h = G.parse_head(["说明: 爆裂天火：每Burst(默认{P1})秒随机天降一颗爆裂火球。"])
+        self.assertEqual(h, {"说明": "爆裂天火：每Burst(默认{P1})秒随机天降一颗爆裂火球。"})
+
+    def test_flow_map_unquoted_commas(self):
+        # 行内映射免引号值可含半角逗号（无冒号片段并回上一个值）
+        h = G.parse_head(["参数定义:",
+                          "  P1: {类型: 道具id列表, 默认: 87,229,233, 性质: 局部, 说明: 候选id列表}"])
+        self.assertEqual(h["参数定义"]["P1"],
+                         {"类型": "道具id列表", "默认": "87,229,233", "性质": "局部", "说明": "候选id列表"})
+
+    def test_flow_map_quoted_compat(self):
+        # 引号写法保持不变；双引号内 \n 解转义、单引号内 '' 解转义
+        h = G.parse_head(['参数定义:',
+                          '  P1: {类型: "描述", 默认: "如：a\\nb", 说明: \'it\'\'s\'}'])
+        self.assertEqual(h["参数定义"]["P1"]["默认"], "如：a\nb")
+        self.assertEqual(h["参数定义"]["P1"]["说明"], "it's")
+
+    def test_scalar_coercion(self):
+        h = G.parse_head(["参数:", "  P1: 85", "  P2: 1.5", "  P3: 1e3", "  P4: false", "  P5: '85'"])
+        self.assertEqual(h["参数"],
+                         {"P1": 85, "P2": 1.5, "P3": "1e3", "P4": False, "P5": "85"})
+
+    def test_flow_list(self):
+        self.assertEqual(G.parse_head(["依赖: [安全包装]"]), {"依赖": ["安全包装"]})
+        self.assertEqual(G.parse_head(["依赖: 甲、乙"]), {"依赖": "甲、乙"})
+
+    def test_block_scalar(self):
+        h = G.parse_head(["说明: |-", "  第一行", "", "  第二行：含全角冒号", "参数定义:", "  P1: 5"])
+        self.assertEqual(h["说明"], "第一行\n\n第二行：含全角冒号")
+        self.assertEqual(h["参数定义"], {"P1": 5})
+
+    def test_nested_map(self):
+        h = G.parse_head(["参数定义:", "  P1:", "    类型: 布尔", "    默认: false"])
+        self.assertEqual(h["参数定义"], {"P1": {"类型": "布尔", "默认": False}})
+
+    def test_inline_comment(self):
+        # 「 #」起至行尾为注释；引号内与紧邻文本的 # 不受影响
+        h = G.parse_head(["模板: soul-spawn          # 省略 = 自定义代码",
+                          "说明: 'C# 相关' # 尾注",
+                          "名称: C#测试"])
+        self.assertEqual(h, {"模板": "soul-spawn", "说明": "C# 相关", "名称": "C#测试"})
+
+    def test_plain_comment_is_none(self):
+        self.assertIsNone(G.parse_head(["这是一段注释", "第二行"]))
+        self.assertIsNone(G.parse_head(["function MEC()", "  local t = {}", "end"]))
+        self.assertIsNone(G.parse_head([]))
+
+    def test_broken_head_with_marker_raises(self):
+        # 含「作为模板/模板id」但结构不合法 → 硬报错，不再静默吞掉
+        lines = ["--[[", "作为模板: true", "\t模板id: x", "]]"]
+        with self.assertRaises(SystemExit) as cm:
+            G._read_head(lines, 0, "t.lua")
+        self.assertIn("无法解析", str(cm.exception))
 
 
 class TestMainEndToEnd(unittest.TestCase):

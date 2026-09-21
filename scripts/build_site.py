@@ -4,7 +4,7 @@
 三条原则：
   1) 必要资源一个不少——资源清单从构建产物自动推导，逐个校验存在性，缺任何一项立即失败；
   2) 非必要资源一个不多——只写显式入口文件与推导出的资源，源码/测试/文档不进发布目录；
-  3) 构建自足——缺 pyyaml、缺压缩器 node_modules 时自动补装，便于 EdgeOne / ESA 等
+  3) 构建自足——缺压缩器 node_modules 时自动补装（GenerateHtml.py 零依赖），便于 EdgeOne / ESA 等
      只跑单条构建命令的平台（`python3 scripts/build_site.py`）。
 
 用法：python scripts/build_site.py [--out _site]
@@ -204,7 +204,7 @@ def main():
 
     os.chdir(REPO_ROOT)
 
-    # 1) 构建站点（GenerateHtml.py 自带 pyyaml 自举）
+    # 1) 构建站点（GenerateHtml.py 零第三方依赖）
     G.main()
     # 2) 压缩器依赖自足
     ensure_compressor_deps()

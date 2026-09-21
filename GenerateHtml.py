@@ -2,62 +2,7 @@ import copy
 import os
 import re
 import json
-import subprocess
-import sys
 
-
-def _load_yaml():
-    """加载 pyyaml；缺失时自举安装后重试。
-
-    静态托管平台（EdgeOne Pages / 阿里云 ESA Pages 等）的构建机通常只执行
-    `python3 scripts/build_site.py`，没有依赖安装步骤（构建日志：
-    "Cannot find package.json or installCommand is empty, skipping installation..."）。
-    自举安装让同一份构建命令在 GitHub Actions 与这些平台都可用；
-    极简镜像缺 pip 时先用 ensurepip 引导（ensurepip 随 CPython 提供）。
-    """
-    try:
-        import yaml
-        return yaml
-    except ImportError:
-        pass
-
-    def _run(cmd):
-        try:
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            return True
-        except Exception:
-            return False
-
-    def _try_install():
-        for cmd in ([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"],
-                    ["python3", "-m", "pip", "install", "--quiet", "pyyaml"],
-                    ["pip3", "install", "--quiet", "pyyaml"],
-                    ["pip", "install", "--quiet", "pyyaml"]):
-            if not _run(cmd):
-                continue
-            try:
-                import yaml
-                return yaml
-            except ImportError:
-                continue
-        return None
-
-    got = _try_install()
-    if got is not None:
-        return got
-    for cmd in ([sys.executable, "-m", "ensurepip", "--default-pip"],
-                ["python3", "-m", "ensurepip", "--default-pip"]):
-        _run(cmd)
-    got = _try_install()
-    if got is not None:
-        return got
-    raise SystemExit(
-        "错误：需要 pyyaml（pip install pyyaml）以解析代码块 YAML 头。"
-        "构建环境无法联网时，请在构建命令前显式安装依赖（如 pip install -r requirements.txt）。"
-    )
-
-
-yaml = _load_yaml()
 
 # ========== 配置 ==========
 LUA_DIR = "lua"
@@ -85,7 +30,7 @@ SEPARATOR = "--===--"
 FRAMEWORK_FNAME = "TMPL.挑战代码框架.lua"
 RANDOM_STRING_TPL = "random-string-output"
 
-# YAML 头允许出现的键（未知键仅警告，便于发现笔误）
+# 块头允许出现的键（未知键仅警告，便于发现笔误）
 KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "参数定义"}
 
 # 参数占位符名：P1、P2 … Pn
@@ -94,6 +39,286 @@ PARAM_NAME_RE = re.compile(r"^P\d+$")
 LEFTOVER_PARAM_RE = re.compile(r"(?<![A-Za-z0-9_])P\d+(?![A-Za-z0-9_])")
 # 说明插值槽 {P1}
 SLOT_RE = re.compile(r"\{[^{}]*\}")
+
+
+# ========== 块头解析 ==========
+# 块头是 YAML 常用子集的宽松写法，手写友好：
+#   - 键值分隔符接受半角冒号（后需空格或行尾）与全角冒号"："（空格可有可无），
+#     敲中文时无需切换输入法；
+#   - 纯文本值一律免引号（含 {P1} 插值槽、全角冒号、逗号等），引号可写可不写；
+#   - 以 { 或 [ 开头且以匹配括号结尾的值按行内容器解析（{键: 值, …} / [甲, 乙]），
+#     括号不匹配时按字面字符串（如「说明: {P2}失焦暂停功能」）；行内映射中不带
+#     冒号的逗号片段并回上一个值，因此免引号值可含半角逗号（默认: 87,229,233）；
+#   - 多行说明用 |- 块标量（保留换行、去掉行尾换行）；键下缩进为嵌套映射；
+#   - 免引号的 true/false 归一为布尔，纯整数/小数归一为数值，其余均为字符串；
+#   - 「 #」起至行尾为注释（引号内的 # 不受影响）；
+#   - 单引号内 '' 表示一个 '，双引号内 \n 等反斜杠转义生效。
+_HEAD_BLOCK_SCALAR_RE = re.compile(r"^[|>][+-]?$")
+_HEAD_INT_RE = re.compile(r"^[-+]?\d+$")
+_HEAD_FLOAT_RE = re.compile(r"^[-+]?(?:\d+\.\d*|\.\d+)$")
+# 块头结构不合法时的兜底报错线索：含这些键的块一定是头而非普通注释
+_HEAD_MARKER_RE = re.compile(r"^\s*(?:作为模板|模板id)\s*[:：]")
+
+
+def _head_unquote(s):
+    """首尾成对引号 → 去引号并解转义；不是引号字符串返回 None。"""
+    if len(s) >= 2 and s[0] == s[-1] == "'":
+        return s[1:-1].replace("''", "'")
+    if len(s) >= 2 and s[0] == s[-1] == '"':
+        body = s[1:-1]
+        if "\\" not in body:
+            return body
+        return re.sub(r"\\(.)", lambda m: {
+            "n": "\n", "t": "\t", "r": "\r", "0": "\0",
+            '"': '"', "'": "'", "\\": "\\",
+        }.get(m.group(1), "\\" + m.group(1)), body)
+    return None
+
+
+def _head_strip_comment(s):
+    """去掉行内注释：首个引号外的「 #」（行首 # 或空白后的 #）起至行尾。"""
+    quote = None
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if quote:
+            if quote == "'" and ch == "'" and s[i + 1:i + 2] == "'":
+                i += 2
+                continue
+            if quote == '"' and ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#" and (i == 0 or s[i - 1] in " \t"):
+            return s[:i].rstrip()
+        i += 1
+    return s
+
+
+def _head_scalar(s):
+    """单个值文本 → Python 值（去注释/去引号/布尔/数值归一，其余为字符串）。"""
+    s = _head_strip_comment(s)
+    q = _head_unquote(s)
+    if q is not None:
+        return q
+    if s == "":
+        return None
+    low = s.lower()
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    if low in ("null", "~"):
+        return None
+    if _HEAD_INT_RE.match(s):
+        return int(s)
+    if _HEAD_FLOAT_RE.match(s):
+        return float(s)
+    return s
+
+
+def _head_split_kv(text):
+    """找首个引号外的键值分隔符，返回 (键, 值文本)；找不到返回 (None, None)。
+
+    半角 ':' 要求后随空白或行尾（与 YAML 一致）；全角 '：' 无此要求。"""
+    quote = None
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if quote == "'" and ch == "'" and text[i + 1:i + 2] == "'":
+                i += 2
+                continue
+            if quote == '"' and ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "：" or (ch == ":" and text[i + 1:i + 2] in ("", " ", "\t")):
+            return text[:i].strip(), text[i + 1:].strip()
+        i += 1
+    return None, None
+
+
+def _head_split_flow(inner):
+    """按顶层逗号切分行内容器内部（引号与嵌套括号内的逗号不切）。
+
+    引号/括号不闭合返回 None。"""
+    parts, buf = [], []
+    quote = None
+    depth = 0
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if quote:
+            buf.append(ch)
+            if quote == "'" and ch == "'" and inner[i + 1:i + 2] == "'":
+                buf.append("'")
+                i += 2
+                continue
+            if quote == '"' and ch == "\\" and i + 1 < len(inner):
+                buf.append(inner[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+            buf.append(ch)
+        elif ch in "{[":
+            depth += 1
+            buf.append(ch)
+        elif ch in "}]":
+            depth -= 1
+            if depth < 0:
+                return None
+            buf.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    if quote or depth != 0:
+        return None
+    parts.append("".join(buf))
+    return parts
+
+
+def _head_value(v):
+    """值文本 → Python 值；{…}/[…] 行内容器解析失败时按字面字符串。"""
+    v = _head_strip_comment(v)
+    if v == "":
+        return None
+    if v[0] in "{[" and v[-1] == ("}" if v[0] == "{" else "]"):
+        parts = _head_split_flow(v[1:-1])
+        if parts is not None:
+            if v[0] == "[":
+                return [_head_value(p.strip()) for p in parts if p.strip()]
+            entries = []
+            for p in parts:
+                s = p.strip()
+                if not s:
+                    continue
+                k, vv = _head_split_kv(s)
+                if k is None:
+                    if entries:
+                        # 无冒号片段并回上一个值：免引号值内的逗号（默认: 87,229）
+                        pk, pv = entries[-1]
+                        entries[-1] = (pk, pv + "," + s)
+                        continue
+                    return v  # 首片段就无冒号，整体按字面字符串（如 {P1}）
+                entries.append((k, vv))
+            d = {}
+            for k, vv in entries:
+                key = _head_unquote(k)
+                d[key if key is not None else k] = _head_value(vv)
+            return d
+    return _head_scalar(v)
+
+
+def _head_block_scalar(lines, i, parent_indent, style):
+    """读取块标量内容行，返回 (文本, 下一行下标)。style 为 |/-/+ 组合。"""
+    content = []
+    content_indent = None
+    j = i
+    while j < len(lines):
+        line = lines[j]
+        if line.strip():
+            ind = len(line) - len(line.lstrip(" "))
+            if content_indent is None:
+                if ind <= parent_indent:
+                    break
+                content_indent = ind
+            elif ind < content_indent:
+                break
+            content.append(line[content_indent:])
+        else:
+            content.append("")
+        j += 1
+    trailing = 0
+    while content and content[-1] == "":
+        content.pop()
+        trailing += 1
+    if style[0] == ">":
+        # 折叠：相邻非空行以空格连接，空行转为换行
+        out = []
+        for ln in content:
+            if ln == "":
+                out.append("\n")
+            elif out and not out[-1].endswith("\n"):
+                out.append(" " + ln)
+            else:
+                out.append(ln)
+        text = "".join(out)
+    else:
+        text = "\n".join(content)
+    if style.endswith("+"):
+        text += "\n" * (trailing + 1)
+    elif not style.endswith("-"):
+        text += "\n"
+    return text, j
+
+
+def _head_map(lines, i, parent_indent):
+    """解析缩进映射，返回 (dict, 下一行下标)；不像映射时返回 (None, i)。"""
+    d = {}
+    while i < len(lines):
+        line = lines[i]
+        if not line.strip():
+            i += 1
+            continue
+        lead = line[:len(line) - len(line.lstrip())]
+        if "\t" in lead:
+            return None, i  # 制表符缩进不合法
+        indent = len(line) - len(line.lstrip(" "))
+        if indent <= parent_indent:
+            break
+        k, v = _head_split_kv(line.strip())
+        if not k:
+            return None, i
+        key = _head_unquote(k)
+        key = key if key is not None else k
+        v = _head_strip_comment(v)
+        if v == "":
+            # 下一非空行缩进更深 → 嵌套映射；否则值为 null
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            nind = (len(lines[j]) - len(lines[j].lstrip(" "))) if j < len(lines) else -1
+            if nind > indent:
+                child, j2 = _head_map(lines, i + 1, indent)
+                if child is None:
+                    return None, i
+                d[key] = child
+                i = j2
+            else:
+                d[key] = None
+                i += 1
+        elif _HEAD_BLOCK_SCALAR_RE.match(v):
+            text, j = _head_block_scalar(lines, i + 1, indent, v)
+            d[key] = text
+            i = j
+        else:
+            d[key] = _head_value(v)
+            i += 1
+    return d, i
+
+
+def parse_head(inner_lines):
+    """块头文本行 → dict；内容不是块头（普通注释）时返回 None。"""
+    d, j = _head_map(inner_lines, 0, -1)
+    if not d:
+        return None
+    for line in inner_lines[j:]:
+        if line.strip():
+            return None
+    return d
 
 
 def _token_re(name):
@@ -160,21 +385,22 @@ def _split_lines(text):
     return text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
 
-def _read_yaml_head(lines, i, fname, line_offset=0):
+def _read_head(lines, i, fname, line_offset=0):
     """lines[i] 为 '--[[' 起始行，返回 (meta, next_i)。
-    meta 为 dict 时是 YAML 头；为 None 时是普通 --[[ ]] 注释块。
+    meta 为 dict 时是块头；为 None 时是普通 --[[ ]] 注释块。
     next_i 为 ']]' 之后的一行下标。"""
     j = i + 1
     while j < len(lines) and lines[j].strip() != "]]":
         j += 1
     if j >= len(lines):
         raise SystemExit(f"错误：{fname} 第 {line_offset + i + 1} 行的 '--[[' 块未闭合（缺少 ']]' 行）。")
-    inner = "\n".join(lines[i + 1:j])
-    try:
-        parsed = yaml.safe_load(inner)
-    except yaml.YAMLError:
-        parsed = None
-    meta = parsed if isinstance(parsed, dict) else None
+    inner = lines[i + 1:j]
+    meta = parse_head(inner)
+    if meta is None and any(_HEAD_MARKER_RE.match(l) for l in inner):
+        raise SystemExit(
+            f"错误：{fname} 第 {line_offset + i + 1} 行的块头含「作为模板/模板id」但结构无法解析"
+            "（检查缩进是否为空格、每行是否为「键: 值」形式）。"
+        )
     return meta, j + 1
 
 
@@ -192,18 +418,18 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
             i += 1
             continue
         if s == "--[[":
-            meta, nxt = _read_yaml_head(lines, i, fname, line_offset)
+            meta, nxt = _read_head(lines, i, fname, line_offset)
             if meta is None:
                 if strict:
                     raise SystemExit(
-                        f"错误：{fname} 第 {ln} 行的 '--[[ ]]' 块不是合法的 YAML 头"
+                        f"错误：{fname} 第 {ln} 行的 '--[[ ]]' 块不是合法的块头"
                         "（挑战文件骨架区内只允许代码块）。"
                     )
                 i = nxt
                 continue
             unknown = [k for k in meta if k not in KNOWN_HEAD_KEYS]
             if unknown:
-                print(f"警告：{fname} 第 {ln} 行的 YAML 头含未知键 {unknown}，将被忽略。")
+                print(f"警告：{fname} 第 {ln} 行的块头含未知键 {unknown}，将被忽略。")
             # 代码行：紧邻 ']]' 的下一行，非空且不是注释
             code = None
             k = nxt
@@ -216,7 +442,7 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
             i = k
             continue
         if s.startswith("--[["):
-            # 普通多行注释块（非 YAML 头，如注释化的可读源码）：跳到 ']]' 行整体忽略
+            # 普通多行注释块（非块头，如注释化的可读源码）：跳到 ']]' 行整体忽略
             if "]]" not in s:
                 j = i + 1
                 while j < len(lines) and lines[j].strip() != "]]":
@@ -231,14 +457,14 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
             if strict:
                 raise SystemExit(
                     f"错误：{fname} 第 {ln} 行出现游离注释 {s!r}，"
-                    "挑战文件骨架区内只允许代码块（说明请写进 YAML 头）。"
+                    "挑战文件骨架区内只允许代码块（说明请写进块头）。"
                 )
             i += 1
             continue
         # 裸代码行
         if strict:
             raise SystemExit(
-                f"错误：{fname} 第 {ln} 行出现不带 YAML 头的代码行，挑战文件骨架区内只允许代码块。"
+                f"错误：{fname} 第 {ln} 行出现不带块头的代码行，挑战文件骨架区内只允许代码块。"
             )
         print(f"警告：{fname} 第 {ln} 行存在不属于任何代码块的内容，已忽略：{s[:60]}")
         i += 1
@@ -685,7 +911,7 @@ def build_all_files(lua_entries):
             deps = _deps_list(meta, e["fname"], b["num"])
             if deps:
                 blk["deps"] = deps
-            # 代码名称：YAML 头声明了 名称 才输出 name 字段（前端据此显示名称标签）
+            # 代码名称：块头声明了 名称 才输出 name 字段（前端据此显示名称标签）
             if meta.get("名称") is not None:
                 blk["name"] = str(meta["名称"])
             if meta.get("作为模板") and meta.get("模板id"):
