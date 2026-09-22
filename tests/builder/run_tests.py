@@ -78,7 +78,7 @@ class TestHappyPath(unittest.TestCase):
         self.assertEqual(b["values"], {"P1": 700, "P2": [3, 34]})
 
     def test_param_default_and_comment_override(self):
-        b = self.ch["blocks"][3]  # P1 取默认 653；说明整段覆盖（不插值）
+        b = self.ch["blocks"][3]  # P1 省略 → 回退模板默认 653；说明整段覆盖（不插值）
         self.assertEqual(b["final_code"],
                          "local ids={9} Isaac.Spawn(5,100,653,Vector.Zero,Vector.Zero,nil)")
         self.assertEqual(b["comment"], "使用道具{P1}。")

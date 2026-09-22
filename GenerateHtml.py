@@ -753,13 +753,7 @@ def _expand_block(e, b, registry):
         if pn not in t["params"]:
             raise SystemExit(f"错误：{where} 的参数 {pn!r} 未在模板 {tid!r} 中定义。")
 
-    # 合并：引用方指定值优先，未指定取模板默认值
-    # 清单#6：引用块必须显式指定全部参数（即使与默认值一致），缺项即报错
-    missing = [pn for pn in t["params"] if pn not in given]
-    if missing:
-        raise SystemExit(
-            f"错误：{where} 引用模板 {tid!r} 时缺少参数 {missing}（必须显式指定全部参数）。"
-        )
+    # 合并：引用方指定值优先，未指定取模板默认值（默认值变更会作用于所有未显式指定的引用方）
     values = {}
     for pn, pd in t["params"].items():
         if pn in given:
