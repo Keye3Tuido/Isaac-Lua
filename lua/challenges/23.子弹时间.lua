@@ -40,33 +40,7 @@ l BulletTime=P1;TimeScale=P2;local A,B,C,I,M,T=Isaac.AddCallback,TimeScale,Butto
 说明: |-
   强制非精英敌人变为精英怪(仅包括10粉色变种，“0”和“1”可替换为非负整数表示权重)。
 参数:
-  P0: "0"
-  P1: "0"
-  P2: "0"
-  P3: "0"
-  P4: "0"
-  P5: "0"
-  P6: "0"
-  P7: "0"
-  P8: "0"
-  P9: "0"
   P10: "1"
-  P11: "0"
-  P12: "0"
-  P13: "0"
-  P14: "0"
-  P15: "0"
-  P16: "0"
-  P17: "0"
-  P18: "0"
-  P19: "0"
-  P20: "0"
-  P21: "0"
-  P22: "0"
-  P23: "0"
-  P24: "0"
-  P25: "0"
-  P26: "按权重表强制非精英敌人变为指定类型精英怪（表中0和1可替换为非负整数表示权重，0=排除）。"
 ]]
 
 --[[
@@ -102,7 +76,5 @@ l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_T
 --===--
 --[[
 模板: restart-game
-说明: |-
-  重开一局新游戏。
 ]]
 

@@ -98,6 +98,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(_,c)if not c t
 --===--
 --[[
 模板: restart-game
-说明: 重开一局新游戏。
 ]]
 

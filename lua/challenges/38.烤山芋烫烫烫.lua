@@ -6,7 +6,6 @@
 --===--
 --[[
 模板: blind-permanent
-说明: 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 ]]
 
 --[[
@@ -33,7 +32,6 @@ l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_B
 
 --[[
 模板: fly-permanent
-说明: 玩家永久飞行。
 ]]
 
 --[[
@@ -46,6 +44,5 @@ l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_B
 --===--
 --[[
 模板: restart-game
-说明: 重开一局新游戏。
 ]]
 

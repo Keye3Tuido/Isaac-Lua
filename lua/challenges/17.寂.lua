@@ -18,7 +18,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function()local R,T,l,m,t,s
 --===--
 --[[
 模板: restart-game
-说明: |-
-  重开一局新游戏。
 ]]
 

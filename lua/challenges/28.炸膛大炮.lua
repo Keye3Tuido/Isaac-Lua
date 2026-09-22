@@ -11,8 +11,6 @@
  不兼容拉撒路的绷带、拉撒路的魂石
 名称: 命中检测
 模板: on-hit-detect
-参数:
-  P1: ''
 ]]
 
 --[[
@@ -31,7 +29,6 @@ l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(32)
 
 --[[
 模板: blind-permanent
-说明: 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 ]]
 
 --[[
@@ -55,7 +52,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveS
 
 --[[
 模板: teleport-pill-reveal
-说明: 辨认传送胶囊。
 ]]
 
 --===--

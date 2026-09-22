@@ -8,9 +8,6 @@
 --[[
 模板: input-lag
 名称: 输入延迟
-参数:
-  P1: "15"
-  P2: "0.5秒"
 ]]
 
 --[[
@@ -28,7 +25,5 @@ l DisplayLag=P1;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,funct
 --===--
 --[[
 模板: restart-game
-说明: |-
-  重开一局新游戏。
 ]]
 

@@ -65,9 +65,6 @@ l local A,M,T,D=Isaac.AddCallback,ModCallbacks,{},_Data()A(T,M.MC_POST_GAME_STAR
 
 --[[
 模板: remove-pills
-参数:
-  P1: "23"
-  P2: "23(我能永远看清)"
 ]]
 
 --[[
@@ -94,8 +91,6 @@ l local Y,N,A,M,T,E,V,Z,R,L,D,S,H=true,false,Isaac.AddCallback,ModCallbacks,{},E
 
 --[[
 模板: teleport-pill-reveal
-说明: |-
-  辨认传送胶囊。
 ]]
 
 --===--

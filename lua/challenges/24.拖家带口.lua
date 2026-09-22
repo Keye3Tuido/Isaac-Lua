@@ -25,8 +25,6 @@ l local B,C,D,E,F,G,H,I,J,L,M,O,P,R,S,T,A,N=_Data,'Player','InitSeed',EntityType
 模板: force-character
 说明: |-
   强制角色为游魂。
-参数:
-  P1: "PlayerType.PLAYER_THELOST"
 ]]
 
 --[[
@@ -47,9 +45,6 @@ l local B,C,D,E,F,G,H,I,J,L,M,O,P,R,S,T,A,N=_Data,'Player','InitSeed',EntityType
 模板: del-room-types
 说明: |-
   删除每层的：宝箱房(类型为4)、星象房(类型为24)。
-参数:
-  P1: "4,24"
-  P2: "宝箱房(类型为4)、星象房(类型为24)"
 ]]
 
 --[[

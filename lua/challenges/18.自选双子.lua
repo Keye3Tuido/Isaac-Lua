@@ -24,7 +24,5 @@ l local B,F,G,H,I,K,M,O,T,U,W,X,Y,Z,Ad,Ca,In,Ma,Un,Et,Ev,Gp,A,C,D,E,J,L,N,P,R,S,
 --===--
 --[[
 模板: restart-game
-说明: |-
-  重开一局新游戏。
 ]]
 

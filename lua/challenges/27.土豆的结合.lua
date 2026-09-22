@@ -12,7 +12,6 @@
 --===--
 --[[
 模板: blind-permanent
-说明: 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 ]]
 
 --[[
@@ -57,14 +56,10 @@ l local I=Isaac I.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(
 
 --[[
 模板: pool-blacklist
-参数:
-  P1: "360,698"
-  P2: "淫魔和作孽双子"
 ]]
 
 --===--
 --[[
 模板: restart-game
-说明: 重开一局新游戏。
 ]]
 

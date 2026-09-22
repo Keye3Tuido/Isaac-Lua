@@ -47,6 +47,16 @@ class TestHappyPath(unittest.TestCase):
         cls.entries, cls.registry = build_fixture("new")
         cls.ch = next(e for e in cls.entries if e["isChallenge"])
 
+    def test_block_line_points_at_head(self):
+        # 块的 line 必须指向源文件中该块的 '--[[' 起始行（两条分隔线骨架曾错用 s2 偏移）
+        for e in self.entries:
+            sub = "challenges" if e["isChallenge"] else "utils"
+            path = os.path.join(FIX, "new", "lua", sub, e["fname"])
+            lines = G._split_lines(open(path, encoding="utf-8").read())
+            for b in e["blocks"]:
+                self.assertEqual(lines[b["line"] - 1].strip(), "--[[",
+                                 f"{e['fname']} 块{b['num']} line={b['line']}")
+
     def test_template_registry(self):
         self.assertEqual(set(self.registry), {"tpl-basic", "tpl-param", "tpl-note"})
         t = self.registry["tpl-param"]

@@ -17,9 +17,6 @@ l local I,C,Y,T,A=Isaac,{P1},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v 
 
 --[[
 模板: remove-cards
-参数:
-  P1: "41,74,83"
-  P2: "符文41(黑符文)、卡牌74(月亮?)和魂石83(该隐的魂石)。"
 ]]
 
 --[[

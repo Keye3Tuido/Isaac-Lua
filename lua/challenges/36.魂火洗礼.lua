@@ -42,10 +42,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_ENTITY_REMOVE,function(p,e)p=e.Varia
 
 --[[
 模板: sfx-volume-adjust
-参数:
-  P1: [182, 477]
-  P2: ".3"
-  P3: "30%"
 ]]
 
 --===--

@@ -34,6 +34,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function(p,a,b)a=Collectib
 --===--
 --[[
 模板: restart-game
-说明: 重开一局新游戏。
 ]]
 

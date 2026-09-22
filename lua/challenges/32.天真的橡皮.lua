@@ -29,6 +29,5 @@ l local I,C,Y,T,A=Isaac,{P1},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v 
 --===--
 --[[
 模板: restart-game
-说明: 重开一局新游戏。
 ]]
 

@@ -11,8 +11,6 @@
   函数 RandomItems([BlackList]) 返回一个表，包含两个子表：Active和Passive，分别存储随机排序的主动道具和被动道具的道具ID列表。BlackList为可选参数，是一个包含不希望被选择的道具ID的黑名单表。
   道具列表中包含本局已经存在的错误道具。
 名称: RandomItems
-参数:
-  P1: "59"
 ]]
 
 --[[
@@ -21,8 +19,6 @@
   函数 D4(EntityPlayer[,BlackList]) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。该函数依赖函数原型 RandomItems([BlackList:table]) -> {Active={},Passive={}}。
 名称: D4
 依赖: [RandomItems]
-参数:
-  P1: "59,584"
 ]]
 
 --[[
@@ -30,8 +26,6 @@
 说明: |-
   函数 RandomTrinkets([BlackList]) 返回一个表,存储随机排序的饰品ID列表。BlackList为可选参数，是一个包含不希望被选择的饰品ID的黑名单表。
 名称: RandomTrinkets
-参数:
-  P1: ""
 ]]
 
 --[[
@@ -40,8 +34,6 @@
   函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。该函数依赖函数原型 RandomTrinkets([BlackList:table]) -> {}。
 名称: D4_1
 依赖: [RandomTrinkets]
-参数:
-  P1: "64,75,180"
 ]]
 
 --[[
@@ -68,7 +60,5 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Ga
 --===--
 --[[
 模板: restart-game
-说明: |-
-  重开一局新游戏。
 ]]
 

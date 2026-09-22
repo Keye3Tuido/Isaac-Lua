@@ -6,7 +6,6 @@
 --===--
 --[[
 模板: blind-permanent
-说明: 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 ]]
 
 --[[
@@ -24,6 +23,5 @@ l local b,a,f,g,h=ModCallbacks,CollectibleType,UseFlag.USE_NOANIM,Isaac.AddCallb
 --===--
 --[[
 模板: restart-game
-说明: 重开一局新游戏。
 ]]
 

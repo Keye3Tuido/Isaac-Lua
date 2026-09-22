@@ -496,10 +496,12 @@ def _parse_challenge(text, fname):
         s1, s2 = sep_at
         pre_lines, body_lines, post_lines = [], lines[s1 + 1:s2], lines[s2 + 1:]
         pre_offset = 0
+        body_offset = s1 + 1
     else:
         s1, s2, s3 = sep_at
         pre_lines, body_lines, post_lines = lines[s1 + 1:s2], lines[s2 + 1:s3], lines[s3 + 1:]
         pre_offset = s1 + 1
+        body_offset = s2 + 1
 
     # 元信息：第一个分隔线之前的连续普通注释，原样直通
     header = []
@@ -516,7 +518,7 @@ def _parse_challenge(text, fname):
         i += 1
 
     pre = _scan_blocks(pre_lines, fname, strict=True, line_offset=pre_offset)
-    body = _scan_blocks(body_lines, fname, strict=True, line_offset=s2 + 1)
+    body = _scan_blocks(body_lines, fname, strict=True, line_offset=body_offset)
     post = _scan_blocks(post_lines, fname, strict=True, line_offset=(sep_at[-1] + 1))
     if not body:
         raise SystemExit(f"错误：挑战文件 {fname} 缺少正文代码块。")

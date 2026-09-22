@@ -9,8 +9,6 @@
 模板: seed-fixed
 说明: |-
   固定开启下列彩蛋种子：G_FUEL。
-参数:
-  P1: "SeedEffect.SEED_G_FUEL"
 ]]
 
 --[[
@@ -44,7 +42,5 @@
 --===--
 --[[
 模板: restart-game
-说明: |-
-  重开一局新游戏。
 ]]
 

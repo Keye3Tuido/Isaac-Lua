@@ -7,7 +7,6 @@
 --===--
 --[[
 模板: blind-permanent
-说明: 所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 ]]
 
 --[[
@@ -43,13 +42,11 @@ l local E={}Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(h,p,t)
 
 --[[
 模板: fly-permanent
-说明: 玩家永久飞行。
 ]]
 
 --===--
 --[[
 模板: restart-as-character
 说明: 以堕化犹大重开一局新游戏。
-参数: {P1: "PlayerType.PLAYER_JUDAS_B"}
 ]]
 
