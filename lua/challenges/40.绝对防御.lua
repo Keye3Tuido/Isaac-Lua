@@ -37,6 +37,11 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_INIT,function(_,p)p:AddPr
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)p.Size=math.min(2,p.Size)end)
 
+--[[
+说明: "“爸爸的戒指”光环变大50%"
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_EFFECT_INIT,function(_,e)if e.SubType<1 then e.SpriteScale=3/2*Vector.One e.PositionOffset=Vector(0,26)end end,EffectVariant.HALO)
+
 --===--
 --[[
 模板: restart-game
