@@ -32,6 +32,11 @@
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_INIT,function(_,p)p:AddProjectileFlags(ProjectileFlags.LASER_SHOT)end)
 
+--[[
+说明: "玩家体型不大于2"
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)p.Size=math.min(2,p.Size)end)
+
 --===--
 --[[
 模板: restart-game
