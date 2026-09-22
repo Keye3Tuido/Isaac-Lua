@@ -81,7 +81,7 @@ l local function Action(p,a,f,s,c)for k,v in pairs(Isaac.FindByType(EntityType.E
 参数定义:
   P1: {类型: 数值, 默认: "1", 性质: 局部, 说明: "泪弹尺寸缩放（t.Scale）"}
 ]]
-l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_TIMEOUT','C.CHANGE_VELOCITY_AFTER_TIMEOUT'},table,{},'InitSeed',ModCallbacks,{}for k,v in pairs(C)do E.insert(F,v)for i,j in pairs(D)do if k==j then E.remove(F,#F)end end end A(T,M.MC_POST_FIRE_TEAR,function(_,t)t.Scale=P1 end)A(T,M.MC_POST_PROJECTILE_INIT,function(_,p)for i=1,2 do p:AddProjectileFlags(F[p[G]*i%#F+1])end end)
+l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_TIMEOUT','CHANGE_VELOCITY_AFTER_TIMEOUT'},table,{},'InitSeed',ModCallbacks,{}for k,v in pairs(C)do E.insert(F,v)for i,j in pairs(D)do if k==j then E.remove(F,#F)end end end A(T,M.MC_POST_FIRE_TEAR,function(_,t)t.Scale=P1 end)A(T,M.MC_POST_PROJECTILE_INIT,function(_,p)for i=1,2 do p:AddProjectileFlags(F[p[G]*i%#F+1])end end)
 
 --[[
 模板: stat-cap
