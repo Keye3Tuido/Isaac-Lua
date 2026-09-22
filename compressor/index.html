@@ -250,11 +250,12 @@ window.tjEvent = function(action, label){
         : '';
       $badge.textContent='校验通过'+(modeTag?' ('+modeTag+', '+elapsed.toFixed(1)+'s)':' ('+elapsed.toFixed(1)+'s)');
       tjEvent('compress_ok', useSearch ? 'search' : 'basic');
+      // 压缩比按剥前缀后的正文同口径计算（codeLen=剥 l/lua 前缀的输入，bodyLength=不含 'l ' 的输出正文）；
+      // 输入/输出字符数按实际字符数显示（输出含 'l ' 前缀，即 rep.output.length）。
       var codeLen=(rep.codeLength!=null)?rep.codeLength:rep.originalLength;
-      var outLen=rep.bodyLength;
-      var pct=codeLen? Math.round((codeLen-outLen)/codeLen*100):0;
+      var pct=codeLen? Math.round((codeLen-rep.bodyLength)/codeLen*100):0;
       $inStat.textContent='输入 '+$in.value.length+' 字符';
-      $outStat.textContent='输出 '+outLen+' 字符　压缩比 '+pct+'%';
+      $outStat.textContent='输出 '+rep.output.length+' 字符　压缩比 '+pct+'%';
 
       if(rep.stages && rep.stages.length){
         $stagesCard.style.display='block';
