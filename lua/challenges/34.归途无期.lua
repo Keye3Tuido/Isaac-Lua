@@ -13,9 +13,6 @@
 --爸爸的便条
 --教条
 
----- 代码效果 ----
-
---===--
 --[[
 说明: 新游戏开始时，在初始房间生成铲柄、将计时器调整到{P3}，并直接传送到最后一个Boss房。
 参数定义:
@@ -95,8 +92,6 @@ l local a,d,A=ModCallbacks,Isaac.AddCallback d({},a.MC_POST_UPDATE,function(l)l=
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(_,c)if not c then Isaac.GetPlayer():AddBombs(-Game():GetNumPlayers())end end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

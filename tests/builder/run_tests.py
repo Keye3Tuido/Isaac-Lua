@@ -7,9 +7,10 @@
       块内参数（定义/展开/面板数据/缺默认值报错/占位符残留报错） /
       块头解析器（全角冒号/免引号/行内映射逗号并回/引号转义/标量归一/
       块标量/嵌套映射/普通注释误判/含模板标记的坏头硬报错） /
-      缺分隔线报错 / 重复模板id报错 / 说明整段覆盖 / 未定义参数报错 /
-      占位符未替换完全报错 / 空前置→框架注入（编号/region/深拷贝/依赖/展开，
-      自写前置不注入） / main() 端到端 / verify_equivalence.py 的 PASS 与 FAIL /
+      挑战无分隔线骨架（首块前注释即元信息、首块起即正文、末块必须重开引用）/
+      残留分隔线报错 / 缺重开块报错 / 重复模板id报错 / 说明整段覆盖 / 未定义参数报错 /
+      占位符未替换完全报错 / 框架注入（无条件：编号/region/深拷贝/依赖/展开） /
+      main() 端到端 / verify_equivalence.py 的 PASS 与 FAIL /
       kb.json 结构化输出（build_kb_entries：注释/代码分栏、模板参数自包含） /
       分类编号（challenges c<编号> / utils u<编号>，两类目录可同号） /
       发布目录组装（build_site.py：必要资源一个不少、非必要文件一个不多） /
@@ -48,26 +49,38 @@ class TestHappyPath(unittest.TestCase):
         cls.ch = next(e for e in cls.entries if e["isChallenge"])
 
     def test_block_line_points_at_head(self):
-        # 块的 line 必须指向源文件中该块的 '--[[' 起始行（两条分隔线骨架曾错用 s2 偏移）
-        for e in self.entries:
-            sub = "challenges" if e["isChallenge"] else "utils"
-            path = os.path.join(FIX, "new", "lua", sub, e["fname"])
-            lines = G._split_lines(open(path, encoding="utf-8").read())
-            for b in e["blocks"]:
-                self.assertEqual(lines[b["line"] - 1].strip(), "--[[",
-                                 f"{e['fname']} 块{b['num']} line={b['line']}")
+        # 直接解析夹具源文件：每个块的 line 必须指向该文件的 '--[[' 起始行
+        for sub in ("challenges", "utils"):
+            d = os.path.join(FIX, "new", "lua", sub)
+            for fn in sorted(os.listdir(d)):
+                if not fn.endswith(".lua"):
+                    continue
+                text = open(os.path.join(d, fn), encoding="utf-8").read()
+                lines = G._split_lines(text)
+                if fn == G.FRAMEWORK_FNAME:
+                    _, blocks, _ = G._parse_framework(text, fn)
+                elif sub == "challenges":
+                    _, blocks, _ = G._parse_challenge(text, fn)
+                else:
+                    blocks = G._scan_blocks(lines, fn, strict=False)
+                for b in blocks:
+                    self.assertEqual(lines[b["line"] - 1].strip(), "--[[",
+                                     f"{fn} 块{b['num']} line={b['line']}")
 
     def test_template_registry(self):
-        self.assertEqual(set(self.registry), {"tpl-basic", "tpl-param", "tpl-note"})
+        self.assertEqual(set(self.registry),
+                         {"tpl-basic", "tpl-param", "restart-as-character",
+                          "restart-game", "random-string-output"})
         t = self.registry["tpl-param"]
         self.assertEqual(t["body"], "local ids={P2} Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,nil)")
         self.assertEqual(t["params"]["P1"]["默认"], 653)
         self.assertEqual(t["params"]["P2"]["默认"], [1, 2])
 
     def test_numbering(self):
-        # 前置 "0"、"I"（0 之后从 I 起），正文 "1".."4"，后置继前置续罗马数字（前置 2 块 → 后置 "II"）
+        # 注入前置 "0"、"I"（0 之后从 I 起），正文 "1".."4"，后置继前置续罗马数字
+        #（重开 "II" + 追加的 random-string "III"）
         self.assertEqual([b["num"] for b in self.ch["blocks"]],
-                         ["0", "I", "1", "2", "3", "4", "II"])
+                         ["0", "I", "1", "2", "3", "4", "II", "III"])
 
     def test_header_passthrough(self):
         self.assertEqual("\n".join(self.ch["header"]).strip("\n"),
@@ -149,7 +162,8 @@ class TestHappyPath(unittest.TestCase):
         self.assertNotIn("tplDef", blk)
 
     def test_postfix_template_default_empty(self):
-        b = self.ch["blocks"][6]  # tpl-note，P1 默认 ''
+        b = self.ch["blocks"][6]  # restart-as-character 引用（后置块），P1 默认 ''
+        self.assertEqual(b["tpl"], "restart-as-character")
         self.assertEqual(b["final_code"], "local who='' print(who)")
         self.assertEqual(b["comment"], "角色专用重启。")
 
@@ -187,7 +201,7 @@ class TestKbEntries(unittest.TestCase):
         cls.kb = G.build_kb_entries(cls.entries, cls.registry)
 
     def test_entry_shape(self):
-        self.assertEqual(len(self.kb), 3)  # 1 挑战 + 2 工具
+        self.assertEqual(len(self.kb), 4)  # 1 挑战 + 3 工具（含框架文件）
         ch = next(e for e in self.kb if e["id"] == "1")
         self.assertEqual(set(ch),
                          {"id", "key", "title", "fname", "isChallenge", "tags",
@@ -203,7 +217,7 @@ class TestKbEntries(unittest.TestCase):
     def test_blocks_self_contained(self):
         ch = next(e for e in self.kb if e["id"] == "1")
         blocks = ch["blocks"]
-        self.assertEqual([b["num"] for b in blocks], ["0", "I", "1", "2", "3", "4", "II"])
+        self.assertEqual([b["num"] for b in blocks], ["0", "I", "1", "2", "3", "4", "II", "III"])
         # 自定义块：无 tpl/tplDef/params/body，仅 num/comment/code
         b0 = blocks[0]
         self.assertEqual(b0["comment"], "前置自定义代码。")
@@ -236,14 +250,13 @@ class TestKbEntries(unittest.TestCase):
 
 
 class TestFrameworkInjection(unittest.TestCase):
-    """空前置 → 框架注入：前置区为空的挑战文件注入框架前置块（深拷贝），
-    后置区追加框架的 random-string 引用块；自写前置块的文件不注入也不追加。"""
+    """框架注入（无条件）：每个挑战文件注入框架前置块（深拷贝），
+    后置块后追加框架的 random-string 引用块；挑战文件不能自写前置区。"""
 
     @classmethod
     def setUpClass(cls):
         cls.entries, cls.registry = build_fixture("framework")
         cls.ch = next(e for e in cls.entries if e["fname"] == "1.空前置.lua")
-        cls.own = next(e for e in cls.entries if e["fname"] == "2.自带前置.lua")
         cls.fw = next(e for e in cls.entries if e["fname"] == G.FRAMEWORK_FNAME)
 
     def test_injected_numbering_and_regions(self):
@@ -282,14 +295,6 @@ class TestFrameworkInjection(unittest.TestCase):
         self.assertEqual(b["final_code"],
                          "Isaac.ConsoleOutput(tostring({}):match('%w%w%w%w$'))")
 
-    def test_own_pre_blocks_not_injected(self):
-        # 自写前置区的文件以文件为准：不注入前置，也不追加 random-string
-        self.assertEqual([b["num"] for b in self.own["blocks"]], ["0", "1", "I"])
-        self.assertEqual([b["region"] for b in self.own["blocks"]],
-                         ["pre", "body", "post"])
-        self.assertNotIn("random-string-output",
-                         [b.get("tpl") for b in self.own["blocks"]])
-
     def test_framework_entry_parsed_with_regions(self):
         # 框架文件在 utils（非挑战）但按挑战骨架解析，带 region 与罗马编号
         self.assertFalse(self.fw["isChallenge"])
@@ -318,8 +323,11 @@ class TestFrameworkInjection(unittest.TestCase):
 
 
 class TestErrors(unittest.TestCase):
-    def test_missing_separator(self):
-        assert_systemexit(self, "bad-nosep", "分隔线")
+    def test_stray_separator(self):
+        assert_systemexit(self, "bad-sep", "分隔线已废弃")
+
+    def test_missing_restart_block(self):
+        assert_systemexit(self, "bad-norestart", "缺少后置代码块")
 
     def test_duplicate_template_id(self):
         assert_systemexit(self, "bad-dup", "模板id 重复")
@@ -437,7 +445,7 @@ class TestMainEndToEnd(unittest.TestCase):
         self.assertNotIn("__ALL_TEMPLATES__", html)
         self.assertIn("tpl-param", html)  # 模板注册表已注入
         # kb.json 新 schema：文件级信息 + 结构化 blocks（注释/代码分栏、模板参数自包含）
-        self.assertEqual(len(kb), 3)  # 1 挑战 + 2 工具
+        self.assertEqual(len(kb), 4)  # 1 挑战 + 3 工具（含框架文件）
         for entry in kb:
             self.assertEqual(set(entry),
                              {"id", "key", "title", "fname", "isChallenge", "tags",
@@ -450,7 +458,7 @@ class TestMainEndToEnd(unittest.TestCase):
     def test_main_without_templates_placeholder(self):
         html, kb = self._run_main("const ALL_FILES = __ALL_FILES__;\n")
         self.assertNotIn("__ALL_FILES__", html)
-        self.assertEqual(len(kb), 3)
+        self.assertEqual(len(kb), 4)
 
 
 class TestVerifyEquivalence(unittest.TestCase):
@@ -579,13 +587,19 @@ class TestCategoryKeys(unittest.TestCase):
                 os.makedirs(os.path.join(tmp, sub))
             with open(os.path.join(tmp, "challenges", challenge_name), "w", encoding="utf-8") as f:
                 f.write(
-                    "--甲\n\n"
-                    "--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
-                    "--===--\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
-                    "--===--\n--[[\n说明: 后置。\n]]\nl print(3)\n"
+                    "--甲\n\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
+                    "--[[\n模板: restart-game\n]]\n"
                 )
             with open(os.path.join(tmp, "utils", util_name), "w", encoding="utf-8") as f:
                 f.write("--[[\n说明: 工具。\n]]\nl print(4)\n")
+            with open(os.path.join(tmp, "utils", G.FRAMEWORK_FNAME), "w", encoding="utf-8") as f:
+                f.write(
+                    "--框架\n\n--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
+                    "--===--\n"
+                    "--[[\n作为模板: true\n模板id: restart-game\n说明: 重开。\n]]\nl print(3)\n\n"
+                    "--[[\n作为模板: true\n模板id: random-string-output\n说明: 随机。\n]]\nl print(5)\n\n"
+                    "--===--\n--[[\n模板: random-string-output\n]]\n"
+                )
             entries, _registry = G.build(tmp)   # 跑完整管线（含展开），build_all_files 依赖展开结果
             return entries, G.build_all_files(entries)
         finally:
@@ -593,7 +607,7 @@ class TestCategoryKeys(unittest.TestCase):
 
     def test_same_number_in_both_categories(self):
         _entries, all_files = self._build("1.甲.lua", "1.乙.lua")
-        self.assertEqual(set(all_files), {"c1", "u1"})
+        self.assertEqual(set(all_files), {"c1", "u1", "uTMPL"})  # uTMPL = 框架文件
         self.assertEqual(all_files["c1"]["id"], "1")
         self.assertEqual(all_files["u1"]["id"], "1")
         self.assertTrue(all_files["c1"]["isChallenge"])
@@ -602,16 +616,25 @@ class TestCategoryKeys(unittest.TestCase):
     def test_id_ending_in_l_digits_allowed(self):
         # util1 这类编号曾因「结尾 l+数字」被当成段锚点冲突而拒绝；改为「整串先当文件键」后放行
         _entries, all_files = self._build("util1.甲.lua", "util1.乙.lua")
-        self.assertEqual(set(all_files), {"cutil1", "uutil1"})
+        self.assertEqual(set(all_files), {"cutil1", "uutil1", "uTMPL"})
 
     def test_duplicate_number_within_category_rejected(self):
         # 同目录内同号（1.甲.lua 与 1.乙.lua）仍必须报错，不能被静默覆盖
         tmp = tempfile.mkdtemp(prefix="dupcat-")
         try:
             os.makedirs(os.path.join(tmp, "challenges"))
-            body = ("--甲\n\n--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
-                    "--===--\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
-                    "--===--\n--[[\n说明: 后置。\n]]\nl print(3)\n")
+            os.makedirs(os.path.join(tmp, "utils"))
+            body = ("--甲\n\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
+                    "--[[\n模板: restart-game\n]]\n")
+            framework = (
+                "--框架\n\n--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
+                "--===--\n"
+                "--[[\n作为模板: true\n模板id: restart-game\n说明: 重开。\n]]\nl print(3)\n\n"
+                "--[[\n作为模板: true\n模板id: random-string-output\n说明: 随机。\n]]\nl print(5)\n\n"
+                "--===--\n--[[\n模板: random-string-output\n]]\n"
+            )
+            with open(os.path.join(tmp, "utils", G.FRAMEWORK_FNAME), "w", encoding="utf-8") as f:
+                f.write(framework)
             for name in ("1.甲.lua", "1.乙.lua"):
                 with open(os.path.join(tmp, "challenges", name), "w", encoding="utf-8") as f:
                     f.write(body)

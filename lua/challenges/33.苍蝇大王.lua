@@ -1,9 +1,6 @@
 --苍蝇大王
 --限定角色：堕化亚玻伦
 
----- 代码效果 ----
-
---===--
 --[[
 模板: blind-permanent
 ]]
@@ -26,10 +23,8 @@
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.Damage=p.Damage/2 end,CacheFlag.CACHE_DAMAGE)
 
---===--
 --[[
 模板: restart-as-character
 说明: 以堕化亚玻伦重开一局新游戏。
 参数: {P1: "PlayerType.PLAYER_APOLLYON_B"}
 ]]
-

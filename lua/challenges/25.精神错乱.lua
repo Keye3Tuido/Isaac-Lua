@@ -1,10 +1,5 @@
 --精神错乱
 
-
----- 代码效果 ----
-
---===--
-
 --[[
 模板: random-items
 说明: |-
@@ -57,8 +52,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Ga
   P2: "道具703(小以扫)。"
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

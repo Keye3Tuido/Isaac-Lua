@@ -1,10 +1,6 @@
 --天堂制造
 --禁用Goodtrip
 
----- 代码效果 ----
-
---===--
-
 --[[
 说明: "游戏会缓慢加速"
 ]]
@@ -14,8 +10,6 @@ l local a,s,I,u,i,f,Z,b,t,T,A,N=0,1,Isaac,0,0,0,{}T,A=I.GetFrameCount,I.AddCallb
 模板: no-pause-no-console
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

@@ -1,9 +1,5 @@
 --烤山芋烫烫烫
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: blind-permanent
 ]]
@@ -41,8 +37,6 @@ l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_B
   P2: "道具223(纵火狂)和375(寄居骷髅帽)"
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

@@ -1,10 +1,6 @@
 --或许他真的能躲过那把达摩克里斯之剑
 --推荐角色：堕化犹大
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: give-start-collectibles
 参数:
@@ -47,8 +43,6 @@ l DAMOCLES_ALARM=P1;local A,B,C,D,U,V,W,X,Y,Z=Isaac,ModCallbacks,'GetFrameCount'
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if PlayerType.PLAYER_LAZARUS==p:GetPlayerType()then p:ChangePlayerType(PlayerType.PLAYER_LAZARUS2)end end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

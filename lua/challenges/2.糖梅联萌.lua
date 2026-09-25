@@ -1,9 +1,5 @@
 --糖梅联萌
 
----- 代码效果 ----
-
---===--
-
 --[[
 模板: blind-permanent
 ]]
@@ -22,8 +18,6 @@ l local I,F,G,A,S,Y,C,K,P,U,T,E,M,X,D,N=Isaac,Isaac.AddCallback,GetPtrHash,0,0,t
   P2: "道具590(水星)、3x道具649(甜甜糖梅宝)"
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

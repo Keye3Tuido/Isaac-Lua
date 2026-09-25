@@ -1,10 +1,6 @@
 --魂火洗礼
 --限定角色：伯大尼
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: blind-permanent
 ]]
@@ -44,10 +40,8 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_ENTITY_REMOVE,function(p,e)p=e.Varia
 模板: sfx-volume-adjust
 ]]
 
---===--
 --[[
 模板: restart-as-character
 说明: 以伯大尼重开一局新游戏。
 参数: {P1: "PlayerType.PLAYER_BETHANY"}
 ]]
-

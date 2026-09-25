@@ -1,10 +1,6 @@
 --寂
 --禁止回溯路线
 
----- 代码效果 ----
-
---===--
-
 --[[
 说明: |-
   所有房间自动清理，并完全陷入黑暗。无法记忆地图。
@@ -15,8 +11,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function()local R,T,l,m,t,s
 模板: curse-immune
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

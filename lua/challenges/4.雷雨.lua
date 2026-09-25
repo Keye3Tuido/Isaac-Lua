@@ -1,9 +1,5 @@
 --雷雨
 
----- 代码效果 ----
-
---===--
-
 --[[
 模板: blind-permanent
 ]]
@@ -19,8 +15,6 @@ l local I,F,G,Z,M,N=Isaac,Isaac.AddCallback,GetPtrHash,Vector.Zero,{}F({},31,fun
 模板: remove-donation-machine
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

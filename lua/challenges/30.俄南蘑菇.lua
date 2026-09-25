@@ -1,10 +1,6 @@
 --俄南蘑菇
 --限定攻击方式为眼泪
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: tear-miss-action
 说明: 玩家的眼泪未命中实体时，使用一次致幻蘑菇
@@ -31,8 +27,6 @@
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function(p,a,b)a=CollectibleType.COLLECTIBLE_WAVY_CAP b=NullItemID.ID_WAVY_CAP_1 for i=1,Game():GetNumPlayers()do p=Isaac.GetPlayer(i-1):GetEffects()p:RemoveCollectibleEffect(a,p:GetCollectibleEffectNum(a))p:RemoveNullEffect(b,p:GetNullEffectNum(b))end end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

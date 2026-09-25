@@ -1,14 +1,12 @@
--- 说明模板库（工具文件自由格式：普通注释随意）
+--框架夹具
 
+--===--
 --[[
-作为模板: true
-模板id: restart-as-character
-说明: 角色{P1}专用重启。
-参数定义:
-  P1: {默认: '', 性质: 全局, 说明: 角色名}
+说明: 框架前置。
 ]]
-l local who='P1' print(who)
+l local FA=1
 
+--===--
 --[[
 作为模板: true
 模板id: restart-game
@@ -22,3 +20,8 @@ l print("restart")
 说明: 输出随机字符串。
 ]]
 l Isaac.ConsoleOutput(tostring({}):match('%w%w%w%w$'))
+
+--===--
+--[[
+模板: random-string-output
+]]

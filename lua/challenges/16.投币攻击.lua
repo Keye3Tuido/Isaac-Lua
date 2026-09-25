@@ -1,11 +1,6 @@
 --投币攻击
 --角色限定：堕化店主
 
-
----- 代码效果 ----
-
---===--
-
 --[[
 模板: champion-force
 说明: |-
@@ -91,7 +86,6 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{T={}}A(T,M.MC_USE_ITEM,function(_,
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,P1,c.RO,c.GO,c.BO)end end)
 
---===--
 --[[
 模板: restart-as-character
 说明: |-
@@ -99,4 +93,3 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Pare
 参数:
   P1: "PlayerType.PLAYER_KEEPER_B"
 ]]
-

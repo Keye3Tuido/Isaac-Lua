@@ -1,11 +1,6 @@
 --拖家带口
 --限定角色: 游魂
 
-
----- 代码效果 ----
-
---===--
-
 --[[
 模板: persistent-data
 说明: |-
@@ -74,7 +69,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p)if not p:
   P2: "75(错误)和饰品180(复得游魂)"
 ]]
 
---===--
 --[[
 模板: restart-as-character
 说明: |-
@@ -82,4 +76,3 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p)if not p:
 参数:
   P1: "PlayerType.PLAYER_THELOST"
 ]]
-

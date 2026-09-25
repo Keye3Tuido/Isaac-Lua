@@ -1,10 +1,5 @@
 --绝对防御
 
-
----- 代码效果 ----
-
---===--
-
 --[[
 模板: fly-permanent
 ]]
@@ -25,8 +20,6 @@
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_INIT,function(_,p)p:AddProjectileFlags(ProjectileFlags.LASER_SHOT)end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

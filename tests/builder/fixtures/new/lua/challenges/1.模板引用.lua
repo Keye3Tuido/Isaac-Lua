@@ -1,18 +1,6 @@
 --迷你挑战甲
 --用于构建器夹具。
 
---===--
---[[
-说明: 前置自定义代码。
-名称: 基础设置
-]]
-l local X=1 print(X)
-
---[[
-模板: tpl-basic
-名称: 基础包装
-]]
---===--
 --[[
 模板: tpl-param
 参数: {P1: 700, P2: [3, 34]}
@@ -38,8 +26,7 @@ l print(X+1)
 ]]
 l for i=1,P2 do Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,nil) end
 
---===--
 --[[
-模板: tpl-note
+模板: restart-as-character
 参数: {P1: ''}
 ]]

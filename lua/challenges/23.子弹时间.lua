@@ -1,11 +1,6 @@
 --子弹时间
 --推荐攻击方式：眼泪攻击
 
-
----- 代码效果 ----
-
---===--
-
 --[[
 模板: force-give-items
 参数:
@@ -73,8 +68,6 @@ l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_T
   P1: "TearVariant.ERASER"
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

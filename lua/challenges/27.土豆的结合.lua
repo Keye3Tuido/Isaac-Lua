@@ -7,9 +7,6 @@
 -- 按Ctrl键可以切换绿色十字标记
 -- 每个炮台的道具和属性独立计算
 
----- 代码效果 ----
-
---===--
 --[[
 模板: blind-permanent
 ]]
@@ -58,8 +55,6 @@ l local I=Isaac I.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(
 模板: pool-blacklist
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

@@ -1,10 +1,6 @@
 --炸膛大炮
 --禁用Goodtrip等传送类模组
 
-
----- 代码效果 ----
-
---===--
 --[[
 说明: |-
  玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数(参数：玩家实体)。
@@ -54,8 +50,6 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveS
 模板: teleport-pill-reveal
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-

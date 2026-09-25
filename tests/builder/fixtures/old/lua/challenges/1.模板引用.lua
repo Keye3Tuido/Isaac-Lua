@@ -20,3 +20,6 @@ l for i=1,2 do Isaac.Spawn(5,100,653,Vector.Zero,Vector.Zero,nil) end
 
 --6. 重启。
 l local who='' print(who)
+
+--7. 输出随机字符串。
+l Isaac.ConsoleOutput(tostring({}):match('%w%w%w%w$'))

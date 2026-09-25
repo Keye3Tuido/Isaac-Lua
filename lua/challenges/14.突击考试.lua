@@ -1,10 +1,6 @@
 --突击考试
 --禁止贪婪模式、禁止回溯路线
 
----- 代码效果 ----
-
---===--
-
 --[[
 说明: |-
   从游戏中移除{P2}。
@@ -50,8 +46,6 @@ l local B,C,M,I,G,P,V,D,L,R,A,T,S,X,O,J,K,W,Q,Z,N,H,F,U,E=Color,0,math.abs,Isaac
 ]]
 l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_RENDER,function()T.C=false for i=1,Game():GetNumPlayers()do if Input.IsButtonPressed(Keyboard.KEY_TAB,Game():GetPlayer(i-1).ControllerIndex)then T.C=true break end end end)A(T,M.MC_POST_PICKUP_UPDATE,function(_,p)if _Y and T.C then local e,l=Game():GetNearestPlayer(p.Position)l=e.Position-p.Position p.Velocity=3*(l:Length()>10 and math.log(l:Length())or 0)*l:Normalized()p.GridCollisionClass=EntityGridCollisionClass.GRIDCOLL_NONE end end,PickupVariant.PICKUP_COIN)
 
---===--
 --[[
 模板: restart-game
 ]]
-

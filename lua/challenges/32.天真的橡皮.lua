@@ -1,10 +1,6 @@
 --天真的橡皮
 --限定眼泪攻击
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: tear-variant-force
 说明: 玩家的泪弹强制变为橡皮擦
@@ -26,8 +22,6 @@
 ]]
 l local I,C,Y,T,A=Isaac,{P1},true,{}A=I.AddCallback A(T,23,function(_,c)for _,v in pairs(C)do if c==v then return Y end end end)A(T,31,function(_,p)for _,i in pairs(C)do while p:HasCollectible(i)do p:RemoveCollectible(i)end end end)A(T,37,function(p,f,v,s)if v==100 then repeat p,f=Game():GetItemPool()for _,i in pairs(C)do if i==s then f,s=1,p:GetCollectible(p:GetLastPool(),Y)break end end until not f return{v,s}end end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

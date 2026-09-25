@@ -1,9 +1,5 @@
 --烂醉如泥（注意！很晕！！！）
 
----- 代码效果 ----
-
---===--
-
 --[[
 说明: "所有实体贴图会旋转、变大或变小；游戏会不时变慢和变快（损坏的怀表效果）"
 ]]
@@ -14,8 +10,6 @@ l local I,M,V,R,S=Isaac,math,Vector,'SpriteRotation','SpriteScale'I.AddCallback(
 ]]
 l local A=Isaac.AddCallback A({},8,function(_,p)p.TearFlags=p.TearFlags|7 end,32)A({},18,function()Isaac.ExecuteCommand'spawn 5.100.628'end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

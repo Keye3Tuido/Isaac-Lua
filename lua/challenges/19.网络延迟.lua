@@ -1,10 +1,5 @@
 --网络延迟
 
-
----- 代码效果 ----
-
---===--
-
 --[[
 模板: input-lag
 名称: 输入延迟
@@ -22,8 +17,6 @@
 ]]
 l DisplayLag=P1;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if DisplayLag then local s=string.format('%.2fs',Lag/30)I.RenderText(s,(I.GetScreenWidth()-I.GetTextWidth(s))/2,10,1,1,0,1)end end)
 
---===--
 --[[
 模板: restart-game
 ]]
-

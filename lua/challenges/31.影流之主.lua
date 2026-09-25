@@ -1,10 +1,6 @@
 --影流之主
 --限定角色：堕化犹大
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: blind-permanent
 ]]
@@ -44,9 +40,7 @@ l local E={}Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(h,p,t)
 模板: fly-permanent
 ]]
 
---===--
 --[[
 模板: restart-as-character
 说明: 以堕化犹大重开一局新游戏。
 ]]
-

@@ -1,9 +1,5 @@
 --跳跳乐
 
-
----- 代码效果 ----
-
---===--
 --[[
 模板: blind-permanent
 ]]
@@ -20,8 +16,6 @@ l local b,a,f,g,h=ModCallbacks,CollectibleType,UseFlag.USE_NOANIM,Isaac.AddCallb
   P2: "道具282(跳跃教程)"
 ]]
 
---===--
 --[[
 模板: restart-game
 ]]
-
