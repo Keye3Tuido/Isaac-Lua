@@ -57,8 +57,8 @@ window.tjEvent = function(action, label){
       <span class="stat" id="inStat"></span>
       <div class="row">
         <button class="primary" id="run">压缩</button>
-        <label class="search-toggle" title="搜索优化级数：0=关闭（只用规则系统）；N=beam search 束宽，越大搜得越深但越慢"><span>搜索优化级数</span><select id="searchLevel"><option value="0" selected>0（关闭）</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="16">16</option><option value="20">20</option><option value="24">24</option><option value="32">32</option></select></label>
-        <label class="search-toggle" title="无元表模式：假定所有变量（含全局）都没有自定义 __index/__newindex 元表，成员访问无状态变化，允许更激进的整链折叠"><span>无元表模式</span><input type="checkbox" id="noMetatable"></label>
+        <label class="search-toggle" title="搜索优化级数：0=关闭（只用规则系统）；N=beam search 束宽，越大搜得越深但越慢"><span>搜索优化级数</span><select id="searchLevel"><option value="0">0（关闭）</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="8">8</option><option value="10">10</option><option value="12">12</option><option value="16">16</option><option value="20">20</option><option value="24">24</option><option value="32" selected>32</option></select></label>
+        <label class="search-toggle" title="无元表模式：假定所有变量（含全局）都没有自定义 __index/__newindex 元表，成员访问无状态变化，允许更激进的整链折叠"><span>无元表模式</span><input type="checkbox" id="noMetatable" checked></label>
         <button class="ghost" id="clear">清空</button>
       </div>
       <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
