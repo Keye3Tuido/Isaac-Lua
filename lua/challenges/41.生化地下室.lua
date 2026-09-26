@@ -63,10 +63,10 @@ l local b,a,S=Vector,Isaac,Sprite()S:Load('gfx/ui/loading.anm2',true)S:Play('1',
 l Isaac.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(l,_,p)l=Game():GetLevel()if not IsGridSafe(l:GetCurrentRoomIndex())then for _=1,l:GetCurrentRoomDesc().Data.Difficulty//5 do Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COIN,CoinSubType.COIN_PENNY,Isaac.GetFreeNearPosition(p,0),Vector.Zero,nil)end end end)
 
 --[[
-说明: 每个安全室内，摧毁所有障碍物，固定生成1个补货机和1~2组双选一道具
+说明: 每个安全室内，摧毁所有障碍物，固定生成0~1个补货机和1~2组双选一道具
 依赖: [安全屋与毒气室]
 ]]
-l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,p)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end p=c(r[e](r,60),0)for i=0,1&r:GetDecorationSeed()do for j=0,1 do b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,p+29*Vector.FromAngle(90*(i*2+j+.5)),d,nil):ToPickup().OptionsPickupIndex=i+1 end end b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end)
+l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,a,p)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end p=c(r[e](r,60),0)a=r:GetDecorationSeed()for i=0,a&1 do for j=0,1 do b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,p+29*Vector.FromAngle(90*(i*2+j+.5)),d,nil):ToPickup().OptionsPickupIndex=i+1 end end if a&7<1 then b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end end)
 
 --[[
 说明: 击败头目后，房间右下角生成一个可消除碎心的商品
