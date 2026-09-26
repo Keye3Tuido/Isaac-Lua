@@ -40,7 +40,7 @@ l local a,b,A,R=Game,'SafeGridIndex',{}R=function(d,l,s,r)d={}l=a():GetLevel()s=
 说明: 安全屋被视为红房间，红房间被视为普通房间。安全屋自动清理。
 依赖: [安全屋与毒气室]
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l,s,r,x,f,a)a=RoomDescriptor f=a.FLAG_RED_ROOM l=Game():GetLevel()s=l:GetRooms()for i=0,#s-1 do x=s:Get(i).SafeGridIndex r=l:GetRoomByIdx(x)r.Flags=(~f&r.Flags)|(IsGridSafe(x)and(a.FLAG_CLEAR|f)or 0)end l:UpdateVisibility()end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l,s,r,x,f,a)if Game():GetFrameCount()%30<1 then a=RoomDescriptor f=a.FLAG_RED_ROOM l=Game():GetLevel()s=l:GetRooms()for i=0,#s-1 do x=s:Get(i).SafeGridIndex r=l:GetRoomByIdx(x)r.Flags=(~f&r.Flags)|(IsGridSafe(x)and(a.FLAG_CLEAR|f)or 0)end l:UpdateVisibility()end end)
 
 --[[
 说明: 毒气室内屏幕偏绿
@@ -67,7 +67,7 @@ l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNea
 --[[
 说明: 击败头目后，房间右下角生成一个可消除碎心的商品
 ]]
-l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_COIN,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r)r=Game():GetRoom()if RoomType.ROOM_BOSS==r:GetType()then r=Game():Spawn(k,i,a.GetFreeNearPosition(r:GetGridPosition(r:GetGridSize()-1),20),l,nil,CoinSubType.COIN_PENNY,1):ToPickup()r.AutoUpdatePrice=false r.Price=50 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)end end,i)
+l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_COIN,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r)r=Game():GetRoom()if RoomType.ROOM_BOSS==r:GetType()then r=Game():Spawn(k,i,a.GetFreeNearPosition(r:GetGridPosition(r:GetGridSize()-1),0),l,nil,CoinSubType.COIN_PENNY,1):ToPickup()r.AutoUpdatePrice=false r.Price=50 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)end end,i)
 
 --[[
 说明: |-
