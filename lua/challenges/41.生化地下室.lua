@@ -10,8 +10,8 @@
 --[[
 模板: force-give-items
 参数:
-  P1: "'c402'"
-  P2: "道具402(混沌)"
+  P1: "'c350','c402'"
+  P2: "道具350(毒性休克)和道具402(混沌)"
 ]]
 
 --[[
@@ -30,12 +30,6 @@
 依赖: [数据保存]
 ]]
 l local a,b,A,R=Game,'SafeGridIndex',{}R=function(d,l,s,r)d={}l=a():GetLevel()s=l:GetRooms()for i=0,#s-1 do r=s:Get(i)if r.Data and r.Data.Type==RoomType.ROOM_DEFAULT then d[#d+1]=r[b]end end r=RNG()r:SetSeed(a():GetSeeds():GetStageSeed(l:GetStage()),35)for i=#d,2,-1 do s=1+r:RandomInt(#d-1)d[i],d[s]=d[s],d[i]end d=table.move(d,1,#d//5,1,{})s=_Data()s[A]={[l:GetStartingRoomIndex()]=true}for _,v in pairs(d)do s[A][v]=true end return s[A]end Isaac.AddCallback(A,ModCallbacks.MC_POST_NEW_LEVEL,R)function IsGridSafe(s,d)d=_Data()[A]or R()return d[a():GetLevel():GetRoomByIdx(s)[b]]end
-
---[[
-说明: 未清理的毒气室内始终有毒雾。
-依赖: [安全屋与毒气室]
-]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PEFFECT_UPDATE,function(c,p)if not IsGridSafe(Game():GetLevel():GetCurrentRoomIndex())and Game():GetFrameCount()%30<1 then c=CollectibleType.COLLECTIBLE_TOXIC_SHOCK p:AddCollectible(c)p:RemoveCollectible(c)end end)
 
 --[[
 说明: 安全屋被视为红房间，红房间被视为普通房间。安全屋自动清理。
