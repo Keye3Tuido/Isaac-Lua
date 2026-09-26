@@ -50,6 +50,10 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(l,s,r,x,f,a)if Game(
 l local b,a,S=Vector,Isaac,Sprite()S:Load('gfx/ui/loading.anm2',true)S:Play('1',true)S.Scale=b(9,9)S.Color=Color(0,0,0,.2,0,.3)a.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if not IsGridSafe(Game():GetLevel():GetCurrentRoomIndex())then S:RenderLayer(0,b.Zero)end end)
 
 --[[
+模板: attract-coins
+]]
+
+--[[
 说明: 每清理一个毒气室，根据房间难度生成硬币
 依赖: [安全屋与毒气室]
 ]]

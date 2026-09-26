@@ -52,14 +52,10 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_PEFFECT_UPDATE,func
 
 --[[
 模板: sticky-to-nickel
-说明: |-
-  黏币变为镍币
 ]]
 
 --[[
 模板: attract-coins
-说明: |-
-  角色吸引硬币
 ]]
 
 --[[

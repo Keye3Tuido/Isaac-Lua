@@ -43,12 +43,10 @@ l local I=Isaac I.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(
 
 --[[
 模板: attract-coins
-说明: 角色吸引硬币
 ]]
 
 --[[
 模板: sticky-to-nickel
-说明: 黏币变为镍币
 ]]
 
 --[[
