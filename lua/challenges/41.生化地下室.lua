@@ -74,7 +74,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(l,_,p)l=Ga
 说明: 每个安全室内，摧毁所有障碍物，生成0~1个补货机和0~1个道具
 依赖: [安全屋与毒气室]
 ]]
-l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,a)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end a=RNG()a:SetSeed(r:GetDecorationSeed(),35)if 1>a:RandomInt(3)then b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,c(r[e](r,60),0),d,nil)end if 1>a:RandomInt(7)then b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end end)
+l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,a)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end a=RNG()a:SetSeed(r:GetDecorationSeed(),35)if 1>a:RandomInt(3)then b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,c(r[e](r,60),0),d,nil)if 1>a:RandomInt(7)then b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end end end)
 
 --[[
 说明: |-
