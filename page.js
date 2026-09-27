@@ -170,6 +170,7 @@ window.addEventListener('hashchange', function() {
     tjPage();   // hash 路由切换不会产生新 PV，手动上报（含 #kb 下载入口）
 });
 window.addEventListener('DOMContentLoaded', function() {
+    cleanRefreshTimestamp();       // 先去掉 ?_r= 时间戳，再执行路由与统计
     buildListUI();
     route();
     startRefreshHint();
@@ -278,6 +279,16 @@ function startRefreshHint() {
     if (refreshHintTimer) return;
     updateRefreshHint();
     refreshHintTimer = setInterval(updateRefreshHint, 1000);
+}
+
+// 自动刷新用的 ?_r=<时间戳> 只用于击穿缓存，页面加载后立即从地址栏抹掉，
+// 保证地址栏和复制/分享链接都不带时间戳
+function cleanRefreshTimestamp() {
+    var url = new URL(location.href);
+    if (url.searchParams.has('_r')) {
+        url.searchParams.delete('_r');
+        history.replaceState(null, '', url.toString());
+    }
 }
 
 // ========== 详情视图 ==========
