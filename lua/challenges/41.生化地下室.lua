@@ -63,15 +63,15 @@ l local b,a,S=Vector,Isaac,Sprite()S:Load('gfx/ui/loading.anm2',true)S:Play('1',
 l Isaac.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(l,_,p)l=Game():GetLevel()if not IsGridSafe(l:GetCurrentRoomIndex())then for _=1,l:GetCurrentRoomDesc().Data.Difficulty//5 do Isaac.Spawn(EntityType.ENTITY_PICKUP,PickupVariant.PICKUP_COIN,CoinSubType.COIN_PENNY,Isaac.GetFreeNearPosition(p,0),Vector.Zero,nil)end end end)
 
 --[[
-说明: 每个安全室内，摧毁所有障碍物，固定生成0~1个补货机和1~2组双选一道具
+说明: 每个安全室内，摧毁所有障碍物，固定生成0~1个补货机和1~2组道具
 依赖: [安全屋与毒气室]
 ]]
-l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,a,p)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end p=c(r[e](r,60),0)a=r:GetDecorationSeed()for i=0,a&1 do for j=0,1 do b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,p+29*Vector.FromAngle(90*(i*2+j+.5)),d,nil):ToPickup().OptionsPickupIndex=i+1 end end if a&7<1 then b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end end)
+l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,a)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end a=RNG()a:SetSeed(r:GetDecorationSeed(),35)for _=0,(1>a:RandomInt(3))and 1 or 0 do b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,c(r[e](r,60),0),d,nil)end if 1>a:RandomInt(7)then b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end end)
 
 --[[
-说明: 击败头目后，房间右下角生成一个可消除碎心的商品
+说明: 击败头目后，房间左上角生成一个可消除碎心的商品
 ]]
-l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_COIN,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r)r=Game():GetRoom()if RoomType.ROOM_BOSS==r:GetType()then r=Game():Spawn(k,i,a.GetFreeNearPosition(r:GetGridPosition(r:GetGridSize()-1),0),l,nil,CoinSubType.COIN_PENNY,1):ToPickup()r.AutoUpdatePrice=false r.Price=50 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)end end,i)
+l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_HEART,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r,p)r=Game():GetRoom()p=-1 if RoomType.ROOM_BOSS==r:GetType()then repeat p=p+1 until not r:GetGridEntity(p)r=Game():Spawn(k,i,r:GetGridPosition(p),l,nil,HeartSubType.HEART_GOLDEN,1):ToPickup()r.AutoUpdatePrice=false r.Price=30 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then p.Size=0 S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)end end,i)
 
 --[[
 说明: |-
@@ -84,10 +84,10 @@ l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVarian
 l local k,e,a,b,j,C,g,h,i,K=math.min,Game,ModCallbacks,_Data,Isaac.AddCallback,CacheFlag,'MoveSpeed','MaxFireDelay','TearRange',{}j({},a.MC_POST_GAME_STARTED,function(_,c)if not c then b()[K]=nil end end)j({},a.MC_POST_UPDATE,function(d,t)d=b()d[K]=d[K]or{A=0,B=0,T=0}d=d[K]t=e():GetFrameCount()if IsGridSafe(e():GetLevel():GetCurrentRoomIndex())then d.B=math.max(0,d.B-1/300)d.T=t else if t-d.T>599 then d.A=k(d.A+.05,.9)d.T=t end d.B=k(d.B+1/3e3,.9)end for i=1,e():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddCacheFlags(C.CACHE_ALL)d:EvaluateItems()end end)j({},a.MC_EVALUATE_CACHE,function(m,p,f)m=b()[K]if m then m=1-k(m.A+m.B,.9)if f==C.CACHE_SPEED then p[g]=m*p[g]elseif f==C.CACHE_FIREDELAY then p[h]=(p[h]+1)/m-1 elseif f==C.CACHE_DAMAGE then p.Damage=m*p.Damage elseif f==C.CACHE_RANGE then p[i]=m*p[i]end end end)
 
 --[[
-说明: 在毒气室内，每25秒给玩家增加一颗碎心
+说明: 在毒气室内，每20秒给玩家增加一颗碎心
 依赖: [数据保存,安全屋与毒气室]
 ]]
-l local b,a,e,K=Game,ModCallbacks,Isaac.AddCallback,{}e(K,a.MC_POST_GAME_STARTED,function(_,c)if not c then _Data()[K]=nil end end)e(K,a.MC_POST_UPDATE,function(d,t)d=_Data()d[K]=d[K]or 0 t=b():GetFrameCount()if IsGridSafe(b():GetLevel():GetCurrentRoomIndex())then d[K]=t else if 749<t-d[K]then d[K]=t for i=1,b():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddBrokenHearts(1)d:UseActiveItem(CollectibleType.COLLECTIBLE_DULL_RAZOR,UseFlag.USE_NOANIM)end end end end)
+l local b,a,e,K=Game,ModCallbacks,Isaac.AddCallback,{}e(K,a.MC_POST_GAME_STARTED,function(_,c)if not c then _Data()[K]=nil end end)e(K,a.MC_POST_UPDATE,function(d,t)d=_Data()d[K]=d[K]or 0 t=b():GetFrameCount()if IsGridSafe(b():GetLevel():GetCurrentRoomIndex())then d[K]=t else if 599<t-d[K]then d[K]=t for i=1,b():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddBrokenHearts(1)d:UseActiveItem(CollectibleType.COLLECTIBLE_DULL_RAZOR,UseFlag.USE_NOANIM)end end end end)
 
 --[[
 说明: |-
