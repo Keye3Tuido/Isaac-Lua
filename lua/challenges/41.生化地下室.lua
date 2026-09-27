@@ -76,19 +76,21 @@ l Isaac.AddCallback({},ModCallbacks.MC_PRE_SPAWN_CLEAN_AWARD,function(l,_,p)l=Ga
 l local f,b,d,e,c=EntityType,Isaac,Vector.Zero,'GetRandomPosition'c=b.GetFreeNearPosition b.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r,a)l=Game():GetLevel()r=Game():GetRoom()if IsGridSafe(l:GetCurrentRoomIndex())and r:IsFirstVisit()then for i=1,r:GetGridSize()do r:DestroyGrid(i-1)end a=RNG()a:SetSeed(r:GetDecorationSeed(),35)for _=0,(1>a:RandomInt(3))and 1 or 0 do b.Spawn(f.ENTITY_PICKUP,PickupVariant.PICKUP_COLLECTIBLE,0,c(r[e](r,60),0),d,nil)end if 1>a:RandomInt(7)then b.Spawn(f.ENTITY_SLOT,10,0,c(r[e](r,40),0),d,nil)end end end)
 
 --[[
-说明: 击败头目后，房间左上角生成一个可消除碎心的商品
-]]
-l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_COLLECTIBLE,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r,p)r=Game():GetRoom()p=-1 if RoomType.ROOM_BOSS==r:GetType()then repeat p=p+1 until not r:GetGridEntity(p)r=Game():Spawn(k,i,r:GetGridPosition(p),l,nil,CollectibleType.COLLECTIBLE_DADS_NOTE,1):ToPickup()r.AutoUpdatePrice=false r.Price=30 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then p.Size=0 p:ClearEntityFlags(EntityFlag.FLAG_ITEM_SHOULD_DUPLICATE)S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)end end,i)
-
---[[
 说明: |-
   在毒气室内，每秒属性临时下降1%，每20s属性永久下降5%；
   属性最多下降90%；
   在安全屋内，每秒临时下降的属性回升10%；
   只影响：移动速度、攻击速度、攻击力、射程
+名称: 属性下降
 依赖: [数据保存,安全屋与毒气室]
 ]]
-l local k,e,a,b,j,C,g,h,i,K=math.min,Game,ModCallbacks,_Data,Isaac.AddCallback,CacheFlag,'MoveSpeed','MaxFireDelay','TearRange',{}j({},a.MC_POST_GAME_STARTED,function(_,c)if not c then b()[K]=nil end end)j({},a.MC_POST_UPDATE,function(d,t)d=b()d[K]=d[K]or{A=0,B=0,T=0}d=d[K]t=e():GetFrameCount()if IsGridSafe(e():GetLevel():GetCurrentRoomIndex())then d.B=math.max(0,d.B-1/300)d.T=t else if t-d.T>599 then d.A=k(d.A+.05,.9)d.T=t end d.B=k(d.B+1/3e3,.9)end for i=1,e():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddCacheFlags(C.CACHE_ALL)d:EvaluateItems()end end)j({},a.MC_EVALUATE_CACHE,function(m,p,f)m=b()[K]if m then m=1-k(m.A+m.B,.9)if f==C.CACHE_SPEED then p[g]=m*p[g]elseif f==C.CACHE_FIREDELAY then p[h]=(p[h]+1)/m-1 elseif f==C.CACHE_DAMAGE then p.Damage=m*p.Damage elseif f==C.CACHE_RANGE then p[i]=m*p[i]end end end)
+l local k,e,a,b,j,C,g,h,i,K=math.min,Game,ModCallbacks,_Data,Isaac.AddCallback,CacheFlag,'MoveSpeed','MaxFireDelay','TearRange',{}j({},a.MC_POST_GAME_STARTED,function(_,c)if not c then b()[K]=nil end end)j({},a.MC_POST_UPDATE,function(d,t)d=b()d[K]=d[K]or{A=0,B=0,T=0}d=d[K]t=e():GetFrameCount()if IsGridSafe(e():GetLevel():GetCurrentRoomIndex())then d.B=math.max(0,d.B-1/300)d.T=t else if t-d.T>599 then d.A=k(d.A+.05,.9)d.T=t end d.B=k(d.B+1/3e3,.9)end for i=1,e():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddCacheFlags(C.CACHE_ALL)d:EvaluateItems()end end)j({},a.MC_EVALUATE_CACHE,function(m,p,f)m=b()[K]if m then m=1-k(m.A+m.B,.9)if f==C.CACHE_SPEED then p[g]=m*p[g]elseif f==C.CACHE_FIREDELAY then p[h]=(p[h]+1)/m-1 elseif f==C.CACHE_DAMAGE then p.Damage=m*p.Damage elseif f==C.CACHE_RANGE then p[i]=m*p[i]end end end)function _Buffstats(d)d=b()[K]if d then d.A=d.A-.05 end end
+
+--[[
+说明: 击败头目后，房间左上角生成一个商品，购买后消除1颗碎心，并增加5%的全属性
+依赖: 属性下降
+]]
+l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_COLLECTIBLE,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r,p)r=Game():GetRoom()p=-1 if RoomType.ROOM_BOSS==r:GetType()then repeat p=p+1 until not r:GetGridEntity(p)r=Game():Spawn(k,i,r:GetGridPosition(p),l,nil,CollectibleType.COLLECTIBLE_DADS_NOTE,1):ToPickup()r.AutoUpdatePrice=false r.Price=30 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then p.Size=0 p:ClearEntityFlags(EntityFlag.FLAG_ITEM_SHOULD_DUPLICATE)S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)_Buffstats()end end,i)
 
 --[[
 说明: 在毒气室内，每20秒给玩家增加一颗碎心
