@@ -138,3 +138,11 @@ body.challenge-page::before {
 .dep-note::before { content:'↳'; margin-right:6px; color:#a68f79; }
 .section.collapsed .dep-note { display:none; }
 @media(max-width:760px){.dep-note{margin-left:0}}
+
+/* 左上角悬浮：最后刷新时间提示（列表页/详情页通用） */
+.refresh-hint {
+    position:fixed; top:8px; left:8px; z-index:100;
+    padding:5px 10px; border-radius:4px; pointer-events:none;
+    font:700 12px/1.3 var(--hud); color:#f0dfc7;
+    background:rgba(23,17,15,.82); box-shadow:0 2px 8px rgba(0,0,0,.25);
+}

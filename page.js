@@ -122,6 +122,9 @@ let currentFileId = null;
 let currentBlocks = [];
 // 自动强制刷新定时器（列表页与详情页均启用，切换视图时重置）
 let autoRefreshTimer = null;
+// 左上角刷新时间提示
+let lastRefreshAt = Date.now();
+let refreshHintTimer = null;
 
 // ========== 路由 ==========
 // 锚点：<键>s<段> / <键>l<行号>；键 = c<编号>（挑战）或 u<编号>（工具）。
@@ -169,6 +172,7 @@ window.addEventListener('hashchange', function() {
 window.addEventListener('DOMContentLoaded', function() {
     buildListUI();
     route();
+    startRefreshHint();
     prewarmShortProbe();
     if (location.hash) tjPage();   // 从分享链接直达详情时，补记带 hash 的 PV
 });
@@ -245,6 +249,35 @@ function stopAutoRefresh() {
         clearTimeout(autoRefreshTimer);
         autoRefreshTimer = null;
     }
+}
+
+// 左上角提示：最后刷新距今多久（秒/分秒/时分秒/天）
+function formatRefreshElapsed(totalSeconds) {
+    if (totalSeconds < 60) return totalSeconds + ' 秒前';
+    if (totalSeconds < 3600) {
+        var m = Math.floor(totalSeconds / 60);
+        var s = totalSeconds % 60;
+        return m + ' 分 ' + s + ' 秒前';
+    }
+    if (totalSeconds < 86400) {
+        var h = Math.floor(totalSeconds / 3600);
+        var m = Math.floor((totalSeconds % 3600) / 60);
+        var s = totalSeconds % 60;
+        return h + ' 小时 ' + m + ' 分 ' + s + ' 秒前';
+    }
+    var d = Math.floor(totalSeconds / 86400);
+    return d + ' 天前';
+}
+function updateRefreshHint() {
+    var el = document.getElementById('refreshHint');
+    if (!el) return;
+    var seconds = Math.floor((Date.now() - lastRefreshAt) / 1000);
+    el.textContent = '最后刷新：' + formatRefreshElapsed(seconds);
+}
+function startRefreshHint() {
+    if (refreshHintTimer) return;
+    updateRefreshHint();
+    refreshHintTimer = setInterval(updateRefreshHint, 1000);
 }
 
 // ========== 详情视图 ==========

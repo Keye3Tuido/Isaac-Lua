@@ -1075,6 +1075,7 @@ def build_html(style_css, js, challenge_count, other_count):
 {_baidu_tj_snippet()}    <style>{style_css}</style>
 </head>
 <body class="home-page">
+    <div id="refreshHint" class="refresh-hint"></div>
 
     <!-- ====== 列表视图 ====== -->
     <div id="listView">
