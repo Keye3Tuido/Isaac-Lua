@@ -120,6 +120,8 @@ const noResult = document.getElementById('noResult');
 let currentFileId = null;
 // 当前详情页各代码块的实时状态（模板面板当前值），复制/下载由此现场生成内容
 let currentBlocks = [];
+// 自动强制刷新定时器（列表页与详情页均启用，切换视图时重置）
+let autoRefreshTimer = null;
 
 // ========== 路由 ==========
 // 锚点：<键>s<段> / <键>l<行号>；键 = c<编号>（挑战）或 u<编号>（工具）。
@@ -225,6 +227,24 @@ function showListView() {
     currentBlocks = [];
     document.title = '以撒代码挑战 - Keye3Tuido';
     window.scrollTo(0, 0);
+    startAutoRefresh();
+}
+
+// 列表页/详情页均每分钟强制刷新一次：加时间戳参数并 replace，
+// 确保浏览器向服务器重新请求最新 index.html，而不是读取本地缓存
+function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshTimer = setTimeout(function() {
+        var url = new URL(location.href);
+        url.searchParams.set('_r', Date.now().toString());
+        location.replace(url.toString());
+    }, 60000);
+}
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
 }
 
 // ========== 详情视图 ==========
@@ -248,6 +268,8 @@ function showDetailView(fileId, secId) {
     renderSections(f);
     if (secId) scrollToSection(secId);
     else window.scrollTo(0, 0);
+
+    startAutoRefresh();
 }
 
 // 在当前页面内滚动到指定条目（不重建 DOM）
