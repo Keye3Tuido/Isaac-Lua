@@ -93,21 +93,21 @@ l local k,e,a,b,j,C,g,h,i,K=math.min,Game,ModCallbacks,_Data,Isaac.AddCallback,C
 l local f,a,d,b=Vector,Isaac,ModCallbacks,'InitSeed'local i,j,k,l,S=PickupVariant.PICKUP_COLLECTIBLE,a.AddCallback,EntityType.ENTITY_PICKUP,f.Zero,Sprite()S:Load('gfx/006.017_confessional.anm2',true)S:Play('Idle',true)S.Scale=f.One/3 j({},d.MC_PRE_SPAWN_CLEAN_AWARD,function(r,p)r=Game():GetRoom()p=-1 if RoomType.ROOM_BOSS==r:GetType()then repeat p=p+1 until not r:GetGridEntity(p)r=Game():Spawn(k,i,r:GetGridPosition(p),l,nil,CollectibleType.COLLECTIBLE_DADS_NOTE,1):ToPickup()r.AutoUpdatePrice=false r.Price=30 r.SpriteScale=l end end)j({},d.MC_POST_PICKUP_RENDER,function(_,p,o)if 1==p[b]then p.Size=0 p:ClearEntityFlags(EntityFlag.FLAG_ITEM_SHOULD_DUPLICATE)S:Render(a.WorldToRenderPosition(p.Position+p.PositionOffset)+o)end end,i)j({},d.MC_PRE_PICKUP_COLLISION,function(_,p,c)c=c:ToPlayer()if c and 50<=c:GetNumCoins()and c:AreControlsEnabled()and c.ItemHoldCooldown<1 and 1==p[b]then c:AddBrokenHearts(-1)_Buffstats()end end,i)
 
 --[[
-说明: 在毒气室内，每20秒给玩家增加一颗碎心
+说明: 在毒气室内，每30秒给玩家增加一颗碎心
 依赖: [数据保存,安全屋与毒气室]
 ]]
-l local b,a,e,K=Game,ModCallbacks,Isaac.AddCallback,{}e(K,a.MC_POST_GAME_STARTED,function(_,c)if not c then _Data()[K]=nil end end)e(K,a.MC_POST_UPDATE,function(d,t)d=_Data()d[K]=d[K]or 0 t=b():GetFrameCount()if IsGridSafe(b():GetLevel():GetCurrentRoomIndex())then d[K]=t else if 599<t-d[K]then d[K]=t for i=1,b():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddBrokenHearts(1)d:UseActiveItem(CollectibleType.COLLECTIBLE_DULL_RAZOR,UseFlag.USE_NOANIM)end end end end)
+l local b,a,e,K=Game,ModCallbacks,Isaac.AddCallback,{}e(K,a.MC_POST_GAME_STARTED,function(_,c)if not c then _Data()[K]=nil end end)e(K,a.MC_POST_UPDATE,function(d,t)d=_Data()d[K]=d[K]or 0 t=b():GetFrameCount()if IsGridSafe(b():GetLevel():GetCurrentRoomIndex())then d[K]=t else if 899<t-d[K]then d[K]=t for i=1,b():GetNumPlayers()do d=Isaac.GetPlayer(i-1)d:AddBrokenHearts(1)d:UseActiveItem(CollectibleType.COLLECTIBLE_DULL_RAZOR,UseFlag.USE_NOANIM)end end end end)
 
 --[[
 说明: |-
   在毒气室内，每秒屏幕变暗2%；变暗80%以后，屏幕不再变暗；
   毒气室内每停留30s，屏幕边缘永久缩小一点；
-  毒气室内停留40s后，角色获得永久像素视野；
-  毒气室内停留50s后，所有房间永久陷入黑暗。
+  毒气室内停留50s后，所有房间永久陷入黑暗；
+  毒气室内停留90s后，角色获得永久像素视野。
   在安全屋内，变暗的屏幕每秒恢复10%。
 依赖: [数据保存,安全屋与毒气室]
 ]]
-l local k,b,a,e,f,g,h=Sprite,Vector,Isaac,ModCallbacks,_Data,Game,math local m,B,C,K=a.AddCallback,k(),k(),{}B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=b(9,9)C:Load('gfx/ui/bossoverlay_dogma.anm2',true)C:SetFrame('FadeIn',60)m(K,e.MC_POST_GAME_STARTED,function(_,c)if not c then f()[K]=nil end end)m(K,e.MC_POST_UPDATE,function(d,t,l)d=f()d[K]=d[K]or{A=0,B=false,C=false,D=0,T=0}d=d[K]t=g():GetFrameCount()l=g():GetLevel()if IsGridSafe(l:GetCurrentRoomIndex())then d.A=h.max(0,d.A-1/300)d.T=t else d.A=h.min(.8,d.A+1/1500)t=t-d.T if t>899 and t%900<1 then d.D=h.min(40,d.D+.8)end if t>1199 and not d.B then d.B=true g():AddPixelation(9e9)end d.C=t>1499 or d.C end if d.C then t=l:GetRooms()for i=0,#t-1 do d=l:GetRoomByIdx(t:Get(i).SafeGridIndex)d.Flags=d.Flags|RoomDescriptor.FLAG_PITCH_BLACK end end end)m(K,e.MC_POST_RENDER,function(d)d=f()[K]if d then B.Color=Color(1,1,1,d.A)B:RenderLayer(0,b.Zero)C.Scale=b(a.GetScreenWidth()/480,a.GetScreenHeight()/270)C.Color=Color(1,1,1,d.D)C:RenderLayer(0,b.Zero)end end)
+l local k,b,a,e,f,g,h=Sprite,Vector,Isaac,ModCallbacks,_Data,Game,math local m,B,C,K=a.AddCallback,k(),k(),{}B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=b(9,9)C:Load('gfx/ui/bossoverlay_dogma.anm2',true)C:SetFrame('FadeIn',60)m(K,e.MC_POST_GAME_STARTED,function(_,c)if not c then f()[K]=nil end end)m(K,e.MC_POST_UPDATE,function(d,t,l)d=f()d[K]=d[K]or{A=0,B=false,C=false,D=0,T=0}d=d[K]t=g():GetFrameCount()l=g():GetLevel()if IsGridSafe(l:GetCurrentRoomIndex())then d.A=h.max(0,d.A-1/300)d.T=t else d.A=h.min(.8,d.A+1/1500)t=t-d.T if t>899 and t%900<1 then d.D=h.min(40,d.D+.8)end if t>2699 and not d.B then d.B=true g():AddPixelation(9e9)end d.C=t>1499 or d.C end if d.C then t=l:GetRooms()for i=0,#t-1 do d=l:GetRoomByIdx(t:Get(i).SafeGridIndex)d.Flags=d.Flags|RoomDescriptor.FLAG_PITCH_BLACK end end end)m(K,e.MC_POST_RENDER,function(d)d=f()[K]if d then B.Color=Color(1,1,1,d.A)B:RenderLayer(0,b.Zero)C.Scale=b(a.GetScreenWidth()/480,a.GetScreenHeight()/270)C.Color=Color(1,1,1,d.D)C:RenderLayer(0,b.Zero)end end)
 
 --[[
 说明: 毒气室内屏幕中央会有标识。
