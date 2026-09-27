@@ -665,7 +665,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,s)l=Game():GetLe
     类型: 函数体
     默认: local s=p:GetSprite()s:ReplaceSpritesheet(1,Isaac.GetItemConfig():GetCollectible(p.SubType).GfxFileName)s:LoadGraphics()
     性质: 全局
-    说明: 在问号道具初始化时执行的操作
+    说明: 在问号道具初始化时执行的操作，参数p表示掉落物实体
   P2:
     类型: 描述
     默认: 揭露贴图
