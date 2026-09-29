@@ -2,7 +2,7 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'folds', install:function(C){
-    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, createNameAllocator=C.createNameAllocator, collectTakenNames=C.collectTakenNames, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, unquoteShort=C.unquoteShort, canSingleQuote=C.canSingleQuote, needsSepAfter=C.needsSepAfter, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess, lex=C.lex;
+    var KEYWORDS=C.KEYWORDS, luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, candidateGenerator=C.candidateGenerator, createNameAllocator=C.createNameAllocator, collectTakenNames=C.collectTakenNames, applyEdits=C.applyEdits, applyEncoding=C.applyEncoding, canonical=C.canonical, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, isNamePart=C.isNamePart, isSpace=C.isSpace, unquoteShort=C.unquoteShort, canSingleQuote=C.canSingleQuote, needsSepAfter=C.needsSepAfter, needSpace=C.needSpace, fengari=C.fengari, analyzeMetatableFree=C.analyzeMetatableFree, minimizeSpacing=C.minimizeSpacing, collectMemberAccess=C.collectMemberAccess, lex=C.lex;
 
     function canCommit(originalCode, candidate, aliasMap){
       if(luaValidate && luaValidate(candidate)) return false;
@@ -2290,9 +2290,12 @@
     // 比较运算是代数恒等式：a OP b ≡ b FLIP(OP) a（==/~= 对称、< > <= >= 翻转）。因此无需求值验证，
     // 唯一风险是两侧都有副作用时求值顺序改变——用"至多一侧含调用/索引"约束排除。
     // 本 pass 自身不缩短（重排等长），作用是让 ) 收尾的操作数贴紧后续关键字，由后置 minimizeSpacing 兑现省 1 字。
+    // 扩展：若左侧是 & | ~ 等可交换运算符，可把带 )/] 的符号操作数换到最右端，
+    //       同时补齐或删除与前后 token 粘连所需的空格。
     function foldCompareReorder(src, priorAlias, steps, rec, originalCode){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
       var FLIP={'<':'>','>':'<','<=':'>=','>=':'<='};
+      var COMMUTE={'&':1,'|':1,'~':1};
       var edits=[];
       function hasSideEffect(node){
         var found=false;
@@ -2303,6 +2306,27 @@
       }
       function symEnd(t){ var c=t[t.length-1]; return c===')'||c===']'||c==="'"||c==='"'; }
       function nameEnd(t){ var c=t[t.length-1]; return isNamePart(c); }
+      function firstTok(s){ var toks=lex(s); for(var i=0;i<toks.length;i++){ var t=toks[i]; if(t.type!=='EOF'&&t.type!=='Comment') return t.value; } return ''; }
+      function lastTok(s){ var toks=lex(s); for(var i=toks.length-1;i>=0;i--){ var t=toks[i]; if(t.type!=='EOF'&&t.type!=='Comment') return t.value; } return ''; }
+      function boundary(start,end,rt,newRight,op){
+        var op2=(op==='=='||op==='~=')?op:FLIP[op];
+        var text=rt+op2+newRight;
+        var first=firstTok(rt);
+        var last=lastTok(newRight);
+        if(start>0 && !isSpace(src[start-1]) && needSpace(lastTok(src.slice(0,start)), first)) text=' '+text;
+        if(end<src.length && !isSpace(src[end]) && needSpace(last, firstTok(src.slice(end)))) text=text+' ';
+        return text;
+      }
+      function commuteToEnd(node){
+        if(!node || node.type!=='BinaryExpression' || !COMMUTE[node.operator] || !node.left || !node.right || !node.left.range || !node.right.range) return null;
+        if(hasSideEffect(node.left) && hasSideEffect(node.right)) return null;
+        var left=src.slice(node.left.range[0],node.left.range[1]);
+        var right=src.slice(node.right.range[0],node.right.range[1]);
+        var op=node.operator;
+        if(symEnd(left)) return right+op+left;
+        if(symEnd(right)) return left+op+right;
+        return null;
+      }
       (function walk(n){
         if(!n||typeof n!=='object') return;
         if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i]); return; }
@@ -2313,9 +2337,21 @@
             if(!(lc&&rc)){
               var lt=src.slice(n.left.range[0],n.left.range[1]);
               var rt=src.slice(n.right.range[0],n.right.range[1]);
-              if(symEnd(lt) && nameEnd(rt)){
-                var rebuilt=(op==='=='||op==='~=')?(rt+op+lt):(rt+FLIP[op]+lt);
-                edits.push({start:n.range[0],end:n.range[1],name:rebuilt});
+              if(!nameEnd(rt)) return;
+              var start=n.range[0], end=n.range[1];
+              var best=null;
+              var commuted=commuteToEnd(n.left);
+              if(commuted){
+                var c1=boundary(start,end,rt,commuted,op);
+                if(!best || c1.length<best.length) best=c1;
+              }
+              if(symEnd(lt)){
+                var moved=n.left.type==='LogicalExpression'?'('+lt+')':lt;
+                var c2=boundary(start,end,rt,moved,op);
+                if(!best || c2.length<best.length) best=c2;
+              }
+              if(best){
+                edits.push({start:start,end:end,name:best});
                 return;   // 已整体重写该比较：不再深入其操作数（嵌套比较会落在外层区间内，重叠；留给外层文本原样携带）
               }
             }

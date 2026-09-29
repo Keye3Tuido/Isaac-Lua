@@ -13,8 +13,8 @@
     },
     "real": {
       "ok": true,
-      "totalSegments": 345,
-      "passSegments": 345,
+      "totalSegments": 607,
+      "passSegments": 607,
       "failSegments": 0
     },
     "validationCache": {
@@ -34,7 +34,7 @@
     },
     "forwardNil": {
       "ok": true,
-      "pass": 11,
+      "pass": 18,
       "fail": 0
     },
     "ifNot": {
@@ -62,6 +62,31 @@
       "pass": 8,
       "fail": 0
     },
+    "fwdNilMerge": {
+      "ok": true,
+      "pass": 7,
+      "fail": 0
+    },
+    "methodInject": {
+      "ok": true,
+      "pass": 10,
+      "fail": 0
+    },
+    "declHoistValue": {
+      "ok": true,
+      "pass": 9,
+      "fail": 0
+    },
+    "foldOrder": {
+      "ok": true,
+      "pass": 10,
+      "fail": 0
+    },
+    "sharedHelpers": {
+      "ok": true,
+      "pass": 41,
+      "fail": 0
+    },
     "chunkedSearch": {
       "ok": true,
       "pass": 4,
@@ -75,9 +100,9 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 212186,
-      "searchBytes": 212179,
-      "savedBytes": 7
+      "ruleBytes": 254766,
+      "searchBytes": 254747,
+      "savedBytes": 19
     },
     "bulk": {
       "ok": true,
@@ -90,21 +115,21 @@
     },
     "snapshot": {
       "ok": true,
-      "total": 505,
-      "changed": 0,
+      "total": 777,
+      "changed": 8,
       "regress": 0,
-      "improve": 0,
+      "improve": 7,
       "lostOk": 0,
-      "newOk": 0,
-      "sourceChanged": 0,
-      "removed": 0
+      "newOk": 92,
+      "sourceChanged": 4,
+      "removed": 10
     },
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 641,
+      "parseCount": 624,
       "inputBytes": 15899,
-      "outputBytes": 15479
+      "outputBytes": 15477
     }
   }
 }

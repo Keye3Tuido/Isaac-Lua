@@ -748,6 +748,20 @@
         // 常量折叠归一
         var cf=constFold(node);
         if(cf!==null) return cf;
+        // 可交换运算符归一：& | ~ 的两侧按归一化 AST 字典序排序，仅当至多一侧有副作用时
+        // （避免改变两个副作用操作数的求值顺序）。这使 compare-reorder 能把 a&b 写成 b&a。
+        if(node.type==='BinaryExpression'){
+          var cop=node.operator;
+          if(cop==='&'||cop==='|'||cop==='~'){
+            var cseL=hasSideEffectNode(node.left), cseR=hasSideEffectNode(node.right);
+            if(!(cseL&&cseR)){
+              var cLA=normExpr(node.left), cRA=normExpr(node.right);
+              var csa=JSON.stringify(cLA), csb=JSON.stringify(cRA);
+              if(csa<=csb) return {type:'BinaryExpression', operator:cop, left:cLA, right:cRA};
+              return {type:'BinaryExpression', operator:cop, left:cRA, right:cLA};
+            }
+          }
+        }
         // 德摩根归一：not X or not Y ≡ not(X and Y)；not X and not Y ≡ not(X or Y)。
         // 两侧一致施加，使"把两个 not 合并成一个"的缩短 fold 可被严格验证。
         // 求值逻辑保持：not 是"先求值操作数再取反"，De Morgan 不改变操作数的求值顺序与次数。
