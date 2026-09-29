@@ -676,3 +676,10 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,s)l=Game():GetLe
     说明: 说明文本中的功能描述
 ]]
 l function OnQuestionInit(p)P1 end;local a,S=Vector,Sprite()S:Load'gfx/005.100_collectible.anm2'S:ReplaceSpritesheet(1,'gfx/items/collectibles/questionmark.png')S:LoadGraphics()Isaac.AddCallback({},ModCallbacks.MC_POST_PICKUP_UPDATE,function(s,p,x,y)if p.FrameCount==1 then s=p:GetSprite()S:SetFrame(s:GetAnimation(),s:GetFrame())for i=-16,16,4 do for j=-38,-6,4 do x=s:GetTexel(a(i,j),a.Zero,1,1)y=S:GetTexel(a(i,j),a.Zero,1,1)if x.Alpha~=y.Alpha or x.Red~=y.Red or x.Green~=y.Green or x.Blue~=y.Blue then return end end end OnQuestionInit(p)end end,PickupVariant.PICKUP_COLLECTIBLE)
+
+--[[
+作为模板: true
+模板id: delirium-teleport
+说明: 如果本层存在，则传送玩家到精神错乱房间
+]]
+l local l,s,r=Game():GetLevel()s=l:GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then Game():ChangeRoom(r.SafeGridIndex)break end end
