@@ -829,7 +829,8 @@ function copyTextWithToast(text, successMessage, e) {
 
 function copyBlock(text, count, e) {
     if (!text) return;
-    return copyTextWithToast(text, '已复制该代码块（' + count + ' 行，' + text.length + ' 字符）', e);
+    // 复制的末尾自动加一个空行，粘贴回模板文件时块间自然分隔
+    return copyTextWithToast(text + '\n', '已复制该代码块（' + count + ' 行，' + text.length + ' 字符）', e);
 }
 
 function copyAllCode(e) {
