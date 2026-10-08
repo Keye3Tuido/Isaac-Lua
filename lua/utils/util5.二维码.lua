@@ -1379,8 +1379,57 @@ return {
 
 --[[
 作为模板: true
+模板id: pixel-factory
+名称: 像素工厂
+说明: |-
+  提供全局接口MakePixel()
+  返回一个像素对象，像素对象有以下属性和方法：
+  Scale: Vector2D - 像素缩放比例
+  Color: Color - 像素颜色
+  Render(Vector2D:position) - 在指定位置渲染像素
+]]
+l local a,b,k,l=Vector,Color,'Scale','Color'function MakePixel()local d,e,f,g,h=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load('gfx/ui/stage/nightmare_bg.anm2',true)d:SetFrame('Intro',0)d.Offset=a(0,-15/448)d.Scale=e d.Color=b(1,1,1,1,1,1,1)setmetatable(h,{__index=function(_,c)if c==k then return f elseif c==l then return g elseif c=='Render'then return function(_,i)d:RenderLayer(0,i)end end end,__newindex=function(_,i,c)if i==k then f=c d.Scale=c*e d.Offset=c*a(0,-15/448)elseif i==l then g=c d.Color=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)end end})return h end
+
+--[==[ 源代码
+function MakePixel()
+    local _sprite, _size, _scale, _color, pixel = Sprite(), Vector(1/784, 1/448), Vector(1, 1), Color(1,1,1), {}
+    _sprite:Load('gfx/ui/stage/nightmare_bg.anm2', true)
+    _sprite:SetFrame('Intro', 0)
+    _sprite.Offset = Vector(0, -15/448)
+    _sprite.Scale = _size
+    _sprite.Color = Color(1,1,1,1,1,1,1)
+    
+    setmetatable(pixel, {
+        __index = function(self, key)
+            if key == 'Scale' then
+                return _scale
+            elseif key == 'Color' then
+                return _color
+            elseif key == 'Render' then
+                return function(_, position)
+                    _sprite:RenderLayer(0, position)
+                end
+            end
+        end,
+        __newindex = function(self, key, value)
+        if key == 'Scale' then
+            _scale = value
+            _sprite.Scale = value * _size
+            _sprite.Offset = Vector(0, -15/448) * value
+        elseif key == 'Color' then
+            _color = value
+                _sprite.Color = Color(1, 1, 1, value.A, value.R+value.RO, value.G+value.GO, value.B+value.BO)
+            end
+        end
+    })
+    return pixel
+end
+]==]
+
+--[[
+作为模板: true
 模板id: draw-qrcode
-依赖: [二维码编码]
+依赖: [二维码编码, 像素工厂]
 说明: 全局接口DrawQR(table:qrcode, Vector2D:position, number:scale ?= 1) - 根据二维码点阵绘制图形
 ]]
-l local V,P,O=Vector,Sprite()O=V(1/784,1/448)P:Load('gfx/ui/stage/nightmare_bg.anm2',true)P:SetFrame('Intro',0)function DrawQR(q,p,s)s=s or 1 p=p-V(0,15*s/448)P.Color=Color(1,1,1,1,1,1,1)P.Scale=s*O*#q P:RenderLayer(0,p+V(0,15*s/448*(1-#q)))P.Scale=s*O P.Color=Color(1,1,1)p=p-V(s,s)/2*(#q+1)for i,I in pairs(q)do for j,J in pairs(I)do if J>0 then P:RenderLayer(0,p+s*V(i,j))end end end end
+l local a,P=Vector,MakePixel()function DrawQR(q,p,s)s=s or 1 P.Color=Color(1,1,1)P.Scale=#q*s*a(1,1)P:Render(p)P.Color=Color(0,0,0)P.Scale=a(s,s)p=p-(#q+1)/2*a(s,s)for x,X in pairs(q)do for y,Y in pairs(X)do if Y>0 then P:Render(p+a(x,y)*s)end end end end
