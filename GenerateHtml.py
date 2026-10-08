@@ -729,8 +729,25 @@ def _register_templates(lua_entries):
                 "说明": str(m["说明"]),
                 "fname": e["fname"],
                 "num": b["num"],
+                "name": str(m["名称"]) if m.get("名称") is not None else None,
+                "deps": _deps_list(m, e["fname"], b["num"]),
             }
     return registry
+
+
+def _validate_template_dep_bases(registry, file_names):
+    """模板定义声明的 依赖，其基准必须存在：项目内有同名模板定义（跨文件能力），
+    或模板所在文件内有同名块（文件内函数原型）。否则构建报错。"""
+    template_names = {t["name"] for t in registry.values() if t.get("name")}
+    for tid, t in registry.items():
+        own_names = file_names.get(t["fname"], set())
+        for d in t.get("deps") or []:
+            if d not in template_names and d not in own_names:
+                raise SystemExit(
+                    f"错误：模板 {tid!r}（{t['fname']} 块{t['num']}）声明了依赖 {d!r}，"
+                    f"但项目内没有任何模板的 名称 与之对应，模板所在文件内也没有同名块"
+                    f"（依赖基准为空）。"
+                )
 
 
 # ========== 展开与校验 ==========
@@ -799,6 +816,24 @@ def _expand_block(e, b, registry):
     if tid not in registry:
         raise SystemExit(f"错误：{where} 引用了未定义的模板 {tid!r}。")
     t = registry[tid]
+
+    # 模板依赖强制：引用带依赖的模板时，本文件必须同时提供其每个依赖——
+    # 要么引用了同名（名称）模板，要么本文件内有同名块；否则编译报错。
+    local_names = {str(b2["meta"]["名称"]) for b2 in e["blocks"]
+                   if b2["meta"].get("名称") is not None}
+    for d in t.get("deps") or []:
+        ok = d in local_names or any(
+            b2["meta"].get("模板") is not None
+            and registry.get(str(b2["meta"]["模板"]))
+            and registry[str(b2["meta"]["模板"])].get("name") == d
+            for b2 in e["blocks"]
+        )
+        if not ok:
+            raise SystemExit(
+                f"错误：{where} 引用的模板 {tid!r} 声明了依赖 {d!r}，"
+                f"但 {e['fname']} 既没有引用名称为 {d!r} 的模板，也没有同名的本文件块"
+                f"（缺少依赖，运行时基础为空）。"
+            )
 
     given = m.get("参数") or {}
     if not isinstance(given, dict):
@@ -903,6 +938,11 @@ def build(lua_dir=LUA_DIR):
     entries = collect_lua_entries(lua_dir)
     _inject_framework(entries)
     registry = _register_templates(entries)
+    file_names = {
+        e["fname"]: {str(b["meta"]["名称"]) for b in e["blocks"] if b["meta"].get("名称") is not None}
+        for e in entries
+    }
+    _validate_template_dep_bases(registry, file_names)
     for e in entries:
         for b in e["blocks"]:
             if b["meta"].get("作为模板") and e["isChallenge"]:
