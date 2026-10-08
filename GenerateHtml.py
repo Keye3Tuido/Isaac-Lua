@@ -431,25 +431,38 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
             unknown = [k for k in meta if k not in KNOWN_HEAD_KEYS]
             if unknown:
                 print(f"警告：{fname} 第 {ln} 行的块头含未知键 {unknown}，将被忽略。")
-            # 代码行：紧邻 ']]' 的下一行，非空且不是注释
-            code = None
+            # 代码行：紧邻 ']]' 起的连续 'l ' 前缀行（可多行，模板可绑定多行代码）；
+            # 首行兼容无 'l ' 前缀的裸代码行（旧格式），此后的续行必须带 'l ' 前缀。
+            code_lines = []
             k = nxt
-            if k < len(lines):
+            while k < len(lines):
                 nl = lines[k]
-                if nl.strip() and not nl.lstrip().startswith("--"):
-                    code = nl[2:] if nl.startswith("l ") else nl
+                if nl.startswith("l "):
+                    code_lines.append(nl[2:])
                     k += 1
+                    continue
+                if not code_lines and nl.strip() and not nl.lstrip().startswith("--"):
+                    code_lines.append(nl)
+                    k += 1
+                break
+            code = "\n".join(code_lines) if code_lines else None
             blocks.append({"num": len(blocks), "meta": meta, "code": code, "line": ln})
             i = k
             continue
-        if s.startswith("--[["):
-            # 普通多行注释块（非块头，如注释化的可读源码）：跳到 ']]' 行整体忽略
-            if "]]" not in s:
+        if re.match(r"--\[(=*)\[", s):
+            # 普通多行注释块（非块头，如注释化的可读源码）：按括号层级跳到闭合行整体忽略
+            # （支持 --[==[ ... ]==] 长括号形态，避免注释内容里的 ']]' 行提前终止跳过；
+            #  注意 '--[==[' 并非 '--[[' 前缀，不能用 startswith 判断）
+            _op = re.match(r"--\[(=*)\[", s)
+            _close = "]" + _op.group(1) + "]"
+            if _close not in s[_op.end():]:
                 j = i + 1
-                while j < len(lines) and lines[j].strip() != "]]":
+                while j < len(lines) and lines[j].strip() != _close:
                     j += 1
                 if j >= len(lines):
-                    raise SystemExit(f"错误：{fname} 第 {ln} 行的 '--[[' 注释块未闭合（缺少 ']]' 行）。")
+                    raise SystemExit(
+                        f"错误：{fname} 第 {ln} 行的注释块未闭合（缺少 '{_close}' 行）。"
+                    )
                 i = j + 1
             else:
                 i += 1
@@ -911,7 +924,7 @@ def _assemble_raw(e):
         clines = str(b["comment"]).split("\n")
         lines = ["--{}. {}".format(b["num"], clines[0]).rstrip()]
         lines.extend("--" + c if c else "--" for c in clines[1:])
-        lines.append("l " + b["final_code"])
+        lines.extend("l " + cl for cl in str(b["final_code"]).split("\n"))
         blocks_txt.append("\n".join(lines))
     header_txt = "\n".join(e["header"]).strip("\n")
     parts = ([header_txt] if header_txt else []) + blocks_txt
