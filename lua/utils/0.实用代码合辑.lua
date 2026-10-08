@@ -284,12 +284,12 @@ l local function Action(t)P1 end;local A,B,E,H,M,T,N=Isaac.AddCallback,{},Entity
 --[[
 作为模板: true
 模板id: replace-preset-collectible
-说明: 所有预生成道具替换为道具{P2}
+说明: 所有预生成非任务道具替换为道具{P2}
 参数定义:
   P1: {类型: "道具id", 默认: "612", 性质: "局部", 说明: "行首局部变量ItemId的值（内联），预生成道具被替换成的道具id"}
   P2: {类型: "描述", 默认: "612-迷失游魂", 性质: "局部", 说明: "说明文本中的替换目标道具描述"}
 ]]
-l local ItemId=P1;Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(_,t,v)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then return{t,v,ItemId}end end)
+l local ItemId=P1 Isaac.AddCallback({},ModCallbacks.MC_PRE_ROOM_ENTITY_SPAWN,function(c,t,v,s)if t==EntityType.ENTITY_PICKUP and v==PickupVariant.PICKUP_COLLECTIBLE then c=Isaac.GetItemConfig():GetCollectible(s)if not(c and c:HasTags(ItemConfig.TAG_QUEST))then return{t,v,ItemId}end end end)
 
 --[[
 作为模板: true
