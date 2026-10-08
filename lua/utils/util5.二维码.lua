@@ -1383,4 +1383,4 @@ return {
 依赖: [二维码编码]
 说明: 全局接口DrawQR(table:qrcode, Vector2D:position, number:scale ?= 1) - 根据二维码点阵绘制图形
 ]]
-l local P,O=Sprite(),Vector(.1/60,.1/34)P:Load('gfx/ui/stage/nightmare_bg.anm2',true)P.Scale=O P:SetFrame('Intro',0)function DrawQR(q,p,s)s=s or 1 P.Scale=s*O p=p-s/2*Vector(#q+1,#q[1]+1)for i,I in pairs(q)do for j,J in pairs(I)do if J>0 then P:RenderLayer(0,p+s*Vector(i,j))end end end P.Scale=O end
+l local V,P,O=Vector,Sprite()O=V(1/784,1/448)P:Load('gfx/ui/stage/nightmare_bg.anm2',true)P:SetFrame('Intro',0)function DrawQR(q,p,s)s=s or 1 p=p-V(0,15*s/448)P.Color=Color(1,1,1,1,1,1,1)P.Scale=s*O*#q P:RenderLayer(0,p+V(0,15*s/448*(1-#q)))P.Scale=s*O P.Color=Color(1,1,1)p=p-V(s,s)/2*(#q+1)for i,I in pairs(q)do for j,J in pairs(I)do if J>0 then P:RenderLayer(0,p+s*V(i,j))end end end end
