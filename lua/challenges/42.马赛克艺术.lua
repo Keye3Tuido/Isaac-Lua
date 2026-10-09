@@ -41,7 +41,7 @@ l local f,b,a,d,e,P,Q='MC_POST_PICKUP_',Vector,ModCallbacks,PickupVariant.PICKUP
 说明: 饰品贴图不显示，换用马赛克风格贴图
 依赖: 贴图资源初始化
 ]]
-l local b,a,d,e,P=Vector,ModCallbacks,PickupVariant.PICKUP_TRINKET,Isaac.AddCallback,MakePixel()P.Scale=b(4,4)e({},a.MC_POST_PICKUP_INIT,function(s,p)s=p:GetSprite()s:ReplaceSpritesheet(0,'gfx/items/pick ups/pickup_018_megabattery.png')s:LoadGraphics()end,d)e({},a.MC_POST_PICKUP_RENDER,function(s,p,o,c)c=_ItemSprites if c then o=o+Isaac.WorldToRenderPosition(p.Position)s=c.Trinkets[p.SubType]for i=-16,16,4 do for j=-23,9,4 do P.Color=s[i][j]P:Render(o+b(i,j))end end end end,d)
+l local b,a,d,e,P=Vector,ModCallbacks,PickupVariant.PICKUP_TRINKET,Isaac.AddCallback,MakePixel()P.Scale=b(4,4)e({},a.MC_POST_PICKUP_INIT,function(s,p)s=p:GetSprite()s:ReplaceSpritesheet(0,'gfx/items/pick ups/pickup_018_megabattery.png')s:LoadGraphics()end,d)e({},a.MC_POST_PICKUP_RENDER,function(s,p,o,c)c=_ItemSprites if c then o=o+Isaac.WorldToRenderPosition(p.Position)s=c.Trinkets[p.SubType&TrinketType.TRINKET_ID_MASK]for i=-16,16,4 do for j=-23,9,4 do P.Color=s[i][j]P:Render(o+b(i,j))end end end end,d)
 
 --[[
 模板: seed-fixed
