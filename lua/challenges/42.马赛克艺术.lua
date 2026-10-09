@@ -3,7 +3,7 @@
 --禁用图鉴
 --禁用道具贴图类模组
 --简要说明:
---道具和饰品的贴图被替换为马赛克版本，其中的纯黑色像素会被掏空
+--道具和饰品的贴图被替换为马赛克版本，其中接近黑色的像素会被掏空
 
 
 
@@ -29,7 +29,7 @@
 说明: 加载并处理饰品和道具贴图，生成马赛克风格的图像，存储到_ItemSprites全局表当中
 名称: 贴图资源初始化
 ]]
-l local t,a,g,b,o,p,q=ModCallbacks,Isaac,Vector,'Green','Blue','GfxFileName','Idle'local h,k,l,m,n=a.GetItemConfig,a.RemoveCallback,t.MC_POST_RENDER,t.MC_POST_UPDATE,a.AddCallback _ItemSprites=nil local A,B,C,D,T,r,s=h():GetCollectibles().Size-1,h():GetTrinkets().Size-1,{},{},{}r=function(s)s=string.format('Loading Collectibles: %d/%d, Trinkets: %d/%d',math.min(#C,A),A,math.min(#D,B),B)a.RenderText(s,a.GetScreenWidth()/2-a.GetTextWidth(s)/2,a.GetScreenHeight()/2,1,1,1,1)if#C>=A and#D>=B then k(T,l,r)end end s=function(c,d,e,f)c=h()e=Sprite()if#C<A then e:Load'gfx/005.100_collectible.anm2'for _=1,9 do f=#C+1 d=c:GetCollectible(f)C[f]={}if d then e:ReplaceSpritesheet(1,d[p])e:LoadGraphics()e:SetFrame(q,0)for i=-16,16,4 do C[f][i]={}for j=-38,-6,4 do d=e:GetTexel(g(i,j),g.Zero,1,1)C[f][i][j]=Color(d.Red,d[b],d[o],.01<d.Red+d[b]+d[o]and d.Alpha or 0)end end end end return end if#D<B then e:Load'gfx/005.350_trinket.anm2'for _=1,9 do f=#D+1 d=c:GetTrinket(f)D[f]={}if d then e:ReplaceSpritesheet(0,d[p])e:LoadGraphics()e:SetFrame(q,0)for i=-16,16,4 do D[f][i]={}for j=-23,9,4 do d=e:GetTexel(g(i,j),g.Zero,1,0)D[f][i][j]=Color(d.Red,d[b],d[o],.01<d.Red+d[b]+d[o]and d.Alpha or 0)end end end end return end _ItemSprites={Collectibles=C,Trinkets=D}k(T,m,s)a.ExecuteCommand'restart'end n(T,m,s)n(T,l,r)
+l local t,a,g,b,o,p,q=ModCallbacks,Isaac,Vector,'Green','Blue','GfxFileName','Idle'local h,k,l,m,n=a.GetItemConfig,a.RemoveCallback,t.MC_POST_RENDER,t.MC_POST_UPDATE,a.AddCallback _ItemSprites=nil local A,B,C,D,T,r,s=h():GetCollectibles().Size-1,h():GetTrinkets().Size-1,{},{},{}r=function(s)s=string.format('Loading Collectibles: %d/%d, Trinkets: %d/%d',math.min(#C,A),A,math.min(#D,B),B)a.RenderText(s,a.GetScreenWidth()/2-a.GetTextWidth(s)/2,a.GetScreenHeight()/2,1,1,1,1)if#C>=A and#D>=B then k(T,l,r)end end s=function(c,d,e,f)c=h()e=Sprite()if#C<A then e:Load'gfx/005.100_collectible.anm2'for _=1,9 do f=#C+1 d=c:GetCollectible(f)C[f]={}if d then e:ReplaceSpritesheet(1,d[p])e:LoadGraphics()e:SetFrame(q,0)for i=-16,16,4 do C[f][i]={}for j=-38,-6,4 do d=e:GetTexel(g(i,j),g.Zero,1,1)C[f][i][j]=Color(d.Red,d[b],d[o],.05<d.Red+d[b]+d[o]and d.Alpha or 0)end end end end return end if#D<B then e:Load'gfx/005.350_trinket.anm2'for _=1,9 do f=#D+1 d=c:GetTrinket(f)D[f]={}if d then e:ReplaceSpritesheet(0,d[p])e:LoadGraphics()e:SetFrame(q,0)for i=-16,16,4 do D[f][i]={}for j=-23,9,4 do d=e:GetTexel(g(i,j),g.Zero,1,0)D[f][i][j]=Color(d.Red,d[b],d[o],.05<d.Red+d[b]+d[o]and d.Alpha or 0)end end end end return end _ItemSprites={Collectibles=C,Trinkets=D}k(T,m,s)a.ExecuteCommand'restart'end n(T,m,s)n(T,l,r)
 
 --[[
 说明: 道具贴图不显示，换用马赛克风格贴图
