@@ -28,7 +28,8 @@ SEPARATOR = "--===--"
 # 并在后置块后追加框架的 random-string 引用块（region=post，编号继前置续排）。
 FRAMEWORK_FNAME = "TMPL.挑战代码框架.lua"
 RANDOM_STRING_TPL = "random-string-output"
-# 重开块模板：挑战文件的最后一个代码块必须引用其中之一（即后置块）
+# 重开块模板：挑战文件有且仅有一个重开块引用（即后置块的起始块）；
+# 重开块之后允许跟随可省略的尾置块（如 clean-globals 引用），按文件顺序留在后置区
 RESTART_TPLS = {"restart-game", "restart-as-character"}
 
 # 块头允许出现的键（未知键仅警告，便于发现笔误）
@@ -509,9 +510,11 @@ def _read_header(lines, fname, stop_at_block):
 def _parse_challenge(text, fname):
     """挑战文件（无分隔线）：元信息（首个代码块前的连续普通注释）+ 代码块序列。
 
-    首个代码块起即正文；最后一个代码块必须是重开块（引用 restart-game /
-    restart-as-character 模板），作为后置块；前置块一律由构建器从框架文件
-    （FRAMEWORK_FNAME）注入，并在后置块后追加 random-string 引用块。
+    首个代码块起即正文；重开块（引用 restart-game / restart-as-character 模板，
+    有且仅有一个）为后置块的起始块，其后的尾置块（可省略、可多个，如
+    clean-globals 引用）按文件顺序留在后置区，位于 random-string 引用之前。
+    前置块一律由构建器从框架文件（FRAMEWORK_FNAME）注入，并在后置块后追加
+    random-string 引用块。
     编号不在此处分配（注入会改变块序列），由 build() 里的 _number_blocks 统一分配。
     文件末尾允许一个可选的 `--.` 终止行（拼装输出时还原）。"""
     lines = _split_lines(text)
@@ -530,18 +533,21 @@ def _parse_challenge(text, fname):
     blocks = _scan_blocks(lines[body_start:], fname, strict=True, line_offset=body_start)
     if not blocks:
         raise SystemExit(f"错误：挑战文件 {fname} 缺少正文代码块。")
-    if str(blocks[-1]["meta"].get("模板")) not in RESTART_TPLS:
+    restart_at = [i for i, b in enumerate(blocks)
+                  if str(b["meta"].get("模板")) in RESTART_TPLS]
+    if not restart_at:
         raise SystemExit(
             f"错误：挑战文件 {fname} 缺少后置代码块（重开块）："
-            f"最后一个代码块必须引用 {' 或 '.join(sorted(RESTART_TPLS))} 模板。"
+            f"必须引用 {' 或 '.join(sorted(RESTART_TPLS))} 模板。"
         )
-    for b in blocks[:-1]:
-        if str(b["meta"].get("模板")) in RESTART_TPLS:
-            raise SystemExit(
-                f"错误：挑战文件 {fname} 的重开块（restart 模板引用）只能出现在文件末尾。"
-            )
+    if len(restart_at) > 1:
+        raise SystemExit(f"错误：挑战文件 {fname} 的重开块（restart 模板引用）只能出现一次。")
+    r = restart_at[0]
+    for b in blocks[:r]:
         b["region"] = "body"
-    blocks[-1]["region"] = "post"
+    # 重开块之后的尾置块（可省略）：按文件顺序留在后置区，位于 random-string 引用之前
+    for b in blocks[r:]:
+        b["region"] = "post"
     return header, blocks, has_terminator
 
 
@@ -817,6 +823,11 @@ def _expand_block(e, b, registry):
         raise SystemExit(f"错误：{where} 引用了未定义的模板 {tid!r}。")
     t = registry[tid]
 
+    # 依赖 = 定义处 ∪ 引用处（并集，定义处在前）：模板定义声明的依赖（如框架
+    # 前置块的 名称）随每个引用块生效，引用处不必重复书写。
+    b["deps"] = list(dict.fromkeys((t.get("deps") or [])
+                                   + _deps_list(m, e["fname"], b["num"])))
+
     # 模板依赖强制：引用带依赖的模板时，本文件必须同时提供其每个依赖——
     # 要么引用了同名（名称）模板，要么本文件内有同名块；否则编译报错。
     local_names = {str(b2["meta"]["名称"]) for b2 in e["blocks"]
@@ -893,7 +904,7 @@ def _validate_deps(e):
             print(f"警告：{e['fname']} 中 名称 {nm!r} 重复声明（块{names[nm][1]} 与 块{b['num']}）。")
         names[nm] = (idx, b["num"])
     for idx, b in enumerate(e["blocks"]):
-        deps = _deps_list(b["meta"], e["fname"], b["num"])
+        deps = b["deps"] if "deps" in b else _deps_list(b["meta"], e["fname"], b["num"])
         for d in deps:
             if d not in names:
                 raise SystemExit(f"错误：{e['fname']} 块{b['num']} 依赖的名称 {d!r} 在同文件中不存在。")
@@ -992,7 +1003,7 @@ def build_all_files(lua_entries):
             if b.get("region"):
                 blk["region"] = b["region"]
             meta = b.get("meta") or {}
-            deps = _deps_list(meta, e["fname"], b["num"])
+            deps = b["deps"] if "deps" in b else _deps_list(meta, e["fname"], b["num"])
             if deps:
                 blk["deps"] = deps
             # 代码名称：块头声明了 名称 才输出 name 字段（前端据此显示名称标签）
@@ -1041,7 +1052,7 @@ def _block_kb(b, registry, fname):
     if b.get("region"):
         blk["region"] = b["region"]
     meta = b.get("meta") or {}
-    deps = _deps_list(meta, fname, b["num"])
+    deps = b["deps"] if "deps" in b else _deps_list(meta, fname, b["num"])
     if deps:
         blk["deps"] = deps
     if meta.get("名称") is not None:

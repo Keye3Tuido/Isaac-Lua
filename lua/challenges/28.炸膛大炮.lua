@@ -12,6 +12,7 @@
 --[[
 说明: |-
   有Fatal(默认{P1})%概率的房间，玩家受伤（无敌帧被重置）即死。这些房间内玩家攻击力翻倍。
+名称: 即死房间
 依赖: [命中检测]
 参数定义:
   P1: {类型: 数值, 默认: 50, 性质: 全局, 说明: 即死房间概率百分数}
@@ -52,4 +53,11 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveS
 
 --[[
 模板: restart-game
+]]
+
+--[[
+模板: clean-globals
+参数:
+  P1: "'Fatal', 'OnHit'"
+依赖: 即死房间
 ]]

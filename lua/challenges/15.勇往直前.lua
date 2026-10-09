@@ -91,3 +91,10 @@ l local Y,N,A,M,T,E,V,Z,R,L,D,S,H=true,false,Isaac.AddCallback,ModCallbacks,{},E
 --[[
 模板: restart-game
 ]]
+
+--[[
+模板: clean-globals
+参数:
+  P1: "'_Data', '_rew', '_Pata'"
+依赖: 数据保存
+]]

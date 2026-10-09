@@ -49,3 +49,10 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_RENDER,function()T.
 --[[
 模板: restart-game
 ]]
+
+--[[
+模板: clean-globals
+参数:
+  P1: "'_Y'"
+依赖: 红隐探测
+]]

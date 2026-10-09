@@ -21,6 +21,7 @@
   落下前会提前{P6}播放警示音效、掉落动画开始播放{P6}后剑头落地。
   控制台输入：lua DAMOCLES_ALARM=true 开启预警(默认开启)
   控制台输入：lua DAMOCLES_ALARM=false 关闭预警
+名称: 达摩克里斯之剑
 参数定义:
   P1: {类型: 布尔, 默认: 'true', 性质: 全局, 说明: "全局变量DAMOCLES_ALARM，剑落下前警示音效开关（true开/false关）"}
   P2: {类型: 整数, 默认: '5400', 性质: 局部, 说明: "剑落下时间的下限（帧），3分钟=5400帧"}
@@ -45,4 +46,11 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if Player
 
 --[[
 模板: restart-game
+]]
+
+--[[
+模板: clean-globals
+参数:
+  P1: "'DAMOCLES_ALARM'"
+依赖: 达摩克里斯之剑
 ]]

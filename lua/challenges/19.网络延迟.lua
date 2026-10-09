@@ -9,6 +9,7 @@
 说明: |-
   实时显示当前的输入延迟帧数。
   可在控制台输入lua DisplayLag = {P2} 来关闭显示，{P3}来开启显示。
+名称: 延迟显示
 依赖: [输入延迟]
 参数定义:
   P1: {类型: 布尔, 默认: 'true', 性质: 全局, 说明: "全局变量DisplayLag，开关输入延迟显示（true开/false关）"}
@@ -19,4 +20,11 @@ l DisplayLag=P1;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,funct
 
 --[[
 模板: restart-game
+]]
+
+--[[
+模板: clean-globals
+参数:
+  P1: "'DisplayLag'"
+依赖: 延迟显示
 ]]

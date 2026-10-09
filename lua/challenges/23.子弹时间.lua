@@ -23,6 +23,7 @@
   可通过指令 lua TimeScale = 数值 来调整默认游戏速率(默认{P2}倍)。
   紧急按钮触发主动道具时，将会进入子弹时间状态 {P1} 秒。
   可通过指令 lua BulletTime = 数值 来调整子弹时间的持续时间(默认{P1}秒)。
+名称: 子弹时间
 依赖: [时间倍率监控]
 参数定义:
   P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量BulletTime，子弹时间持续秒数（默认5）"}
@@ -70,4 +71,11 @@ l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_T
 
 --[[
 模板: restart-game
+]]
+
+--[[
+模板: clean-globals
+参数:
+  P1: "'BulletTime', 'TimeScale'"
+依赖: 子弹时间
 ]]
