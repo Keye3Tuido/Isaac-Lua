@@ -514,11 +514,8 @@ function renderSections(f) {
         section.classList.add('collapsed');
         head.onclick = () => {
             section.classList.toggle('collapsed');
-            // 展开：hash 指向该条目（分享/直达用）；收起：hash 退回文件级，
-            // 避免刷新后依据 hash 又把这条弹开
-            history.replaceState(null, null, section.classList.contains('collapsed')
-                ? '#' + currentFileId
-                : '#' + currentFileId + secId);
+            // 点折叠不改地址栏：展开状态由 sessionStorage 持久化（见 persistOpenSections），
+            // hash 仅来自分享链接/搜索直达，保留给刷新后 route() 定位用
             persistOpenSections();
             if (!section.classList.contains('collapsed') && state.autosizeAll) state.autosizeAll();
         };
@@ -888,7 +885,7 @@ function copyAllCode(e) {
 }
 
 function copyLink(e) {
-    // 按钮始终复制文件级链接（#c<编号> / #u<编号>），不依赖地址栏 hash（多条展开时 hash 可能指向最后点击的条目）
+    // 按钮始终复制文件级链接（#c<编号> / #u<编号>），不依赖地址栏 hash（hash 仅来自分享/直达入口）
     tjEvent('copy_link', currentFileId);
     return copyShareLink(e, '#' + currentFileId);
 }
