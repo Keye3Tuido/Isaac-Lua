@@ -1386,9 +1386,10 @@ return {
   返回一个像素对象，像素对象有以下属性和方法：
   Scale: Vector2D - 像素缩放比例
   Color: Color - 像素颜色
+  Rotation: number - 像素旋转角度
   Render(Vector2D:position) - 在指定位置渲染像素
 ]]
-l local a,b,k,l=Vector,Color,'Scale','Color'function MakePixel()local d,e,f,g,h=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load('gfx/ui/stage/nightmare_bg.anm2',true)d:SetFrame('Intro',0)d.Offset=a(0,-15/448)d.Scale=e d.Color=b(1,1,1,1,1,1,1)setmetatable(h,{__index=function(_,c)if c==k then return f elseif c==l then return g elseif c=='Render'then return function(_,i)d:RenderLayer(0,i)end end end,__newindex=function(_,i,c)if i==k then f=c d.Scale=c*e d.Offset=c*a(0,-15/448)elseif i==l then g=c d.Color=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)end end})return h end
+l local a,b,k,l,m,n=Vector,Color,'Scale','Color','Rotation','Offset'function MakePixel()local d,e,f,g,h=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load('gfx/ui/stage/nightmare_bg.anm2',true)d:SetFrame('Intro',0)d[n]=a(0,-15/448)d[k]=e d[l]=b(1,1,1,1,1,1,1)setmetatable(h,{__index=function(_,c)if c==k then return f elseif c==l then return g elseif c==m then return d[m]elseif c=='Render'then return function(_,i)d:RenderLayer(0,i)end end end,__newindex=function(_,i,c)if i==k then f=c d[k]=c*e d[n]=c*a(0,-15/448)elseif i==l then g=c d[l]=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)elseif i==m then d[m]=c end end})return h end
 
 --[==[ 源代码
 function MakePixel()
@@ -1405,6 +1406,8 @@ function MakePixel()
                 return _scale
             elseif key == 'Color' then
                 return _color
+			elseif key == 'Rotation' then
+				return _sprite.Rotation
             elseif key == 'Render' then
                 return function(_, position)
                     _sprite:RenderLayer(0, position)
@@ -1412,15 +1415,17 @@ function MakePixel()
             end
         end,
         __newindex = function(self, key, value)
-        if key == 'Scale' then
-            _scale = value
-            _sprite.Scale = value * _size
-            _sprite.Offset = Vector(0, -15/448) * value
-        elseif key == 'Color' then
-            _color = value
-                _sprite.Color = Color(1, 1, 1, value.A, value.R+value.RO, value.G+value.GO, value.B+value.BO)
-            end
-        end
+			if key == 'Scale' then
+				_scale = value
+				_sprite.Scale = value * _size
+				_sprite.Offset = Vector(0, -15/448) * value
+			elseif key == 'Color' then
+				_color = value
+				_sprite.Color = Color(1, 1, 1, value.A, value.R+value.RO, value.G+value.GO, value.B+value.BO)
+			elseif key == 'Rotation' then
+				_sprite.Rotation = value
+			end
+		end
     })
     return pixel
 end
