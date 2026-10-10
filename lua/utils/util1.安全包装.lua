@@ -10,6 +10,7 @@ l Wrap=print Unwrap=Wrap;if not(REPENTOGON or _CBH)then local D,E,F,I,J,O,P,Y,W,
 --[[
 作为模板: true
 模板id: safe-wrap-mec
+名称: 安全包装
 说明: 控制台输入 lua MEC() 启用安全包装，输入 lua DEMEC() 关闭安全包装。Version 2：参考 steam 工坊模组 Mod Error Containers。安全包装使用 pcall 包装了所有回调函数，并改写了 Isaac.AddPriorityCallback 和 Isaac.RemoveCallback 指针；无法覆盖局部缓存旧指针的情况。对忏悔龙 Repentogon 不生效。
 ]]
 l MEC=print DEMEC=MEC;local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end

@@ -758,7 +758,7 @@ def _validate_template_dep_bases(registry, file_names):
 
 # ========== 展开与校验 ==========
 def _expand_block(e, b, registry):
-    """生成块的最终 comment/final_code；模板引用块补充 tpl/values。"""
+    """生成块的最终 comment/final_code；模板引用块补充 tpl/values 与有效名称。"""
     m = b["meta"]
     where = f"{e['fname']} 块{b['num']}"
     tid = m.get("模板")
@@ -829,9 +829,16 @@ def _expand_block(e, b, registry):
                                    + _deps_list(m, e["fname"], b["num"])))
 
     # 模板依赖强制：引用带依赖的模板时，本文件必须同时提供其每个依赖——
-    # 要么引用了同名（名称）模板，要么本文件内有同名块；否则编译报错。
-    local_names = {str(b2["meta"]["名称"]) for b2 in e["blocks"]
-                   if b2["meta"].get("名称") is not None}
+    # 要么引用了同名（有效名称 = 引用方 名称 覆盖 else 模板定义 名称）模板，
+    # 要么本文件内有同名块；否则编译报错。
+    local_names = set()
+    for b2 in e["blocks"]:
+        nm = b2["meta"].get("名称")
+        if nm is None and b2["meta"].get("模板") is not None:
+            t2 = registry.get(str(b2["meta"]["模板"]))
+            nm = t2.get("name") if t2 else None
+        if nm is not None:
+            local_names.add(str(nm))
     for d in t.get("deps") or []:
         ok = d in local_names or any(
             b2["meta"].get("模板") is not None
@@ -873,6 +880,12 @@ def _expand_block(e, b, registry):
             f"错误：{where} 展开模板 {tid!r} 后占位符 {leftover.group(0)} 未替换完全。"
         )
 
+    # 有效名称 = 引用方 名称 覆盖 else 模板定义 名称（缺省用定义时的名称）。
+    # 纯展示/依赖语义：名称只作为依赖匹配与前端名称标签的标识，不改代码。
+    ref_name = m.get("名称")
+    eff_name = str(ref_name) if ref_name is not None else t.get("name")
+    renamed = False
+
     # 说明：引用方整段覆盖，或模板说明 {Pn} 插值
     if "说明" in m:
         comment = str(m["说明"])
@@ -890,19 +903,27 @@ def _expand_block(e, b, registry):
     b["final_code"] = code
     b["tpl"] = tid
     b["values"] = values
+    if eff_name is not None:
+        b["eff_name"] = eff_name
 
 
-def _validate_deps(e):
-    """依赖校验：依赖的名称必须存在于同文件，且对应块在当前块之前（按文件顺序，与编号无关）。"""
+def _validate_deps(e, registry):
+    """依赖校验：依赖的名称必须存在于同文件（含模板引用块的继承名称），
+    且对应块在当前块之前（按文件顺序，与编号无关）。"""
     names = {}
     for idx, b in enumerate(e["blocks"]):
+        explicit = b["meta"].get("名称") is not None
         nm = b["meta"].get("名称")
+        if nm is None and b["meta"].get("模板") is not None:
+            t = registry.get(str(b["meta"]["模板"]))
+            nm = t.get("name") if t else None
         if nm is None:
             continue
         nm = str(nm)
-        if nm in names:
+        # 同名警告只针对显式声明的重复：同一模板被引用多次时继承名天然相同，属正常
+        if nm in names and explicit and names[nm][2]:
             print(f"警告：{e['fname']} 中 名称 {nm!r} 重复声明（块{names[nm][1]} 与 块{b['num']}）。")
-        names[nm] = (idx, b["num"])
+        names[nm] = (idx, b["num"], explicit)
     for idx, b in enumerate(e["blocks"]):
         deps = b["deps"] if "deps" in b else _deps_list(b["meta"], e["fname"], b["num"])
         for d in deps:
@@ -1033,7 +1054,7 @@ def _auto_clean_globals(e, registry):
         return
     src_names = []
     for _, sb in found:
-        nm = sb["meta"].get("名称")
+        nm = sb.get("eff_name") or sb["meta"].get("名称")
         if nm is not None and str(nm) not in src_names:
             src_names.append(str(nm))
     meta = {"模板": "clean-globals",
@@ -1056,10 +1077,17 @@ def build(lua_dir=LUA_DIR):
     entries = collect_lua_entries(lua_dir)
     _inject_framework(entries)
     registry = _register_templates(entries)
-    file_names = {
-        e["fname"]: {str(b["meta"]["名称"]) for b in e["blocks"] if b["meta"].get("名称") is not None}
-        for e in entries
-    }
+    file_names = {}
+    for e in entries:
+        names = set()
+        for b in e["blocks"]:
+            nm = b["meta"].get("名称")
+            if nm is None and b["meta"].get("模板") is not None:
+                t = registry.get(str(b["meta"]["模板"]))
+                nm = t.get("name") if t else None
+            if nm is not None:
+                names.add(str(nm))
+        file_names[e["fname"]] = names
     _validate_template_dep_bases(registry, file_names)
     for e in entries:
         for b in e["blocks"]:
@@ -1067,7 +1095,7 @@ def build(lua_dir=LUA_DIR):
                 print(f"警告：{e['fname']} 块{b['num']} 在 challenges 中声明「作为模板」，已忽略（仅 utils 有效）。")
             _expand_block(e, b, registry)
         _auto_clean_globals(e, registry)
-        _validate_deps(e)
+        _validate_deps(e, registry)
     return entries, registry
 
 
@@ -1114,8 +1142,12 @@ def build_all_files(lua_entries):
             deps = b["deps"] if "deps" in b else _deps_list(meta, e["fname"], b["num"])
             if deps:
                 blk["deps"] = deps
-            # 代码名称：块头声明了 名称 才输出 name 字段（前端据此显示名称标签）
-            if meta.get("名称") is not None:
+            # 代码名称：有效名称（引用块 = 引用方 名称 覆盖 else 模板定义 名称，
+            # 缺省继承定义时的名称；自定义块 = 块头 名称）输出 name 字段，前端据此显示名称标签
+            eff = b.get("eff_name")
+            if eff is not None:
+                blk["name"] = eff
+            elif meta.get("名称") is not None:
                 blk["name"] = str(meta["名称"])
             if meta.get("作为模板") and meta.get("模板id"):
                 blk["tplDef"] = meta["模板id"]
@@ -1163,7 +1195,10 @@ def _block_kb(b, registry, fname):
     deps = b["deps"] if "deps" in b else _deps_list(meta, fname, b["num"])
     if deps:
         blk["deps"] = deps
-    if meta.get("名称") is not None:
+    eff = b.get("eff_name")
+    if eff is not None:
+        blk["name"] = eff
+    elif meta.get("名称") is not None:
         blk["name"] = str(meta["名称"])
     if meta.get("作为模板") and meta.get("模板id"):
         blk["tplDef"] = str(meta["模板id"])
@@ -1177,7 +1212,7 @@ def _block_kb(b, registry, fname):
         blk["body"] = b["body"]
         blk["commentTpl"] = b["comment_tpl"]
     elif "tpl" in b and b["tpl"] in registry:
-        # 模板引用块：body/说明/参数定义从模板注册表补齐，使单块即可读懂与自定义
+        # 普通模板引用块：body/说明/参数定义从模板注册表补齐，使单块即可读懂与自定义
         t = registry[b["tpl"]]
         blk["params"] = _params_json(t["params"])
         blk["body"] = t["body"]

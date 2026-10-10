@@ -18,7 +18,6 @@ l local I,M,N,H,T,F,D,A=Isaac,ModCallbacks,'MC_POST_NEW_ROOM',function(e)return 
 
 --[[
 模板: door-id-map
-名称: 门编号
 ]]
 
 --[[

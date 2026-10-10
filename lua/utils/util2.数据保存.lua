@@ -102,6 +102,7 @@ end
 --[[
 作为模板: true
 模板id: persistent-data
+名称: 数据保存
 说明: |-
   用于储存数据，无实际效果。
   _Data()返回的表兼容发光沙漏和rewind（可回溯）

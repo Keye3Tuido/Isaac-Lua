@@ -14,9 +14,12 @@
       kb.json 结构化输出（build_kb_entries：注释/代码分栏、模板参数自包含） /
       分类编号（challenges c<编号> / utils u<编号>，两类目录可同号） /
       发布目录组装（build_site.py：必要资源一个不少、非必要文件一个不多） /
+      名称继承（定义默认名/引用覆盖名/依赖按有效名称解析/同名引用不警告）/
       page.js mock 渲染（mock_render.js：依赖标记、块内参数面板、罗马锚点路由、
       显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀、块级搜索）。
 """
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -643,6 +646,121 @@ class TestCategoryKeys(unittest.TestCase):
             self.assertIn("重复的文件编号", str(cm.exception))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestTemplateNameInheritance(unittest.TestCase):
+    """模板名称继承（2026-10-10）：定义 名称 = 默认名（中文），引用 名称 = 覆盖，
+    缺省用定义时的名称；纯展示/依赖语义，不改代码。依赖按有效名称解析。"""
+
+    FRAMEWORK = (
+        "--框架\n\n--===--\n--[[\n说明: 前置。\n]]\nl print(1)\n\n"
+        "--===--\n"
+        "--[[\n作为模板: true\n模板id: restart-game\n说明: 重开。\n]]\nl print(3)\n\n"
+        "--[[\n作为模板: true\n模板id: random-string-output\n说明: 随机。\n]]\nl print(5)\n\n"
+        "--===--\n--[[\n模板: random-string-output\n]]\n"
+    )
+    UTILS = (
+        "--工具\n\n"
+        "--[[\n作为模板: true\n模板id: tpl-named\n名称: 甲模板\n"
+        "说明: 甲做某事，参数{P1}。\n"
+        "参数定义:\n  P1: {类型: 数量, 默认: 7, 性质: 局部}\n]]\n"
+        "l local R=P1 print(R)\n\n"
+        "--[[\n作为模板: true\n模板id: tpl-noname\n说明: 无名模板。\n]]\nl local B=true print(B)\n"
+    )
+    CHALLENGE = (
+        "--甲\n\n--[[\n说明: 正文。\n]]\nl print(2)\n\n"
+        "--[[\n模板: tpl-named\n]]\n\n"                       # 块2：缺省，继承 甲模板
+        "--[[\n模板: tpl-named\n名称: 乙覆盖\n]]\n\n"           # 块3：覆盖名
+        "--[[\n说明: 依赖演示。\n依赖: [甲模板, 乙覆盖]\n]]\nl print(X)\n\n"
+        "--[[\n模板: restart-game\n]]\n"
+    )
+
+    @staticmethod
+    def _build(utils_text=None, challenge_text=None):
+        tmp = tempfile.mkdtemp(prefix="tplname-")
+        try:
+            for sub in ("challenges", "utils"):
+                os.makedirs(os.path.join(tmp, sub))
+            with open(os.path.join(tmp, "utils", G.FRAMEWORK_FNAME), "w", encoding="utf-8") as f:
+                f.write(TestTemplateNameInheritance.FRAMEWORK)
+            with open(os.path.join(tmp, "utils", "U.工具.lua"), "w", encoding="utf-8") as f:
+                f.write(utils_text if utils_text is not None else TestTemplateNameInheritance.UTILS)
+            with open(os.path.join(tmp, "challenges", "1.甲.lua"), "w", encoding="utf-8") as f:
+                f.write(challenge_text if challenge_text is not None else TestTemplateNameInheritance.CHALLENGE)
+            return G.build(tmp)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.entries, cls.registry = cls._build()
+        cls.ch = next(e for e in cls.entries if e["isChallenge"])
+
+    def test_inherit_def_name(self):
+        b = self.ch["blocks"][2]   # 未写 名称 → 有效名称继承模板定义的 甲模板
+        self.assertEqual(b["eff_name"], "甲模板")
+        self.assertEqual(b["final_code"], "local R=7 print(R)")   # 名称不改代码
+        self.assertEqual(b["comment"], "甲做某事，参数7。")
+
+    def test_override_name_keeps_code(self):
+        b = self.ch["blocks"][3]   # 覆盖名（中文合法，纯展示/依赖语义）
+        self.assertEqual(b["eff_name"], "乙覆盖")
+        self.assertEqual(b["final_code"], "local R=7 print(R)")   # 与继承引用逐字节一致
+        self.assertEqual(b["comment"], "甲做某事，参数7。")
+
+    def test_deps_resolve_via_effective_names(self):
+        # 依赖 [甲模板, 乙覆盖] 分别命中两个引用块（继承名与覆盖名），构建即校验
+        dep = self.ch["blocks"][4]
+        self.assertEqual(dep["final_code"], "print(X)")
+        self.assertEqual(G.build_all_files(self.entries)["c1"]["blocks"][4]["deps"],
+                         ["甲模板", "乙覆盖"])
+
+    def test_all_files_name_field(self):
+        all_files = G.build_all_files(self.entries)
+        blocks = all_files["c1"]["blocks"]
+        self.assertEqual(blocks[2]["name"], "甲模板")    # 继承名输出
+        self.assertEqual(blocks[3]["name"], "乙覆盖")    # 覆盖名输出
+        tpl_json = G.build_templates_json(self.registry)
+        self.assertNotIn("defName", tpl_json["tpl-named"])   # 无新字段
+
+    def test_kb_name_field(self):
+        kb = G.build_kb_entries(self.entries, self.registry)
+        ch = next(e for e in kb if e["isChallenge"])
+        self.assertEqual(ch["blocks"][2]["name"], "甲模板")
+        self.assertEqual(ch["blocks"][3]["name"], "乙覆盖")
+        # 无新字段：块字段仍是既有集合
+        self.assertEqual(set(ch["blocks"][2]),
+                         {"num", "comment", "code", "region", "name", "tpl", "values",
+                          "params", "body", "commentTpl"})
+
+    def test_template_without_name_no_inherit(self):
+        challenge = self.CHALLENGE.replace("模板: tpl-named\n]]",
+                                           "模板: tpl-noname\n]]", 1)
+        challenge = challenge.replace("依赖: [甲模板, 乙覆盖]", "依赖: [乙覆盖]")
+        entries, _ = self._build(challenge_text=challenge)
+        b = next(e for e in entries if e["isChallenge"])["blocks"][2]
+        self.assertNotIn("eff_name", b)
+        all_files = G.build_all_files(entries)
+        self.assertNotIn("name", all_files["c1"]["blocks"][2])
+
+    def test_duplicate_refs_same_template_no_warning(self):
+        # 同一模板被引用两次：继承名天然相同，不得报「重复声明」
+        challenge = self.CHALLENGE.replace(
+            "--[[\n模板: tpl-named\n名称: 乙覆盖\n]]",
+            "--[[\n模板: tpl-named\n]]")
+        challenge = challenge.replace("依赖: [甲模板, 乙覆盖]", "依赖: [甲模板]")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            entries, _ = self._build(challenge_text=challenge)
+        self.assertNotIn("重复声明", buf.getvalue())
+        _ = entries
+
+    def test_dep_missing_inherited_name(self):
+        # 依赖指向从未声明/继承的名称 → 报错
+        challenge = self.CHALLENGE.replace("依赖: [甲模板, 乙覆盖]", "依赖: [不存在的名称]")
+        with self.assertRaises(SystemExit) as cm:
+            self._build(challenge_text=challenge)
+        self.assertIn("不存在", str(cm.exception))
 
 
 if __name__ == "__main__":

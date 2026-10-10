@@ -153,6 +153,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.TearFlags=p
 --[[
 作为模板: true
 模板id: room-wind
+名称: 房间风
 说明: 房间中吹起微风，可在控制台输入 lua Windy = 数值 来调整风力系数（默认{P1}）。屏幕上方会显示当前房间的风力大小，风力大小和楼层数、房间难度和风力系数有关。风会从进入房间的门吹向其他门，实体会被风吹动。
 参数定义:
   P1: {类型: 数值, 默认: 25, 性质: 全局, 说明: "全局变量Windy，风力系数（默认25）"}
@@ -162,6 +163,7 @@ l Windy=P1 local C,I,M,V,T,A=0,Isaac,ModCallbacks,Vector,{}A=I.AddCallback A(T,M
 --[[
 作为模板: true
 模板id: entity-inertia
+名称: 惯性
 说明: 实体的加速度变小，可在控制台输入 lua Inertia = 数值 来调整系数（默认{P1}）。加速度变动为原先的 Inertia%，Inertia 取值范围 0~100。
 参数定义:
   P1: {类型: 数值, 默认: 30, 性质: 全局, 说明: "全局变量Inertia，加速度百分比系数（默认30）"}
@@ -171,6 +173,7 @@ l Inertia=P1;local H,I,M,T,X,U,V,A=GetPtrHash,Isaac,ModCallbacks,{},math,'Veloci
 --[[
 作为模板: true
 模板id: thunder-flash
+名称: 雷闪
 说明: 屏幕变黑，周期性被照明，可在控制台输入 lua Thunder = 数值 来调整照明时间（默认{P1}秒）。
 参数定义:
   P1: {类型: 数值, 默认: 2, 性质: 全局, 说明: "全局变量Thunder，闪电强度系数（默认2）"}
@@ -180,6 +183,7 @@ l Thunder=P1;local I,V,B=Isaac,Vector,Sprite()B:Load('gfx/ui/loading.anm2',true)
 --[[
 作为模板: true
 模板id: force-slot-switch
+名称: 致命切手
 说明: 每隔一段时间强制切换玩家的某个槽位物品为道具暗仪刺刀、其他槽位为道具计划C或卡牌自杀之王。可在控制台输入 lua Duration = 数值 来调整切换间隔，数值单位为逻辑帧，默认{P1}逻辑帧({P2})。
 参数定义:
   P1: {类型: 数值, 默认: 90, 性质: 全局, 说明: "全局变量Duration，强制切换的间隔帧数（默认90）"}
@@ -190,6 +194,7 @@ l Duration=P1;local C,D,E,F,G,H,I,M,N,P,Q,S,T,A,U,V='GetFrameCount','ControlsCoo
 --[[
 作为模板: true
 模板id: pool-quality-shuffle
+名称: 道具池洗牌
 说明: 从道具池抽取道具时，大部分道具按照品质从低到高抽取；(1/SHUFFLE)*100% 的道具会被插入到道具池底部。可在控制台输入 lua SHUFFLE = 数值 调整（默认{P1}）。
 参数定义:
   P1: {类型: 数值, 默认: 8, 性质: 全局, 说明: "全局变量SHUFFLE，道具池质量洗牌档位（默认8）"}

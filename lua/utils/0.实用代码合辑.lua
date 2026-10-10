@@ -38,6 +38,7 @@ l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p
 --[[
 作为模板: true
 模板id: force-give-items
+名称: 强制给予物品
 说明: |-
   强制给予玩家：{P2}
   主动道具数量不够时，强制锁门，房间内生成对应道具
@@ -59,6 +60,7 @@ l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
 --[[
 作为模板: true
 模板id: remove-trinkets
+名称: 移除饰品
 说明: |-
   从游戏中移除饰品{P2}。
 参数定义:
@@ -81,6 +83,7 @@ l local V,g,N=Vector,{P1}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game()
 --[[
 作为模板: true
 模板id: remove-collectibles
+名称: 移除道具
 说明: |-
   从游戏中移除{P2}
 参数定义:
@@ -211,6 +214,7 @@ l local I,M,C,A=Isaac,ModCallbacks,{P1}A=I.AddCallback;A({},M.MC_POST_PICKUP_INI
 --[[
 作为模板: true
 模板id: force-character
+名称: 锁定玩家类型
 说明: |-
   强制角色为指定PlayerType。
 参数定义:
@@ -266,6 +270,7 @@ l local function Action(p,a,f,s,c)P1 end;local D,E=DamageFlag,EntityType Isaac.A
 --[[
 作为模板: true
 模板id: time-scale-monitor
+名称: 时间倍率
 说明: |-
   实时监测游戏帧率，可使用指令：lua SetTimeScale(数值) 来设置游戏速率(默认1，最小0)。GetTimeScale()可获取{[1]=当前渲染帧倍率,[2]=当前逻辑帧倍率}。由于监测数据和调控速率之间存在延迟，实际效果与预期效果会有一定偏差。
 ]]
@@ -347,6 +352,7 @@ l function RandomItems(BlackList)local A,B,C,E,G,T,P,t,c,f,Q={},BlackList or{P1}
 --[[
 作为模板: true
 模板id: d4-reroll
+名称: D4重随
 说明: |-
   函数 D4(EntityPlayer[,BlackList]) 移除玩家身上的所有道具，并随机给予相同数量的随机道具(主动道具1个，其余为被动道具)。
 依赖: RandomItems
@@ -369,6 +375,7 @@ l function RandomTrinkets(BlackList)local A,B,C,G,c,f={},BlackList or{P1},Isaac.
 --[[
 作为模板: true
 模板id: d4-trinket-reroll
+名称: D4重随饰品
 说明: |-
   函数 D4_1(EntityPlayer[,BlackList]) 移除玩家身上的所有饰品，并随机给予相同数量的随机饰品。
 依赖: RandomTrinkets
@@ -380,6 +387,7 @@ l function D4_1(EntityPlayer,BlackList)local B,C,N,T,p,m,G='Trinket',Isaac.GetIt
 --[[
 作为模板: true
 模板id: broken-keys
+名称: 失灵按键
 说明: |-
   每WaitFrames(默认{P2})帧随机BrokenKeys(默认{P1},最多12)个按键失灵。
   可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
@@ -394,6 +402,7 @@ l BrokenKeys=P1;WaitFrames=P2;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCou
 --[[
 作为模板: true
 模板id: input-lag
+名称: 输入延迟
 说明: |-
   将玩家的输入延迟{P1}帧（约{P2}），可在控制台输入lua Lag = 数值 来调整延迟帧数。
 参数定义:
@@ -422,6 +431,7 @@ l local a,z,b,c,d,I,j,k,l=table.insert,string.format,pairs,KColor,Vector,Isaac,F
 --[[
 作为模板: true
 模板id: on-hit-detect
+名称: 命中检测
 说明: |-
   玩家受伤（检测无敌帧重置，不检测实际受伤）时，执行OnHit函数（参数：玩家实体）。OnHit为空占位，由下游代码重定义。不兼容拉撒路的绷带、拉撒路的魂石。
 参数定义:
@@ -569,6 +579,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(i,p)i=p.Queue
 --[[
 作为模板: true
 模板id: stats-switch
+名称: 属性轮换
 说明: |-
   角色的面板属性发生轮换：
   控制台输入lua STATS_SWITCH='123456'可以指定轮换次序，输入lua STATS_SWITCH=nil 可以取消轮换次序
@@ -620,6 +631,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_PRE_GET_COLLECTIBLE,function()for _,c in 
 --[[
 作为模板: true
 模板id: door-id-map
+名称: 门编号
 说明: |-
   提供全局接口用于获取门的唯一编号：
   GetDoorId(GridIndex, RoomShape, DoorSlotId[, Dimension=0])->int 获取门编号；
@@ -688,5 +700,6 @@ l local l,s,r=Game():GetLevel()s=l:GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data
 作为模板: true
 模板id: get-zh-font
 说明: 提供全局接口 GetZhFont() -> Font
+名称: 获取中文字体
 ]]
 l function GetZhFont(f)f=Font()f:Load'font/cjk/lanapixel.fnt'if f:IsLoaded()then return f end end
