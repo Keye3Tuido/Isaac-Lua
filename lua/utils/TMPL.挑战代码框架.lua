@@ -20,6 +20,14 @@ l MEC()
 ]]
 
 --[[
+模板: get-zh-font
+]]
+
+--[[
+模板: codec-base92
+]]
+
+--[[
 说明: |-
   游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果。
   提供一个全局表_CodeEnding, 清理代码后会置表内的全局元素为nil，并释放该当前表。
@@ -28,7 +36,13 @@ l MEC()
 名称: 清理代码
 依赖: [安全包装, 清理回调]
 ]]
-l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding,CLM,MEC,DEMEC,_MEC=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
+l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding,CLM,MEC,DEMEC,_MEC,GetZhFont,DecBase92,EncRaw=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
+
+--[[
+说明: 展示清理代码的提示文字
+依赖: [清理代码, 获取中文字体, Base92编解码]
+]]
+l local a,F,S=Isaac,GetZhFont(),DecBase92"%XK]&7B!N`.@37lx)cqxL)d,U-W~<kD@-$`^C78z>XcZG8@-&p&X9,;gWi)e_MylgB@HyBmWhX&xHVIq?Aq33w"a.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then F:DrawStringUTF8(S,a.GetScreenWidth()/2-F:GetStringWidthUTF8(S)/2,a.GetScreenHeight()/8,KColor.Cyan)end end)
 
 --[[
 模板: lock-achievements
