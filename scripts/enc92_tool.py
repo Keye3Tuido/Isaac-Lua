@@ -1,7 +1,9 @@
-"""enc92_tool：交互式 base-92 编码器。
+"""enc92_tool：base-92 编码器。
 
-运行后输入任意文本（可含中文），回车即输出 base-92 字面量；
-空输入或 Ctrl+Z/Ctrl+D 退出。与 codec-base92 模板共用同一字母表与补齐约定。
+无参数运行：进入交互模式，逐行输入任意文本（可含中文），回车即输出 base-92 字面量；
+空输入、Ctrl+D（部分终端需再按回车）或 Ctrl+Z 退出。
+带参数运行：把参数（空格连接）编码为 base-92 字面量输出一次后退出。
+与 codec-base92 模板共用同一字母表与补齐约定。
 """
 import sys
 
@@ -40,14 +42,26 @@ def dec92(lit: str) -> bytes:
 
 
 def main():
+    # 带参数：参数空格连接后编码一次即退出（供命令行/管道直接取用）
+    if len(sys.argv) > 1:
+        print(enc92(' '.join(sys.argv[1:]).encode('utf-8')))
+        return
+    # 无参数：交互模式。不用 input() 读行——部分终端（如 Git Bash）里 Ctrl+D
+    # 不会触发 EOFError，而是把 EOT(0x04) 当普通字节传入，因此按行读并显式判 EOT。
     while True:
         try:
-            s = input('输入文本（空输入退出）：')
-        except EOFError:
+            sys.stdout.write('输入文本（空输入或 Ctrl+D 退出）：')
+            sys.stdout.flush()
+            line = sys.stdin.readline()
+        except KeyboardInterrupt:
+            print()
             break
-        if not s:
+        if line == '':                      # EOF：Ctrl+D / Ctrl+Z+Enter / 管道关闭
             break
-        print(enc92(s.encode('utf-8')))
+        line = line.rstrip('\r\n')
+        if not line or '\x04' in line:      # 空输入退出；EOT 字节（Ctrl+D）也退出
+            break
+        print(enc92(line.encode('utf-8')))
         print()
 
 
