@@ -220,7 +220,7 @@ l local I,M,C,A=Isaac,ModCallbacks,{P1}A=I.AddCallback;A({},M.MC_POST_PICKUP_INI
 参数定义:
   P1: {类型: "角色枚举", 默认: "PlayerType.PLAYER_THELOST", 性质: "局部", 说明: "PlayerType枚举值"}
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P1 if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P1 if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end,0)
 
 --[[
 作为模板: true
