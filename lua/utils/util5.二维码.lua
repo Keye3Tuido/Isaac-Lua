@@ -1389,7 +1389,7 @@ return {
   Rotation: number - 像素旋转角度
   Render(Vector2D:position) - 在指定位置渲染像素
 ]]
-l local a,b,k,l,m,n=Vector,Color,'Scale','Color','Rotation','Offset'function MakePixel()local d,e,f,g,h=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load('gfx/ui/stage/nightmare_bg.anm2',true)d:SetFrame('Intro',0)d[n]=a(0,-15/448)d[k]=e d[l]=b(1,1,1,1,1,1,1)setmetatable(h,{__index=function(_,c)if c==k then return f elseif c==l then return g elseif c==m then return d[m]elseif c=='Render'then return function(_,i)d:RenderLayer(0,i)end end end,__newindex=function(_,i,c)if i==k then f=c d[k]=c*e d[n]=c*a(0,-15/448)elseif i==l then g=c d[l]=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)elseif i==m then d[m]=c end end})return h end
+l local a,b,k,l,m=Vector,Color,'Rotation','Scale','Color'function MakePixel()local d,f,g,h,i=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load('gfx/ui/stage/nightmare_bg.anm2',true)d:SetFrame('Intro',0)d.Offset=a(0,-15/448)d[l]=f d[m]=b(1,1,1,1,1,1,1)setmetatable(i,{__index=function(j,c)if c==l then return g elseif c==m then return h elseif c==k then return d[k]elseif c=='Render'then return function(_,e)d:RenderLayer(0,e)end end end,__newindex=function(_,e,c)if e==l then g=c d[l]=c*f d.Offset=a(0,-15/448)*c elseif e==m then h=c d[m]=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)elseif e==k then d[k]=c end end})return i end
 
 --[==[ 源代码
 function MakePixel()
