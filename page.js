@@ -310,10 +310,52 @@ function showDetailView(fileId, secId) {
     document.getElementById('buttonGroup').classList.toggle('utils-group', !f.isChallenge);
 
     renderSections(f);
+    // 刷新前展开的所有条目整组恢复（sessionStorage），hash 里的单条锚点另作滚动定位
+    if (restoreOpenSections()) {
+        for (const st of currentBlocks) {
+            if (st.sectionEl && !st.sectionEl.classList.contains('collapsed') && st.autosizeAll) st.autosizeAll();
+        }
+    }
     if (secId) scrollToSection(secId);
     else window.scrollTo(0, 0);
 
     startAutoRefresh();
+}
+
+// ========== 展开状态持久化 ==========
+// 自动刷新是整页重载，而 hash 只承载最后点击的一条；把当前文件全部展开的
+// 条目存进 sessionStorage（同标签页内跨重载有效），刷新后整组恢复。
+function openSectionsKey() {
+    return 'isaac:open:' + currentFileId;
+}
+
+function persistOpenSections() {
+    if (!currentFileId) return;
+    const open = [];
+    codeArea.querySelectorAll('.section:not(.collapsed)').forEach(s => {
+        if (s.querySelector('.code-box')) open.push(s.id);   // 只记带代码的可折叠条目
+    });
+    try {
+        sessionStorage.setItem(openSectionsKey(), JSON.stringify(open));
+    } catch (_) { /* 隐私模式等写入失败时静默放弃持久化 */ }
+}
+
+// 返回恢复展开的条目数；id 失效（内容改版）时自动跳过
+function restoreOpenSections() {
+    if (!currentFileId) return 0;
+    let open = [];
+    try { open = JSON.parse(sessionStorage.getItem(openSectionsKey()) || '[]'); }
+    catch (_) { return 0; }
+    let n = 0;
+    for (const id of open) {
+        const s = document.getElementById(id);
+        if (!s) continue;
+        s.classList.remove('collapsed');
+        const g = s.closest('.region-group');
+        if (g) g.classList.remove('collapsed');
+        n++;
+    }
+    return n;
 }
 
 // 在当前页面内滚动到指定条目（不重建 DOM）
@@ -472,7 +514,12 @@ function renderSections(f) {
         section.classList.add('collapsed');
         head.onclick = () => {
             section.classList.toggle('collapsed');
-            history.replaceState(null, null, '#' + currentFileId + secId);
+            // 展开：hash 指向该条目（分享/直达用）；收起：hash 退回文件级，
+            // 避免刷新后依据 hash 又把这条弹开
+            history.replaceState(null, null, section.classList.contains('collapsed')
+                ? '#' + currentFileId
+                : '#' + currentFileId + secId);
+            persistOpenSections();
             if (!section.classList.contains('collapsed') && state.autosizeAll) state.autosizeAll();
         };
         section.appendChild(box);
