@@ -72,10 +72,3 @@ l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_T
 --[[
 模板: restart-game
 ]]
-
---[[
-模板: clean-globals
-参数:
-  P1: "'BulletTime', 'TimeScale'"
-依赖: 子弹时间
-]]

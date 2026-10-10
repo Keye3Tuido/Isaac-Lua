@@ -21,10 +21,3 @@ l DisplayLag=P1;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_RENDER,funct
 --[[
 模板: restart-game
 ]]
-
---[[
-模板: clean-globals
-参数:
-  P1: "'DisplayLag'"
-依赖: 延迟显示
-]]

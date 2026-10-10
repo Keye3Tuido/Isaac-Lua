@@ -119,10 +119,3 @@ l local f,i=Isaac,Vector local b,e,h,s,K=ModCallbacks,_Data,f.AddCallback,Sprite
 --[[
 模板: restart-game
 ]]
-
---[[
-模板: clean-globals
-参数:
-  P1: "'IsGridSafe', '_Buffstats'"
-依赖: [安全屋与毒气室, 属性下降]
-]]

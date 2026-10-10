@@ -944,8 +944,115 @@ def _inject_framework(entries):
             _number_blocks(e["blocks"])
 
 
+# ========== 正文全局变量扫描（自动生成清理尾置块） ==========
+# 启发式规则（压缩单行代码专用）：排除字符串内容、local 声明、for 循环变量、
+# 函数参数、表构造器字段，取裸赋值与全局 function 定义的目标名。
+# 允许良性误报——释放不存在的全局变量是无害的；亦不排除跨块 upvalue 重赋值。
+_LUA_STRIP_STR_RE = re.compile(r"'[^'\n]*'|\"[^\"\n]*\"")
+_LUA_LOCAL_RE = re.compile(r"\blocal\s+(?!function\b)([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)")
+_LUA_LOCALFN_RE = re.compile(r"\blocal\s+function\s+([A-Za-z_]\w*)")
+_LUA_FOR_RE = re.compile(r"\bfor\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?:=|in\b)")
+_LUA_PARAM_RE = re.compile(r"\bfunction\s*\(([^)]*)\)")
+_LUA_ASSIGN_RE = re.compile(r"(?<![\w.:])([A-Za-z_]\w*)\s*=[^=~<>]")
+# 多重赋值目标链：A,B,C=…（链首不得 preceded by =({, —— 那是 local/调用的初始化值列表）
+_LUA_CHAIN_RE = re.compile(
+    r"(?<![\w.:(={,])([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)+)\s*=[^=~<>]")
+_LUA_GLOBALFN_RE = re.compile(r"(?<![\w.])function\s+([A-Za-z_]\w*)\s*[.(]")
+_LUA_KEYWORDS = {
+    "true", "false", "nil", "and", "or", "not", "end", "function", "local",
+    "if", "then", "else", "elseif", "for", "while", "do", "repeat", "until",
+    "return", "in", "break", "goto",
+}
+
+
+def _brace_depths(src):
+    """每个字符位置所在的 {} 深度（剥掉字符串后；Lua 语句块不用花括号，
+    深度大于 0 即表构造器内部）。"""
+    depth, out = 0, []
+    for ch in src:
+        out.append(depth)
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+    return out
+
+
+def _find_created_globals(code):
+    """扫描一段展开后的 Lua 代码，按出现顺序去重返回被创建的全局变量名。"""
+    src = _LUA_STRIP_STR_RE.sub("''", code)
+    depth = _brace_depths(src)
+    locals_ = set()
+    for rx in (_LUA_LOCAL_RE, _LUA_LOCALFN_RE, _LUA_FOR_RE):
+        for m in rx.finditer(src):
+            for name in m.group(1).split(","):
+                locals_.add(name.strip())
+    for m in _LUA_PARAM_RE.finditer(src):
+        for name in m.group(1).split(","):
+            name = name.strip()
+            if name and name != "...":
+                locals_.add(name)
+    hits = []
+    for rx in (_LUA_ASSIGN_RE, _LUA_CHAIN_RE, _LUA_GLOBALFN_RE):
+        for m in rx.finditer(src):
+            if rx is _LUA_GLOBALFN_RE:
+                names = [m.group(1)]
+            else:
+                if depth[m.start(1)] > 0:
+                    continue  # 表构造器字段，不是全局赋值
+                names = ([n.strip() for n in m.group(1).split(",")]
+                         if rx is _LUA_CHAIN_RE else [m.group(1)])
+            for name in names:
+                if name == "_" or name in locals_ or name in _LUA_KEYWORDS:
+                    continue
+                hits.append((m.start(1), name))
+    out = []
+    for _, name in sorted(hits):
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def _auto_clean_globals(e, registry):
+    """挑战文件：自动扫描正文（body，模板展开后）代码中创建的全局变量；
+    有则自动生成 clean-globals 尾置块（依赖各来源块，并含模板定义处的依赖并集），
+    插入重开块之后、random-string 引用之前；无全局变量则不添加，无需手写。
+    挑战文件已手写 clean-globals 引用时尊重手写（不重复添加）。"""
+    if not e["isChallenge"] or "clean-globals" not in registry:
+        return
+    if any(str(b["meta"].get("模板")) == "clean-globals" for b in e["blocks"]):
+        return
+    found = []  # [(name, source_block)]，按出现顺序去重
+    for b in e["blocks"]:
+        if b.get("region") != "body" or not b.get("final_code"):
+            continue
+        for name in _find_created_globals(b["final_code"]):
+            if all(n != name for n, _ in found):
+                found.append((name, b))
+    if not found:
+        return
+    src_names = []
+    for _, sb in found:
+        nm = sb["meta"].get("名称")
+        if nm is not None and str(nm) not in src_names:
+            src_names.append(str(nm))
+    meta = {"模板": "clean-globals",
+            "参数": {"P1": ", ".join("'" + n + "'" for n, _ in found)}}
+    if src_names:
+        meta["依赖"] = src_names
+    nb = {"num": None, "meta": meta, "code": None, "line": None, "region": "post"}
+    blocks = e["blocks"]
+    at = next((i for i, b in enumerate(blocks)
+               if b.get("region") == "post"
+               and str(b["meta"].get("模板")) == RANDOM_STRING_TPL), len(blocks))
+    blocks.insert(at, nb)
+    _number_blocks(blocks)  # 先编号，供展开报错信息使用
+    _expand_block(e, nb, registry)
+
+
 def build(lua_dir=LUA_DIR):
-    """完整构建管线：解析 → 框架注入 → 模板注册 → 展开 → 校验。返回 (entries, registry)。"""
+    """完整构建管线：解析 → 框架注入 → 模板注册 → 展开 → 自动清理尾置块 → 校验。
+    返回 (entries, registry)。"""
     entries = collect_lua_entries(lua_dir)
     _inject_framework(entries)
     registry = _register_templates(entries)
@@ -959,6 +1066,7 @@ def build(lua_dir=LUA_DIR):
             if b["meta"].get("作为模板") and e["isChallenge"]:
                 print(f"警告：{e['fname']} 块{b['num']} 在 challenges 中声明「作为模板」，已忽略（仅 utils 有效）。")
             _expand_block(e, b, registry)
+        _auto_clean_globals(e, registry)
         _validate_deps(e)
     return entries, registry
 

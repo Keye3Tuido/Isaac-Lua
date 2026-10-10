@@ -47,10 +47,3 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if Player
 --[[
 模板: restart-game
 ]]
-
---[[
-模板: clean-globals
-参数:
-  P1: "'DAMOCLES_ALARM'"
-依赖: 达摩克里斯之剑
-]]

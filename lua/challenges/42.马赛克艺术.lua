@@ -55,10 +55,3 @@ l local b,a,d,e,P=Vector,ModCallbacks,PickupVariant.PICKUP_TRINKET,Isaac.AddCall
 参数:
   P1: PlayerType.PLAYER_ISAAC
 ]]
-
---[[
-模板: clean-globals
-参数:
-  P1: "'_ItemSprites'"
-依赖: 贴图资源初始化
-]]

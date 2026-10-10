@@ -54,10 +54,3 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveS
 --[[
 模板: restart-game
 ]]
-
---[[
-模板: clean-globals
-参数:
-  P1: "'Fatal', 'OnHit'"
-依赖: 即死房间
-]]
