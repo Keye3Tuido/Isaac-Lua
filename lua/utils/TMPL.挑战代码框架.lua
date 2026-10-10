@@ -42,7 +42,7 @@ l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.A
 说明: 展示清理代码的提示文字
 依赖: [清理代码, 获取中文字体, Base92编解码]
 ]]
-l local a,F,S=Isaac,GetZhFont(),DecBase92"%XK]&7B!N`.@37lx)cqxL)d,U-W~<kD@-$`^C78z>XcZG8@-&p&X9,;gWi)e_MylgB@HyBmWhX&xHVIq?Aq33w"a.AddCallback({},ModCallbacks.MC_POST_RENDER,function()if Game():IsPaused()then F:DrawStringUTF8(S,a.GetScreenWidth()/2-F:GetStringWidthUTF8(S)/2,a.GetScreenHeight()/8,KColor.Cyan)end end)
+l local a,T,F,S=Isaac,0,GetZhFont(),DecBase92"%XK]&7B!N`.@37lx)cqxL)d,U-W~<kD@-$`^C78z>XcZG8@-&p&X9,;gWi)e_MylgB@HyBmWhX&xHVIq?Aq33w"a.AddCallback({},ModCallbacks.MC_POST_RENDER,function(t)t=a.GetFrameCount()if Game():IsPaused()then if t-T>59 then F:DrawStringUTF8(S,a.GetScreenWidth()/2-F:GetStringWidthUTF8(S)/2,a.GetScreenHeight()/8,KColor.Cyan)end else T=t end end)
 
 --[[
 模板: lock-achievements
