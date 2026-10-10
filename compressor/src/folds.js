@@ -2954,6 +2954,173 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
+    // ---------- 点访问别名复用（obj.Field → obj[alias]，'X' → u，复用已存在的字符串别名） ----------
+    // foldMemberField 在 foldStringLiterals 之前运行，只能为字段独立建别名（2 处时不划算就放弃）。
+    // 当字段名后来因比较串等被提取为字符串别名（stringAliasByLocal/memberByLocal 里已有 u='Field'），
+    // 本 pass 做两个对称方向的复用改写：
+    //   ① 点访问：.Field（|F|+1）→ [u]（|u|+2），每处省 |F|-|u|-1。
+    //     obj.Field ≡ obj['Field'] 无条件成立（都经 __index/__newindex 以字符串键路由），
+    //     是纯语法改写，写目标（d[l]=x）同样安全；':' 方法调用是 indexer':'，collectMemberAccess 本就不收集。
+    //   ② 字符串字面量：'X'（|X|+2）→ u（|u|），callArg 糖 f'X' → f(u)。
+    //     读 u ≡ 读字面量 'X'（别名声明即 u='X'）。
+    // canonical 的 stringOfAlias/fieldOfAlias 归一（索引位 obj[u] ≡ obj.Field + 裸读位 u ≡ 'X'）覆盖等价校验。
+    // 不新增别名：aliasMap 原样透传。
+    function foldDotAlias(src, priorAlias, steps, rec, originalCode){
+      if(!priorAlias) return null;
+      // 字段名 → 已有别名（stringAliasByLocal 优先，memberByLocal 补充）；
+      // 每处独立闸门在此并入建图：.Field（|F|+1）→ [u]（|u|+2）须更短才值得改写。
+      var fieldToAlias={};
+      function consider(map){
+        if(!map) return;
+        for(var k in map){
+          if(!map.hasOwnProperty(k)) continue;
+          var f=map[k];
+          if(!fieldToAlias.hasOwnProperty(f) && f.length+1 > k.length+2) fieldToAlias[f]=k;
+        }
+      }
+      consider(priorAlias.stringAliasByLocal);
+      consider(priorAlias.memberByLocal);
+      // 字面量替换方向用的是【全量】内容→别名图（不含点访问闸门）：'X' → u 的收益公式不同
+      // （'X'(|X|+2) → u(|u|)；callArg 糖 f'X' → f(u) 须 |X|+2 > |u|+2），逐处判定。
+      var litToAlias={};
+      function considerLit(map){
+        if(!map) return;
+        for(var k in map){
+          if(!map.hasOwnProperty(k)) continue;
+          if(!litToAlias.hasOwnProperty(map[k])) litToAlias[map[k]]=k;
+        }
+      }
+      considerLit(priorAlias.stringAliasByLocal);
+      considerLit(priorAlias.memberByLocal);
+      if(!Object.keys(fieldToAlias).length && !Object.keys(litToAlias).length) return null;   // 无可用别名：廉价 bail（保住 parse 计数闸门）
+      // parse 前文本预筛：别名字段须真的以「.Field」文本出现（后继字符非名字字符），
+      // 或有同内容短字符串字面量（两种引号形态）。文本缺席 ⟹ 必无可改写站点
+      // （词法最大吞噬保证），可直接跳过 parse；文本在场可能是字符串/注释里的假阳性，
+      // 代价只是照常 parse（保守方向正确）。
+      var anySite=false;
+      for(var f0 in fieldToAlias){
+        if(!fieldToAlias.hasOwnProperty(f0)) continue;
+        if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(f0)) continue;   // 非标识符样字段不可能是点访问
+        var needle='.'+f0, from=0;
+        while(true){
+          var p=src.indexOf(needle, from);
+          if(p<0) break;
+          var after=src[p+needle.length];
+          if(after===undefined || !isNamePart(after)){ anySite=true; break; }
+          from=p+1;
+        }
+        if(anySite) break;
+      }
+      if(!anySite){
+        // 字面量方向：别名的【声明】本身必含一处引号形态（u='X'），故须有 ≥2 处才存在
+        // 可替换的【使用点】；只命中 1 处 = 只有声明，parse 也只会空手而归。
+        for(var c0 in litToAlias){
+          if(!litToAlias.hasOwnProperty(c0)) continue;
+          var cnt=0, q1="'"+c0+"'", q2='"'+c0+'"', p0=-1;
+          while((p0=src.indexOf(q1,p0+1))>=0 && cnt<2) cnt++;
+          p0=-1;
+          while((p0=src.indexOf(q2,p0+1))>=0 && cnt<2) cnt++;
+          if(cnt>=2){ anySite=true; break; }
+        }
+      }
+      if(!anySite) return null;
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+
+      // 别名头区间：不改写头部声明内部（与 foldStringLiterals 同规约）
+      var priorDrop=priorAlias.dropLeading||0;
+      var headerRanges=[];
+      for(var hi=0; hi<priorDrop && hi<ast.body.length; hi++){
+        if(ast.body[hi] && ast.body[hi].range) headerRanges.push(ast.body[hi].range);
+      }
+      function inHeader(baseEnd, idEnd){
+        for(var i=0;i<headerRanges.length;i++){
+          if(baseEnd>=headerRanges[i][0] && idEnd<=headerRanges[i][1]) return true;
+        }
+        return false;
+      }
+      // 别名声明值保护（statement 级 dropLeading 之外）：foldMethods/foldMemberField 可把别名
+      // 注入【普通 local】尾部（dropDelta=0，dropLeading 不覆盖该语句）。这些 init 字面量就是
+      // 别名定义本身，替换成别名会变成自引用（local r,a=Game(),a）——且 canonical 按映射信任
+      // 别名声明，会把 a=a 误判等价。按「变量名在别名图里的顶层声明变量的 init 区间」逐点保护。
+      var aliasNames={};
+      var _sa0=priorAlias.stringAliasByLocal, _mb0=priorAlias.memberByLocal;
+      if(_sa0) for(var _an in _sa0){ if(_sa0.hasOwnProperty(_an)) aliasNames[_an]=true; }
+      if(_mb0) for(var _an2 in _mb0){ if(_mb0.hasOwnProperty(_an2)) aliasNames[_an2]=true; }
+      var aliasInitRanges=[];
+      for(var bi=0; bi<ast.body.length; bi++){
+        var bst=ast.body[bi];
+        if(!bst || bst.type!=='LocalStatement' || !bst.variables || !bst.init) continue;
+        for(var bvi=0; bvi<bst.variables.length; bvi++){
+          var bvn=bst.variables[bvi];
+          if(bvn && bvn.type==='Identifier' && aliasNames[bvn.name] && bst.init[bvi] && bst.init[bvi].range)
+            aliasInitRanges.push(bst.init[bvi].range);
+        }
+      }
+      function inAliasInit(r0, r1){
+        for(var ai=0; ai<aliasInitRanges.length; ai++){
+          if(r0>=aliasInitRanges[ai][0] && r1<=aliasInitRanges[ai][1]) return true;
+        }
+        return false;
+      }
+
+      var groups=new Map();
+      collectMemberAccess(ast, groups);
+      var edits=[];
+      Array.from(groups.keys()).forEach(function(field){
+        if(!fieldToAlias.hasOwnProperty(field)) return;   // 建图时已并入每处收益闸门
+        var alias=fieldToAlias[field];
+        groups.get(field).forEach(function(s){
+          if(inHeader(s.baseEnd, s.idEnd)) return;
+          edits.push({start:s.baseEnd, end:s.idEnd, name:'['+alias+']'});
+        });
+      });
+
+      // ---- 对称方向：字符串字面量 → 已有别名（'X' → u，f'X' → f(u)）----
+      // foldMemberField/foldMethods 为字段/方法名建别名并改写成员站点，但同名字符串字面量
+      // 仍是字面量（出现次数太少也不值得自建别名）。别名已存在时直接替换字面量为别名引用。
+      // canonical 把裸读别名归一为字符串字面量（stringOfAlias + fieldOfAlias 裸读映射），等价覆盖。
+      var callArgNodes=new Set();
+      (function markCallArg(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ n.forEach(markCallArg); return; }
+        if(n.type==='StringCallExpression' && n.argument && n.argument.type==='StringLiteral'){
+          callArgNodes.add(n.argument);
+        }
+        for(var k in n){ if(k==='range'||k==='loc') continue; if(Object.prototype.hasOwnProperty.call(n,k)) markCallArg(n[k]); }
+      })(ast.body);
+      (function walkLit(n){
+        if(!n||typeof n!=='object') return;
+        if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walkLit(n[i]); return; }
+        if(n.type==='StringLiteral' && n.range){
+          var content=unquoteShort(n.raw);   // 长字符串 [[...]] → null（canonical 不归一，替换会破等价，跳过）
+          if(content!==null && litToAlias.hasOwnProperty(content) && !inHeader(n.range[0], n.range[1]) && !inAliasInit(n.range[0], n.range[1])){
+            var alias=litToAlias[content];
+            var repl;
+            if(callArgNodes.has(n)){
+              repl='('+alias+')';                       // f'X' → f(u)：括号自带分隔，无需空格守卫
+            }else{
+              // 粘连守卫：后继字符可能需空格（'X'and → u and，needsSepAfter）；
+              // 前导字符是名字字符时需前置空格（and'X' → and u，否则并成一个标识符）。
+              var nextCh=(n.range[1]<src.length)?src[n.range[1]]:undefined;
+              var prevCh=(n.range[0]>0)?src[n.range[0]-1]:undefined;
+              repl=((prevCh&&isNamePart(prevCh))?' ':'')+alias+(needsSepAfter(alias[alias.length-1], nextCh)?' ':'');
+            }
+            if(n.raw.length > repl.length) edits.push({start:n.range[0], end:n.range[1], name:repl});
+          }
+          return;
+        }
+        for(var k in n){ if(k==='range'||k==='loc') continue; if(Object.prototype.hasOwnProperty.call(n,k)) walkLit(n[k]); }
+      })(ast.body);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
+      assertParses(candidate, 'dot-alias/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, priorAlias, 'dot-alias/等价', steps);
+      if(rec) rec('点访问别名复用(提交)', src.length, candidate.length, '改写 '+edits.length+' 处点访问/字面量为别名引用');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
     // ---------- 成员字段折叠（可重排版） ----------
     // obj.Field（点访问）→ obj[alias]，alias='Field'。与 foldMethods 同构（点字段，非冒号方法）。
     // 从 plan.js 拆出，使"成员字段折叠"成为可重排 fold，搜索层顺序预设可试"先整链CSE后成员折叠"。
@@ -3094,7 +3261,7 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline; C.foldDotAlias=foldDotAlias;
     // 共享基础设施（供测试/调试直接单测；生产中经各 fold 内部使用）
     C.extendAliasMap=extendAliasMap; C.bumpDrop=bumpDrop; C.clampDrop=clampDrop; C.canCommit=canCommit;
   }});

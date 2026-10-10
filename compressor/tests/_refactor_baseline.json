@@ -13,8 +13,8 @@
     },
     "real": {
       "ok": true,
-      "totalSegments": 607,
-      "passSegments": 607,
+      "totalSegments": 610,
+      "passSegments": 610,
       "failSegments": 0
     },
     "validationCache": {
@@ -87,6 +87,11 @@
       "pass": 41,
       "fail": 0
     },
+    "dotAlias": {
+      "ok": true,
+      "pass": 6,
+      "fail": 0
+    },
     "chunkedSearch": {
       "ok": true,
       "pass": 4,
@@ -100,9 +105,9 @@
     },
     "search": {
       "ok": true,
-      "ruleBytes": 254766,
-      "searchBytes": 254747,
-      "savedBytes": 19
+      "ruleBytes": 265267,
+      "searchBytes": 265235,
+      "savedBytes": 32
     },
     "bulk": {
       "ok": true,
@@ -115,21 +120,21 @@
     },
     "snapshot": {
       "ok": true,
-      "total": 777,
-      "changed": 8,
+      "total": 770,
+      "changed": 0,
       "regress": 0,
-      "improve": 7,
+      "improve": 0,
       "lostOk": 0,
-      "newOk": 92,
-      "sourceChanged": 4,
-      "removed": 10
+      "newOk": 0,
+      "sourceChanged": 0,
+      "removed": 0
     },
     "performance": {
       "ok": true,
       "sampleCount": 5,
-      "parseCount": 624,
-      "inputBytes": 15899,
-      "outputBytes": 15477
+      "parseCount": 648,
+      "inputBytes": 21341,
+      "outputBytes": 20909
     }
   }
 }

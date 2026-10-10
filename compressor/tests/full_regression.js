@@ -28,6 +28,7 @@ const specs = [
   ['declHoistValue', 'test_declhoist_value.js', []],
   ['foldOrder', 'test_fold_order_contract.js', []],
   ['sharedHelpers', 'test_shared_helpers.js', []],
+  ['dotAlias', 'test_dot_alias.js', []],
   ['chunkedSearch', 'test_chunked_search.js', []],
   ['remote', 'remotetest.js', []],
   ['search', 'test_search_compare.js', []],
@@ -81,6 +82,7 @@ function metricsFor(run) {
     case 'declHoistValue':
     case 'foldOrder':
     case 'sharedHelpers':
+    case 'dotAlias':
       parsed = numbers(o, /:\s*(\d+)\s*pass,\s*(\d+)\s*fail\s*===/i, ['pass', 'fail']); break;
     case 'incremental':
       parsed = numbers(o, /总结:\s*(\d+)\s*通过,\s*(\d+)\s*失败/, ['pass', 'fail']); break;

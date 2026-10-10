@@ -661,6 +661,11 @@
             // （内容用 X，与 normExpr 在 StringLiteral 自然路径上的产出一致）。
             if(aliasLocalNames.has(b.name) && stringOfAlias.hasOwnProperty(b.name))
               return {type:'StringLiteral', content:stringOfAlias[b.name]};
+            // 成员/方法别名（memberByLocal: u='Field'）在裸读位置同理 ≡ 字符串字面量 'Field'。
+            // 此前这类别名只出现在索引/方法位（obj[u]/obj[u](obj)），无需裸读映射；
+            // foldDotAlias 的字面量替换（'Field' → u）引入了裸读形态。
+            if(aliasLocalNames.has(b.name) && fieldOfAlias.hasOwnProperty(b.name))
+              return {type:'StringLiteral', content:fieldOfAlias[b.name]};
             // 只读字面量别名：读 t ≡ 读其字面量（反向纠错验证基础）
             if(autoLitByBinding.has(b)) return autoLitByBinding.get(b);
             return {type:'Identifier', kind:'local', n: idFor(b, curVersion(b))};

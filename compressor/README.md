@@ -84,6 +84,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 1.4  Safe call sugar: `f("x")` -> `f"x"`, `f({})` -> `f{}`
 1.4b 字符串字面量内联（重复字符串提取别名，含 call sugar `a'X'` 参数）
 1.4c 字符串公共前缀因子（多串共享前缀时迭代提取多级因子，含嵌套 `a..b..'UP'`）
+1.4c3 点访问别名复用（字段名已有字符串别名时 `obj.Field` → `obj[alias]`，纯语法改写，写目标同样安全）
 1.4d 块包装（重复语句块打包成薄函数：固定点任意位置、变化点作形参；散布重复也命中，texts 相同的多个变化点合并为同一形参，形参可多次出现但调用点须实参无调用/vararg，贪心取语句不重叠的最短分解）
 1.5  local 合并（相邻 body local 并一条）
 1.5b local function 合并（并入前条声明；函数体引用被并变量时退化为「先声明、后赋值」）
@@ -211,6 +212,7 @@ node tests/test_method_inject.js        # foldMethods/foldMemberField 注入已�
 node tests/test_declhoist_value.js      # 声明上提值粒度部分上提（mixed 路径）+ 收敛/安全负例
 node tests/test_fold_order_contract.js  # fold 顺序契约（FOLD_ORDER_RULES）：默认顺序/搜索预设过校验，违例抛错
 node tests/test_shared_helpers.js       # 共享助手单测：名称分配器/aliasMap 工厂+dropLeading 校验/字符串与粘连守卫/applyEdits 契约
+node tests/test_dot_alias.js            # 点访问别名复用（obj.Field → obj[已有字符串别名]）+ 负例
 node tests/test_canonical_ifnot.js      # if-not 归一专项
 node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
 ```

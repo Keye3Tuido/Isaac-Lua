@@ -2,10 +2,10 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField, foldGlobalViaG=C.foldGlobalViaG, foldFwdNilInline=C.foldFwdNilInline;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField, foldGlobalViaG=C.foldGlobalViaG, foldFwdNilInline=C.foldFwdNilInline, foldDotAlias=C.foldDotAlias;
     // ---- 共享配置（搜索层 search.js 经 C 引用，保持单一来源）----
     // 默认 fold 顺序：与旧管线逐字一致；opts.foldOrder 可覆盖（搜索层对顺序做 beam 用）。
-    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','globalViaG','tailSymbol'];
+    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','stringFactors','methodFactor','dotAlias','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','globalViaG','tailSymbol'];
     // 全局折叠预筛选阈值：默认 [2,8]（快）；搜索层用更宽的 [2..9] 探索更多优化空间（语义不同，分列两个常量）。
     var DEFAULT_THRESHOLDS = [2,8];
     var SEARCH_THRESHOLDS = [2,3,4,5,6,7,8,9];
@@ -250,6 +250,11 @@
           var mfRes = foldMethodFactor(state.current, state.activeAliasMap, steps, rec, state.code);
           if(mfRes) state.current = mfRes.code;
           report.stages.push({name:'1.4c2-方法名因子', code:state.current, len:state.current.length});
+        }); };
+        FOLD_DEFS.dotAlias = function(){ addStage('点访问别名复用', doRename, function(){
+          var daRes = foldDotAlias(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(daRes) state.current = daRes.code;
+          report.stages.push({name:'1.4c3-点访问别名复用', code:state.current, len:state.current.length});
         }); };
         FOLD_DEFS.globalViaG = function(){ addStage('全局表访问折叠', doRename, function(){
           var gvRes = foldGlobalViaG(state.current, state.activeAliasMap, steps, rec, state.code);
