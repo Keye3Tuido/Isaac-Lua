@@ -1332,7 +1332,7 @@
     // 严格"只缩短"闸门 + canonical 等价 + 真·Lua 语法，三关全过才提交，否则回退。
     //
     // 安全前提（在 canonical 等价校验兜底之上，再前置筛除明显不可上提者）：
-    //   - 仅作用于顶层块（ast.body）内的 LocalStatement；
+    //   - 作用于顶层块（ast.body）与嵌套块体（if 分支/do/循环体/函数体）内的 LocalStatement；
     //   - 别名头必须存在（priorAlias.dropLeading>0）且是顶层第一条 local；
     //   - 待上提变量：单作用域（顶层）、未被闭包捕获、声明不在循环体内、
     //     该变量在【别名头之后 ~ 自身声明之前】区间从不被读（前向 nil 健全性，由 canonical 复核）。
@@ -1482,22 +1482,9 @@
       var ast; try{ ast=parse(src); }catch(e){ return null; }
       if(!ast.body || !ast.body.length) return null;
 
-      // 注入点：有别名头(priorDrop>0)则注入到最后一条头部语句；无别名头则注入到首条语句。
-      // 后者允许把后续 local 上提并入首条 local（如 memberChain 反转后紧邻首条 local 的整链别名），省一个 'local '。
-      var headerIdx = priorDrop>0 ? priorDrop-1 : 0;
-      var headerStmt=ast.body[headerIdx];
-      if(!headerStmt || headerStmt.type!=='LocalStatement' || !headerStmt.variables || !headerStmt.variables.length) return null;
-      // 头部 #init==#vars 才能安全在尾部追加 nil 占位（追加的 name 无对应 init → 自动 nil，
-      // 但若头部本身 #init<#vars 已有尾随 nil，我们仍可在最末追加 name；为简单起见要求 #init==#vars）。
-      if(!headerStmt.init || headerStmt.init.length!==headerStmt.variables.length) return null;
-      var headerEnd=headerStmt.range[1];
-      var headerNamesEnd=headerStmt.variables[headerStmt.variables.length-1].range[1]; // 最后一个变量名末尾
-
+      // 注入点：顶层块在别名头(priorDrop>0)或首条语句；嵌套块在「首语句为 local 声明」的块体。
+      // 每块独立收集候选并构建计划，各区间 edits 汇总后一次性应用 + 三重验证。
       var info=analyze(ast);
-
-      // 顶层作用域 id
-      var topId=info.topScope.id;
-
       // 循环范围（声明在循环体内的不上提）
       var loopRanges=[];
       (function collect(node){
@@ -1521,6 +1508,32 @@
         return found;
       }
 
+      // 嵌套块体收集（顶层 ast.body 不在内，走既有别名头/首语句逻辑）。
+      // 每个嵌套块的作用域以其首语句 local 的 binding.scope 为准。
+      var nestedBlocks=[];
+      (function collectBlocks(node){
+        if(!node||typeof node!=='object')return;
+        if(Array.isArray(node)){node.forEach(collectBlocks);return;}
+        if(node.type==='IfStatement'){
+          node.clauses.forEach(function(cl){ if(cl.body) nestedBlocks.push(cl.body); });
+        }else if((node.type==='WhileStatement'||node.type==='RepeatStatement'||node.type==='DoStatement'
+                  ||node.type==='ForNumericStatement'||node.type==='ForGenericStatement'
+                  ||node.type==='FunctionDeclaration'||node.type==='FunctionExpression') && node.body){
+          nestedBlocks.push(node.body);
+        }
+        for(var k in node){ if(k==='range'||k==='loc'||k==='parent'||k==='scope') continue; if(Object.prototype.hasOwnProperty.call(node,k)) collectBlocks(node[k]); }
+      })(ast);
+
+      var allEdits=[], allHoist=0;
+
+      // 候选：块内、块头之后声明的 LocalStatement（原顶层逻辑参数化：
+      // ast.body→stmts、topId→scopeId，其余不变）。
+      function processBlock(stmts, headerIdx, scopeId){
+      var headerStmt=stmts[headerIdx];
+      if(!headerStmt || headerStmt.type!=='LocalStatement' || !headerStmt.variables || !headerStmt.variables.length) return;
+      if(!headerStmt.init || headerStmt.init.length!==headerStmt.variables.length) return;
+      var headerEnd=headerStmt.range[1];
+      var headerNamesEnd=headerStmt.variables[headerStmt.variables.length-1].range[1]; // 最后一个变量名末尾
       // 候选：顶层块内、别名头之后声明的 LocalStatement。【值粒度】分类每个变量：
       //  - inline：init 不引用任何「头部语句或任一候选语句声明的 binding」，且该语句
       //    在上提后仍与头部相邻（求值点提前但不跨越任何语句）→ (名字,值) 直接并入头部对齐区；
@@ -1529,8 +1542,8 @@
       var forbidden=new Set();   // 头部 + 所有候选语句声明的 binding
       headerStmt.variables.forEach(function(v){ if(v.type==='Identifier'){ var hb=info.varOf.get(v); if(hb) forbidden.add(hb); } });
       var candStmts=[];   // {st, stIdx, vars:[{binding,varNode,initNode,eligible}]}
-      for(var si=headerIdx+1; si<ast.body.length; si++){
-        var st=ast.body[si];
+      for(var si=headerIdx+1; si<stmts.length; si++){
+        var st=stmts[si];
         if(st.type!=='LocalStatement' || !st.variables || !st.init) continue;
         if(st.init.length!==st.variables.length) continue;     // 多/少值截断，跳过整条
         if(inLoop(st.range[0])) continue;
@@ -1539,7 +1552,7 @@
           var vn=st.variables[vi];
           if(vn.type!=='Identifier') continue;
           var b=info.varOf.get(vn);
-          var eligible = !!(b && b.scope.id===topId && b.decls.length===1);
+          var eligible = !!(b && b.scope.id===scopeId && b.decls.length===1);
           // 被闭包捕获不再一票否决：inline 保持只读单声明不受影响；placeholder 变为
           // 「声明+后赋值」，正确性由 canonical 的 fwdNil 归一严格验证（捕获闭包若横在
           // 声明与赋值之间会阻挡归一，自动拒绝）。
@@ -1549,8 +1562,7 @@
         }
         if(any) candStmts.push({st:st, stIdx:si, vars:vars});
       }
-      if(!candStmts.length) return null;
-
+      if(!candStmts.length) return;
       // 为避免与别名头重名：收集头部现有名字（防御性检查不重复追加同名）。
       var headerNames=new Set();
       headerStmt.variables.forEach(function(v){ if(v.type==='Identifier') headerNames.add(v.name); });
@@ -1673,28 +1685,39 @@
         return {edits:edits, hoistCount:hoistCount, inlineCount:inlineNameList.length};
       }
 
-      function tryCandidate(plan){
-        var candidate=applyEdits(src, plan.edits);
-        if(candidate.length>=src.length) return null;
-        // 真·Lua 语法 + canonical 等价（forward-nil 归一）
-        if(!canCommit(originalCode, candidate, priorAlias)) return null;
-        return candidate;
-      }
+      // 计划采纳：仅当该块 edits 净缩短（按区间长度差）才并入汇总，保守不回退。
+      var _planF=buildPlan('full'), _planL=buildPlan('legacy'), _best=null;
+      [_planF,_planL].forEach(function(p){
+        if(!p) return;
+        var d=0; p.edits.forEach(function(e){ d+=e.name.length-(e.end-e.start); });
+        if(d<0 && (!_best || d<_best.d)) _best={d:d,p:p};
+      });
+      if(!_best) return;
+      allEdits=allEdits.concat(_best.p.edits);
+      allHoist+=_best.p.hoistCount;
+      }   // processBlock
 
-      var candidate=null, usedPlan=null;
-      var planFull=buildPlan('full');
-      if(planFull){ var cF=tryCandidate(planFull); if(cF){ candidate=cF; usedPlan=planFull; } }
-      var planLegacy=buildPlan('legacy');
-      if(planLegacy){
-        var cL=tryCandidate(planLegacy);
-        if(cL && (!candidate || cL.length<candidate.length)){ candidate=cL; usedPlan=planLegacy; }
-      }
-      if(!candidate) return null;
-      var hoistCount=usedPlan.hoistCount;
+      processBlock(ast.body, priorDrop>0 ? priorDrop-1 : 0, info.topScope.id);
+      nestedBlocks.forEach(function(blk){
+        if(!blk.length) return;
+        var h=blk[0];
+        if(h.type!=='LocalStatement'||!h.variables||!h.variables.length) return;
+        if(!h.init||h.init.length!==h.variables.length) return;
+        var hv=h.variables[0];
+        if(hv.type!=='Identifier') return;
+        var hb=info.varOf.get(hv);
+        if(!hb) return;
+        processBlock(blk, 0, hb.scope.id);
+      });
 
+      if(!allEdits.length) return null;
+      var candidate=applyEdits(src, allEdits);
+      if(candidate.length>=src.length) return null;
+      // 真·Lua 语法 + canonical 等价（forward-nil 归一）
+      if(!canCommit(originalCode, candidate, priorAlias)) return null;
       assertParses(candidate, '阶段1.7b/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7b/等价', steps);
-      if(rec) rec('声明上提(提交)', src.length, candidate.length, '上提 '+hoistCount+' 个变量到别名头并降级其 local');
+      if(rec) rec('声明上提(提交)', src.length, candidate.length, '上提 '+allHoist+' 个变量到别名头并降级其 local');
       return {code:candidate, aliasMap:priorAlias};
     }
 
