@@ -689,6 +689,130 @@
       return {code:candidate, aliasMap:newAlias};
     }
 
+    // ---------- 字符串别名去重（跨 pass 同名别名合并） ----------
+    // 背景：foldMemberField 为 obj.Field 建的字段别名（memberByLocal: c='Field'）与
+    // foldStringLiterals 为 'Field' 字面量建的别名（stringAliasByLocal: m='Field'）分属两张表、
+    // 规划互不感知，同一字符串出现两个别名，多付一次声明。canonical 已把两种别名归一到同一
+    // 标准形（裸读 ≡ 字符串字面量；obj[别名] ≡ obj.Field），故合并（被删侧的读改写到保留侧、
+    // 删除多余声明槽位）对等价校验透明。
+    // 安全子集（保守，不赚即跳过）：
+    //  1. 同值别名 ≥2，且每一对都声明在【同一条顶层 LocalStatement】，variables.length===init.length，
+    //     init 为纯字符串字面量；一条语句至少保留一个变量（不整句删除）。
+    //  2. 被合并的双方除声明外都不是任何赋值目标（含局部赋值 a=..；成员写的 base 是读，不影响）。
+    //  3. 被删别名的全部 uses 位于该声明语句之后（文本位置，保证保留侧声明先于所有改写点）。
+    //  4. 多值/多受害者批量构造 edits，applyEdits 一次成型，只缩短才提交，过三重校验。
+    function foldAliasDedup(src, priorAlias, steps, rec, originalCode){
+      if(!priorAlias) return null;
+      var mb=priorAlias.memberByLocal||{}, sa=priorAlias.stringAliasByLocal||{};
+      var aliasVal=Object.create(null);
+      for(var k in mb) if(Object.prototype.hasOwnProperty.call(mb,k)) aliasVal[k]=mb[k];
+      for(var k2 in sa) if(Object.prototype.hasOwnProperty.call(sa,k2) && !Object.prototype.hasOwnProperty.call(aliasVal,k2)) aliasVal[k2]=sa[k2];
+      var valTo=Object.create(null);
+      for(var a in aliasVal) if(Object.prototype.hasOwnProperty.call(aliasVal,a)){
+        (valTo[aliasVal[a]]=valTo[aliasVal[a]]||[]).push(a);
+      }
+      var dups=[];
+      for(var v in valTo) if(Object.prototype.hasOwnProperty.call(valTo,v) && valTo[v].length>=2) dups.push({val:v, names:valTo[v]});
+      if(!dups.length) return null;
+
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+
+      // 被重新赋值过的 binding（保守放弃合并）
+      var assignedB=new Set();
+      (function walkA(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){for(var i=0;i<n.length;i++)walkA(n[i]);return;}
+        if(n.type==='AssignmentStatement' && n.variables){
+          for(var j=0;j<n.variables.length;j++){
+            var t=n.variables[j];
+            if(t && t.type==='Identifier'){ var tb=info.varOf.get(t); if(tb) assignedB.add(tb); }
+          }
+        }
+        for(var kk in n){ if(kk==='range'||kk==='loc'||kk==='parent'||kk==='scope')continue;
+          if(Object.prototype.hasOwnProperty.call(n,kk)) walkA(n[kk]); }
+      })(ast.body);
+
+      // 仅接受：顶层 LocalStatement、变量与 init 一一对齐、init 为纯字符串字面量、未被赋值
+      function findDecl(name){
+        for(var si=0; si<ast.body.length; si++){
+          var st=ast.body[si];
+          if(!st || st.type!=='LocalStatement' || !st.variables || !st.init) continue;
+          if(st.variables.length!==st.init.length) continue;
+          for(var j=0;j<st.variables.length;j++){
+            var vr=st.variables[j];
+            if(!vr || vr.type!=='Identifier' || vr.name!==name) continue;
+            var init=st.init[j];
+            if(!init || init.type!=='StringLiteral') return null;
+            var b=info.varOf.get(vr);
+            if(!b || b.decls.length!==1 || assignedB.has(b)) return null;
+            return {stmt:st, idx:j, binding:b};
+          }
+        }
+        return null;
+      }
+
+      var edits=[];
+      var newMB=Object.assign({}, mb);
+      var newSA=Object.assign({}, sa);
+      var mergedPairs=0;
+
+      for(var d=0; d<dups.length; d++){
+        var decls=[];
+        var allOk=true;
+        for(var n2=0; n2<dups[d].names.length; n2++){
+          var dc=findDecl(dups[d].names[n2]);
+          if(!dc){ allOk=false; break; }
+          decls.push({name:dups[d].names[n2], decl:dc});
+        }
+        if(!allOk) continue;
+        var st0=decls[0].decl.stmt;
+        var sameStmt=true;
+        for(var n3=1; n3<decls.length; n3++) if(decls[n3].decl.stmt!==st0){ sameStmt=false; break; }
+        if(!sameStmt) continue;
+        if(st0.variables.length - decls.length < 1) continue;   // 不整句删除
+        // 保留 uses 多者（减少改写量）；并列任取
+        decls.sort(function(x,y){ return y.decl.binding.uses.length - x.decl.binding.uses.length; });
+        var keep=decls[0];
+        var vv=st0.variables, ii=st0.init, stmtEnd=st0.range[1];
+        for(var vi=1; vi<decls.length; vi++){
+          var vb=decls[vi].decl.binding;
+          var domOk=true;
+          for(var u=0; u<vb.uses.length; u++){ if(vb.uses[u].range[0] < stmtEnd){ domOk=false; break; } }
+          if(!domOk) continue;
+          for(var u2=0; u2<vb.uses.length; u2++){
+            var un=vb.uses[u2];
+            edits.push({start:un.range[0], end:un.range[1], name:keep.name});
+          }
+          // 删除声明槽位（连同相邻逗号；删首槽则连尾随逗号）
+          var idx=decls[vi].decl.idx;
+          if(idx>0){
+            edits.push({start:vv[idx-1].range[1], end:vv[idx].range[1], name:''});
+            edits.push({start:ii[idx-1].range[1], end:ii[idx].range[1], name:''});
+          }else{
+            edits.push({start:vv[0].range[0], end:vv[1].range[0], name:''});
+            edits.push({start:ii[0].range[0], end:ii[1].range[0], name:''});
+          }
+          if(Object.prototype.hasOwnProperty.call(newMB, decls[vi].name)) delete newMB[decls[vi].name];
+          if(Object.prototype.hasOwnProperty.call(newSA, decls[vi].name)) delete newSA[decls[vi].name];
+          mergedPairs++;
+        }
+      }
+      if(!mergedPairs) return null;
+
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length){
+        if(rec) rec('别名去重(放弃: 不缩短)', src.length, src.length, '');
+        return null;
+      }
+      var newAlias=extendAliasMap(priorAlias, { memberByLocal:newMB, stringAliasByLocal:newSA });
+      if(!canCommit(originalCode, candidate, newAlias)) return null;
+      assertParses(candidate, 'alias-dedup/syntax', steps);
+      assertEquivalentAlias(originalCode, candidate, newAlias, 'alias-dedup/等价', steps);
+      if(rec) rec('别名去重(提交)', src.length, candidate.length, '合并 '+mergedPairs+' 对同名别名');
+      return {code:candidate, aliasMap:newAlias};
+    }
+
     // ---------- 字符串公共前缀因子（多级拆分） ----------
     // 对 body 里互不相同的字符串字面量，迭代提取公共前缀（'ACTION_SHOOT_UP' 等 → a='ACTION_' b='SHOOT'
     // → a..b..'UP'）。每一级都按「只缩短才提交」的收益公式判别，不赚即停。
@@ -3284,7 +3408,7 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline; C.foldDotAlias=foldDotAlias;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldAliasDedup=foldAliasDedup; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline; C.foldDotAlias=foldDotAlias;
     // 共享基础设施（供测试/调试直接单测；生产中经各 fold 内部使用）
     C.extendAliasMap=extendAliasMap; C.bumpDrop=bumpDrop; C.clampDrop=clampDrop; C.canCommit=canCommit;
   }});

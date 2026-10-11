@@ -262,7 +262,8 @@
       _canCommit: C.canCommit,
       _unquoteShort: C.unquoteShort,
       _canSingleQuote: C.canSingleQuote,
-      _needsSepAfter: C.needsSepAfter
+      _needsSepAfter: C.needsSepAfter,
+      _foldAliasDedup: C.foldAliasDedup
     };
   }
 
