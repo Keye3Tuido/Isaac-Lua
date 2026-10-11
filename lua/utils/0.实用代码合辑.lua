@@ -703,3 +703,11 @@ l local l,s,r=Game():GetLevel()s=l:GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data
 名称: 获取中文字体
 ]]
 l function GetZhFont(f)f=Font()f:Load'font/cjk/lanapixel.fnt'if f:IsLoaded()then return f end end
+
+--[[
+作为模板: true
+模板id: pitch-black
+说明: 所有房间陷入黑暗
+名称: 纯黑房间
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r)l=Game():GetLevel()r=l:GetRoomByIdx(l:GetCurrentRoomIndex())r.Flags=r.Flags|RoomDescriptor.FLAG_PITCH_BLACK end)
