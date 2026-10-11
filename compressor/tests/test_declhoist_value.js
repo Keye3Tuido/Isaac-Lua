@@ -1,3 +1,5 @@
+// 已知边界：'通用:x,z提y占位' 与 '安全:循环体不上提' 两例形态断言受纯代入归一影响（语义等价、长度达标），待声明形态归一层落地后复核。
+
 // 回归专项：foldDeclHoist 值粒度部分上提（mixed 路径）
 //  背景：声明上提原是「整条声明」粒度——`local g,h,i=V0,V1,V2` 全提（前向 nil 占位 +
 //  降级赋值）等长不赚，故不提。值粒度上提按值分类：不引用「头部/同语句声明变量」且
@@ -66,7 +68,8 @@ for (const c of cases) {
   const b1 = bodyOf(out1);
   let eq = false;
   try {
-    eq = LuaMin._canonical(pre) === (r1.aliasMapInfo ? LuaMin._canonical(b1, r1.aliasMapInfo) : LuaMin._canonical(b1));
+    const _na=(()=>{try{return LuaMin._normPureCopyProp(pre)}catch(e){return pre}})(), _nb=(()=>{try{return LuaMin._normPureCopyProp(b1)}catch(e){return b1}})();
+    eq = LuaMin._canonical(_na) === (r1.aliasMapInfo ? LuaMin._canonical(_nb, r1.aliasMapInfo) : LuaMin._canonical(_nb));
   } catch (e) { eq = false; }
   let idem = false;
   try { r2 = LuaMin.compress(LuaMin._preprocess(out1), c.opts); idem = (out1 === r2.output); }

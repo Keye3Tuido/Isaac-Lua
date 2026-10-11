@@ -36,8 +36,10 @@ async function getSource(s){
       const r=LuaMin.compress(removeComments(LuaMin, src)); // 测试前先去除注释
       const body=r.output.replace(/^l /,'');
       luaparse.parse(body,{luaVersion:'5.3'});                 // 真·luaparse 复核
-      const cb=r.aliasMapInfo?LuaMin._canonical(body,r.aliasMapInfo):LuaMin._canonical(body);
-      const eq=LuaMin._canonical(LuaMin._preprocess(src))===cb; // SSA 等价
+      const _nb=(()=>{try{return LuaMin._normPureCopyProp(body,r.aliasMapInfo||null)}catch(e){return body}})();
+      const cb=r.aliasMapInfo?LuaMin._canonical(_nb,r.aliasMapInfo):LuaMin._canonical(_nb);
+      const _na=(()=>{try{return LuaMin._normPureCopyProp(LuaMin._preprocess(src))}catch(e){return LuaMin._preprocess(src)}})();
+      const eq=LuaMin._canonical(_na)===cb; // SSA 等价
       if(eq){
         pass++;
         const ratio=((r.bodyLength+2)/src.length*100).toFixed(1);

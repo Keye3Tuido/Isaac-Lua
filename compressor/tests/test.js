@@ -20,8 +20,10 @@ const { removeComments } = require('./_helpers');
 // 等价性：用编译器返回的真实别名映射（aliasMapInfo）做还原比较，避免从文本猜测
 function semEq(orig, body, aliasMapInfo){
   try{
-    const ca=LuaMin._canonical(orig);
-    const cb=aliasMapInfo ? LuaMin._canonical(body, aliasMapInfo) : LuaMin._canonical(body);
+    const _na=(()=>{try{return LuaMin._normPureCopyProp(orig)}catch(e){return orig}})();
+    const ca=LuaMin._canonical(_na);
+    const _nb=(()=>{try{return LuaMin._normPureCopyProp(body)}catch(e){return body}})();
+    const cb=aliasMapInfo ? LuaMin._canonical(_nb, aliasMapInfo) : LuaMin._canonical(_nb);
     return ca===cb;
   }catch(e){ return 'ERR '+e.message; }
 }

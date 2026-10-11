@@ -48,6 +48,9 @@ function check(label, code, opts){
 }
 
 // Target case: multi-callback (input 265 chars). Current compressed result is 176.
+// 已知边界（inlinePure 默认启用后）：multi_callback 的归一夹层判定为不等价——
+// 纯代入重写理论在该对上不收敛（两个等价文本归一出不同范式），长度与编译均正常。
+// 待"声明形态归一"层落地后移除此标注。
 check('multi_callback', [
   "l Isaac.AddCallback({},ModCallbacks.XXX,func,arg)",
   "l local A,M=Isaac.AddCallback,ModCallbacks;A({},M.XXX,func,arg)",

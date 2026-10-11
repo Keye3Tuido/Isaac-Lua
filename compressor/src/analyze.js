@@ -32,13 +32,26 @@
         varToBinding.set(idNode, b);
         return b;
       }
-      function resolve(scope, idNode){
+      function resolve(scope, idNode, shadow){
+        // shadow：LocalStatement init 的遮蔽名单（名字→被覆盖的前绑定|null），仅对
+        // 本条 init 的直接表达式生效（s===scope 处检查一次）。函数边界由 walkExpr
+        // 丢弃 shadow，因此 init 里函数体的语句不受外层遮蔽影响（真 Lua 语义）。
         var s=scope;
         while(s){
+          if(shadow && s===scope && Object.prototype.hasOwnProperty.call(shadow, idNode.name)){
+            var prevB=shadow[idNode.name];
+            if(prevB){
+              prevB.uses.push(idNode);
+              if(scope.funcDepth > prevB.scope.funcDepth) prevB.captured=true;
+              varToBinding.set(idNode,prevB);
+              return prevB;
+            }
+            s=s.parent;
+            continue;
+          }
           var b=s.vars[idNode.name];
           if(b){
             b.uses.push(idNode);
-            // 若引用发生在比声明更深的函数层 → 被闭包捕获
             if(scope.funcDepth > b.scope.funcDepth) b.captured=true;
             varToBinding.set(idNode,b);
             return b;
@@ -49,37 +62,37 @@
         return null;
       }
 
-      function walkExprList(list, scope){for(var i=0;i<list.length;i++)walkExpr(list[i],scope);}
+      function walkExprList(list, scope, shadow){for(var i=0;i<list.length;i++)walkExpr(list[i],scope,shadow);}
 
-      function walkExpr(node, scope){
+      function walkExpr(node, scope, shadow){
         if(!node) return;
         switch(node.type){
-          case 'Identifier': resolve(scope,node); break;
+          case 'Identifier': resolve(scope,node,shadow); break;
           case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral':
           case 'NilLiteral': case 'VarargLiteral': break;
           case 'BinaryExpression': case 'LogicalExpression':
-            walkExpr(node.left,scope); walkExpr(node.right,scope); break;
-          case 'UnaryExpression': walkExpr(node.argument,scope); break;
+            walkExpr(node.left,scope,shadow); walkExpr(node.right,scope,shadow); break;
+          case 'UnaryExpression': walkExpr(node.argument,scope,shadow); break;
           case 'MemberExpression':
             // base 是变量/表达式；identifier 是字段名（不解析）
-            walkExpr(node.base,scope); break;
+            walkExpr(node.base,scope,shadow); break;
           case 'IndexExpression':
-            walkExpr(node.base,scope); walkExpr(node.index,scope); break;
+            walkExpr(node.base,scope,shadow); walkExpr(node.index,scope,shadow); break;
           case 'CallExpression':
-            walkExpr(node.base,scope); walkExprList(node.arguments,scope); break;
+            walkExpr(node.base,scope,shadow); walkExprList(node.arguments,scope,shadow); break;
           case 'TableCallExpression':
-            walkExpr(node.base,scope); walkExpr(node.arguments,scope); break;
+            walkExpr(node.base,scope,shadow); walkExpr(node.arguments,scope,shadow); break;
           case 'StringCallExpression':
-            walkExpr(node.base,scope); walkExpr(node.argument,scope); break;
+            walkExpr(node.base,scope,shadow); walkExpr(node.argument,scope,shadow); break;
           case 'TableConstructorExpression':
             for(var i=0;i<node.fields.length;i++){
               var f=node.fields[i];
-              if(f.type==='TableKey'){walkExpr(f.key,scope);walkExpr(f.value,scope);}
-              else if(f.type==='TableKeyString'){walkExpr(f.value,scope);} // key 是字段名
-              else if(f.type==='TableValue'){walkExpr(f.value,scope);}
+              if(f.type==='TableKey'){walkExpr(f.key,scope,shadow);walkExpr(f.value,scope,shadow);}
+              else if(f.type==='TableKeyString'){walkExpr(f.value,scope,shadow);} // key 是字段名
+              else if(f.type==='TableValue'){walkExpr(f.value,scope,shadow);}
             }
             break;
-          case 'FunctionDeclaration': // 匿名函数表达式
+          case 'FunctionDeclaration': // 匿名函数表达式：体内按声明后作用域解析（清除 skip）
             walkFunction(node, scope); break;
           default: break;
         }
@@ -111,10 +124,16 @@
       function walkStmt(node, scope){
         switch(node.type){
           case 'LocalStatement':
-            // 先在当前作用域解析 init（不能看到正在声明的变量）
-            walkExprList(node.init||[], scope);
+            // 真 Lua 作用域：变量在整条语句之后生效——init 的普通表达式解析到被覆盖者
+            // 或外层（遮蔽名单仅对本条 init 生效），init 里函数表达式的"体"能看到
+            // 新声明的局部（闭包捕获，函数边界丢弃遮蔽名单）。
+            var shadow=Object.create(null);
             for(var i=0;i<node.variables.length;i++)
-              if(node.variables[i].type==='Identifier') declare(scope, node.variables[i]);
+              if(node.variables[i].type==='Identifier'){
+                shadow[node.variables[i].name]=(Object.prototype.hasOwnProperty.call(scope.vars, node.variables[i].name))?scope.vars[node.variables[i].name]:null;
+                declare(scope, node.variables[i]);
+              }
+            walkExprList(node.init||[], scope, shadow);
             break;
           case 'AssignmentStatement':
             walkExprList(node.init||[], scope);

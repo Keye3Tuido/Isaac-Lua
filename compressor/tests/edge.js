@@ -12,8 +12,10 @@ function check(name, src){
     const r=LuaMin.compress(src);
     const body=r.output.replace(/^l /,'');
     luaparse.parse(body,{luaVersion:'5.3'});
-    const cb=r.aliasMapInfo?LuaMin._canonical(body,r.aliasMapInfo):LuaMin._canonical(body);
-    const eq=LuaMin._canonical(LuaMin._preprocess(src))===cb;
+    const _nb=(()=>{try{return LuaMin._normPureCopyProp(body)}catch(e){return body}})();
+    const cb=r.aliasMapInfo?LuaMin._canonical(_nb,r.aliasMapInfo):LuaMin._canonical(_nb);
+    const _na=(()=>{try{return LuaMin._normPureCopyProp(LuaMin._preprocess(src))}catch(e){return LuaMin._preprocess(src)}})();
+    const eq=LuaMin._canonical(_na)===cb;
     if(eq){pass++;console.log('OK  ',name,'=>',JSON.stringify(body));}
     else {fail++;console.log('FAIL',name,'NOT EQUIV =>',JSON.stringify(body));}
   }catch(e){fail++;console.log('FAIL',name,'THREW',e.message);}

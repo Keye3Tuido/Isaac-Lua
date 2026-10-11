@@ -10,6 +10,8 @@
     var CANONICAL_CACHE_ENTRIES=32;
     var CANONICAL_CACHE_CHARS=2*1024*1024;
     var canonicalCache=new Map();
+    // 纯代入归一开关：compress 在 opts.foldOrder 含 inlinePure 时置真（opt-in）
+    C.canonicalPureInline=false;
     var canonicalCacheChars=0;
     function getCachedCanonical(src){
       if(!canonicalCache.has(src)) return undefined;
@@ -226,6 +228,7 @@
       // 读 t ≡ 读 1000000（两侧一致施加）。这是"只读局部内联（逆别名）"得以被严格验证的基础：
       // `local t=1000000 ...=t...` 与 `...=1000000...` 归一收敛同形。
       var autoLitByBinding=new Map(); // binding -> 归一化字面量节点
+      var autoPureRawByBinding=new Map(); // binding -> 单用纯表达式【原始 AST 节点】（消费端 normExpr 惰性归一）
       (function detectLit(){
         var assignedB=new Set();
         (function collect(node){
@@ -316,6 +319,142 @@
             }
           }
         })(ast.body);
+      })();
+
+      // ---- 单用纯表达式代入归一（foldInlinePure 验证基础；依赖分析器 init 作用域修正）----
+      // 规则：声明一次、只读一次（闭包捕获排除——与 foldReadonlyInline 同 precedent）、
+      // RHS 无调用/全局/变参/别名引用、非别名局部、非 fwd-lit 占位。
+      // 声明映射覆盖【不对齐】声明（local p,w=f() 风格），nil 填充槽值视为 NilLiteral。
+      (function detectPureCopyProp(){
+        if(!C.canonicalPureInline) return;   // 纯代入归一随 inlinePure opt-in 启用（默认管线零影响）
+        var aliasB=new Set();
+        if(aliasMap){
+          ['byName','memberByLocal','stringAliasByLocal','prefixFoldByLocal','chainAliasByLocal','transparentAliases'].forEach(function(tbl){
+            var t=aliasMap[tbl];
+            if(t) for(var k in t) if(Object.prototype.hasOwnProperty.call(t,k)) aliasB.add(k);
+          });
+          (aliasMap.factorLocals||[]).forEach(function(n){ aliasB.add(n); });
+        }
+        var assignCount=new Map(), assignTargets=new Map();
+        (function collect(node){
+          if(!node||typeof node!=='object')return;
+          if(Array.isArray(node)){for(var i=0;i<node.length;i++)collect(node[i]);return;}
+          if(node.type==='AssignmentStatement'&&node.variables){
+            for(var i=0;i<node.variables.length;i++){
+              var t=node.variables[i];
+              if(t&&t.type==='Identifier'){
+                var bb=varOf.get(t);
+                if(bb){ assignCount.set(bb,(assignCount.get(bb)||0)+1);
+                        if(!assignTargets.has(bb)) assignTargets.set(bb, []);
+                        assignTargets.get(bb).push(t); }
+              }
+            }
+          }
+          for(var k in node){if(k==='range'||k==='loc')continue;if(Object.prototype.hasOwnProperty.call(node,k))collect(node[k]);}
+        })(ast.body);
+        function movable(node){
+          if(!node||typeof node!=='object') return false;
+          switch(node.type){
+            case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral': case 'NilLiteral': return true;
+            case 'Identifier': {
+              if(!(varOf.has(node) && varOf.get(node)!==null)) return false;
+              if(!aliasB.has(node.name)) return true;
+              // 字符串值别名（string/member/factor/prefix）的读会被恢复为字符串字面量——
+              // 与"原文直接写字面量"的一侧对称，视同可移动；全局类别名（byName/transparent/chain）不可。
+              if(stringAliasByLocal && Object.prototype.hasOwnProperty.call(stringAliasByLocal, node.name)) return true;
+              if(memberByLocal && Object.prototype.hasOwnProperty.call(memberByLocal, node.name)) return true;
+              if(prefixFoldByLocal && Object.prototype.hasOwnProperty.call(prefixFoldByLocal, node.name)) return true;
+              if(aliasMap && (aliasMap.factorLocals||[]).indexOf(node.name)>=0) return true;
+              return false;
+            }
+            case 'UnaryExpression': return movable(node.argument);
+            case 'BinaryExpression': case 'LogicalExpression': return movable(node.left)&&movable(node.right);
+            case 'MemberExpression': return movable(node.base);
+            case 'IndexExpression': return movable(node.base)&&movable(node.index);
+            case 'TableConstructorExpression':
+              for(var i=0;i<node.fields.length;i++){
+                var f=node.fields[i];
+                if(f.type==='TableKey'){ if(!movable(f.key)||!movable(f.value)) return false; }
+                else if(f.type==='TableKeyString'||f.type==='TableValue'){ if(!movable(f.value)) return false; }
+              }
+              return true;
+            default: return false;
+          }
+        }
+        function readsOf(b){
+          var at=assignTargets.get(b);
+          if(!at) return b.uses;
+          return b.uses.filter(function(u){ return at.indexOf(u)<0; });
+        }
+        var declAnyLoc=new Map();
+        (function scanDecl(n){
+          if(!n||typeof n!=='object')return;
+          if(Array.isArray(n)){
+            for(var i=0;i<n.length;i++){
+              var it=n[i];
+              if(it && it.type==='LocalStatement' && it.variables){
+                for(var j=0;j<it.variables.length;j++){
+                  var vb=it.variables[j];
+                  if(vb && vb.type==='Identifier'){
+                    var bb=varOf.get(vb);
+                    if(bb) declAnyLoc.set(bb, {stmt:it, idx:j});
+                  }
+                }
+              }
+              scanDecl(it);
+            }
+            return;
+          }
+          for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) scanDecl(n[k]); }
+        })(ast.body);
+        function isAliasName(nm){ return aliasB.has(nm); }
+        // 仅对【嵌套块】（函数体/闭包内）的声明注册——顶层声明形态是声明上提/头部注入/
+        // fwd-nil 机制的领土，形态敏感的注册必然不对称；控制台代码的单用纯局部恰好
+        // 都长在回调里，嵌套限定不影响目标场景。
+        (function scanStmts(n, topLevel){
+          if(!n||typeof n!=='object')return;
+          if(Array.isArray(n)){
+            for(var i=0;i<n.length;i++){
+              var st=n[i];
+              if(st && st.type==='LocalStatement'&&st.variables){
+                for(var vi= topLevel?st.variables.length:0;vi<st.variables.length;vi++){
+                  var v=st.variables[vi];
+                  var b=varOf.get(v);
+                  if(!b||b.decls.length!==1)continue;
+                  var initLen=st.init?st.init.length:0;
+                  var ie=vi<initLen ? st.init[vi] : {type:'NilLiteral'};
+                }
+              }else if(!topLevel && st && st.type==='AssignmentStatement'&&st.variables&&st.init&&st.variables.length===st.init.length){
+                // 多目标赋值逐位注册（v,w=e1,e2），分支守卫用 return（IIFE 内）——
+                // 不得 continue，否则会跳过句尾 scanStmts(st) 递归。
+                (function(){
+                  for(var ti=0; ti<st.variables.length; ti++){
+                    var tv=st.variables[ti];
+                    if(!tv||tv.type!=='Identifier'||isAliasName(tv.name))continue;
+                    var b2=varOf.get(tv);
+                    if(!b2||b2.decls.length!==1)continue;
+                    if(b2.captured)continue;                             // 闭包捕获 → 排除
+                    if((assignCount.get(b2)||0)!==1)continue;            // 仅恰好一次赋值
+                    if(autoLitByBinding.has(b2))continue;                // fwd-lit 占位已登记 → 让位
+                    var rhs=st.init[ti];
+                    if(!rhs || !movable(rhs))continue;
+                    var rd=readsOf(b2);
+                    if(rd.length!==1 || !rd[0].range || rd[0].range[0] < st.range[1])continue;
+                    var dl=declAnyLoc.get(b2);
+                    if(!dl)continue;
+                    if(dl.idx < (dl.stmt.init?dl.stmt.init.length:0))continue;   // 对齐槽（有实值）→ 让位
+                    // 刻意不登记：canonical 内部归一的赋值路径与管线中间形态交互
+                    // 会产生不对称（实测 11 处快照回退）；管线校验已由闸门的
+                    // 文本级 normPureCopyProp（全量规则）覆盖，此处保持禁用。
+                  }
+                })();
+              }
+              scanStmts(st, topLevel);
+            }
+            return;
+          }
+          for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) scanStmts(n[k], false); }
+        })(ast.body, true);
       })();
 
       // ---- 未使用纯局部归一（dead-pure-local elimination，标准形）----
@@ -666,6 +805,8 @@
             // foldDotAlias 的字面量替换（'Field' → u）引入了裸读形态。
             if(aliasLocalNames.has(b.name) && fieldOfAlias.hasOwnProperty(b.name))
               return {type:'StringLiteral', content:fieldOfAlias[b.name]};
+            // 单用纯表达式代入归一：读 w ≡ 读其纯表达式（消费时归一；foldInlinePure 验证基础）
+            if(autoPureRawByBinding.has(b)) return normExpr(autoPureRawByBinding.get(b));
             // 只读字面量别名：读 t ≡ 读其字面量（反向纠错验证基础）
             if(autoLitByBinding.has(b)) return autoLitByBinding.get(b);
             return {type:'Identifier', kind:'local', n: idFor(b, curVersion(b))};
@@ -852,7 +993,7 @@
             for(var ki=0;ki<st.variables.length;ki++){
               var kv=st.variables[ki];
               var kb=(kv.type==='Identifier' && varOf.has(kv)) ? varOf.get(kv) : null;
-              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb) || wrapperInline.has(kb));
+              var drop=kb && (autoTAByBinding.has(kb) || fwdNilBindings.has(kb) || aliasLocalBindings.has(kb) || autoLitByBinding.has(kb) || autoPureRawByBinding.has(kb) || deadPureBindings.has(kb) || wrapperInline.has(kb));
               if(!drop) keepIdx.push(ki);
             }
             if(keepIdx.length===0) return {type:'__DROP__'};
@@ -874,7 +1015,7 @@
             for(var ai=0; ai<st.variables.length; ai++){
               var rawV=st.variables[ai];
               var kb=(rawV.type==='Identifier' && varOf.has(rawV) && varOf.get(rawV)) ? varOf.get(rawV) : null;
-              if(kb && (autoTAByBinding.has(kb) || autoLitByBinding.has(kb) || deadPureBindings.has(kb) || aliasLocalBindings.has(kb))) continue;
+              if(kb && (autoTAByBinding.has(kb) || autoLitByBinding.has(kb) || autoPureRawByBinding.has(kb) || deadPureBindings.has(kb) || aliasLocalBindings.has(kb))) continue;
               keepRawVars.push(rawV);
               keepRawInits.push(st.init ? st.init[ai] : undefined);
             }

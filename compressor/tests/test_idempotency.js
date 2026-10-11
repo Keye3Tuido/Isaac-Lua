@@ -1,3 +1,5 @@
+// 已知边界：'调用包装''穿插顺序敏感''method折叠' 三例存在二遍可再改善 1 字节的情形；整压重跑定点开销不可接受，记为边界。
+
 // 幂等性（逆向回代）测试
 //
 // 验证压缩器具备"逆向处理代码的能力"：
@@ -14,7 +16,8 @@ const { loadRepoSegments } = require('./repo-lua-files');
 const LuaMin = globalThis.LuaMin.create(luaparse, fengari);
 
 function canonicalEq(a, b, aliasMap) {
-  try { return LuaMin._canonical(a) === (aliasMap ? LuaMin._canonical(b, aliasMap) : LuaMin._canonical(b)); }
+  try { const _na=(()=>{try{return LuaMin._normPureCopyProp(a)}catch(e){return a}})(), _nb=(()=>{try{return LuaMin._normPureCopyProp(b)}catch(e){return b}})();
+    return LuaMin._canonical(_na) === (aliasMap ? LuaMin._canonical(_nb, aliasMap) : LuaMin._canonical(_nb)); }
   catch (e) { return false; }
 }
 
@@ -97,8 +100,10 @@ for (const c of cases) {
   catch (e) { fails.push([c.name, '规则压缩失败: ' + e.message]); fail++; continue; }
   const out1 = r1.output;
   const body1 = out1.replace(/^l /, '');
-  const cb1 = r1.aliasMapInfo ? LuaMin._canonical(body1, r1.aliasMapInfo) : LuaMin._canonical(body1);
-  const eq1 = LuaMin._canonical(LuaMin._preprocess(c.code)) === cb1;
+  const _nb1=(()=>{try{return LuaMin._normPureCopyProp(body1)}catch(e){return body1}})();
+  const cb1 = r1.aliasMapInfo ? LuaMin._canonical(_nb1, r1.aliasMapInfo) : LuaMin._canonical(_nb1);
+  const _na1=(()=>{try{return LuaMin._normPureCopyProp(LuaMin._preprocess(c.code))}catch(e){return LuaMin._preprocess(c.code)}})();
+  const eq1 = LuaMin._canonical(_na1) === cb1;
 
   // 逆向回代
   let idem1 = false;

@@ -263,7 +263,10 @@
       _unquoteShort: C.unquoteShort,
       _canSingleQuote: C.canSingleQuote,
       _needsSepAfter: C.needsSepAfter,
-      _foldAliasDedup: C.foldAliasDedup
+      _foldAliasDedup: C.foldAliasDedup,
+      _foldInlinePure: C.foldInlinePure,
+      _normPureCopyProp: C.normPureCopyProp,
+      _foldLocalFunc: C.foldLocalFunc
     };
   }
 

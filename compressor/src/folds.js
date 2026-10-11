@@ -1838,6 +1838,10 @@
       var candidate=applyEdits(src, allEdits);
       if(candidate.length>=src.length) return null;
       // 真·Lua 语法 + canonical 等价（forward-nil 归一）
+      if(typeof process!=='undefined'&&process.env&&process.env.DHDBG && !canCommit(originalCode, candidate, priorAlias)){
+        require('fs').writeFileSync('_dh_orig.lua', originalCode);require('fs').writeFileSync('_dh_cand.lua', candidate);
+        require('fs').writeFileSync('_dh_alias.json', JSON.stringify({byName:(priorAlias&&priorAlias.byName)||{}, memberByLocal:(priorAlias&&priorAlias.memberByLocal)||{}, stringAliasByLocal:(priorAlias&&priorAlias.stringAliasByLocal)||{}, dropLeading:(priorAlias&&priorAlias.dropLeading)||0}));
+      }
       if(!canCommit(originalCode, candidate, priorAlias)) return null;
       assertParses(candidate, '阶段1.7b/语法', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, '阶段1.7b/等价', steps);
@@ -1984,6 +1988,270 @@
       assertParses(candidate, 'readonly-inline/syntax', steps);
       assertEquivalentAlias(originalCode, candidate, priorAlias, 'readonly-inline/等价', steps);
       if(rec) rec('只读内联(提交)', src.length, candidate.length, '内联并删除 '+edits.length+' 处负优化别名');
+      return {code:candidate, aliasMap:priorAlias};
+    }
+
+    // ---------- 纯表达式单用代入（提取的逆变换：按压缩率仲裁取短者） ----------
+    // 原则：提取（CSE）与代入（inline）互逆，两边各自带"只缩短才提交"闸门——
+    // 提取更短时提取 pass 成交，代入更短时本 pass 成交，天然形成按压缩率的互逆仲裁。
+    // 安全子集（保守）：
+    //  1. 局部变量声明一次（decls.length===1）、未被重新赋值、未被闭包捕获、恰好被读 1 次；
+    //  2. 值来源：声明即赋值（单变量单值 LocalStatement），或独立赋值语句（单目标的
+    //     AssignmentStatement，整条删除）；
+    //  3. RHS 可移动纯表达式：字面量、局部/参数标识符（varOf 解析为局部）、字段/索引访问、
+    //     二元/一元运算、纯表构造——不含任何调用（Call/StringCall/TableCall）、全局、变参；
+    //  4. 使用点在赋值之后（文本位置）；代入时一律加圆括号保持优先级。
+    // 只缩短才提交；批量构造 edits 后统一三重校验。
+    // ---------- 纯表达式单用代入（提取的逆变换：按压缩率仲裁取短者） ----------
+    // 原则：提取（CSE）与代入（inline）互逆，两边各自带"只缩短才提交"闸门——
+    // 提取更短时提取 pass 成交，代入更短时本 pass 成交，天然形成按压缩率的互逆仲裁。
+    // 安全子集（保守）：
+    //  1. 局部变量声明一次（decls.length===1）、未被重新赋值、恰好被读 1 次（闭包内也算）；
+    //  2. 值来源：声明即赋值（单变量单值 LocalStatement 槽位），或独立赋值语句（单目标）；
+    //     拆分形态下声明句里的 nil 填充槽联动删除（local p,w=f() 删成 local p=f()）；
+    //  3. RHS 可移动纯表达式：字面量、局部/参数标识符、字段/索引访问、二元/一元运算、纯表构造
+    //     ——不含任何调用、全局、变参；代入处一律加圆括号保优先级；
+    //  4. 使用点在赋值之后；候选间"使用点落在其他候选删除语句内"的冲突由被包含方让位。
+    // 等价验证：不改全局 canonical 语义，两侧先各自做纯代入归一（normPureCopyProp，
+    // 本 fold 自己的重写理论），再走严格 canonical——避免影响其他 fold 的校验收敛性。
+    function inlinePureAnalyze(src, aliasMap){
+      var ast; try{ ast=parse(src); }catch(e){ return null; }
+      var info=analyze(ast);
+      // 别名感知：与 canonical 相同的排除集合（byName/member/string/factor/prefix/chain/transparent）
+      var aliasB=new Set();
+      if(aliasMap){
+        ['byName','memberByLocal','stringAliasByLocal','prefixFoldByLocal','chainAliasByLocal','transparentAliases'].forEach(function(tbl){
+          var t=aliasMap[tbl];
+          if(t) for(var k in t) if(Object.prototype.hasOwnProperty.call(t,k)) aliasB.add(k);
+        });
+        (aliasMap.factorLocals||[]).forEach(function(n){ aliasB.add(n); });
+      }
+      function isAliasNm(nm){ return aliasB.has(nm); }
+      // binding → 以其为赋值目标的语句集合（区分"定义性赋值"与"重新赋值"）
+      var assignedStmts=new Map();
+      function markAssigned(node){
+        if(!node||typeof node!=='object')return;
+        if(Array.isArray(node)){for(var i=0;i<node.length;i++)markAssigned(node[i]);return;}
+        if(node.type==='AssignmentStatement'&&node.variables){
+          for(var i=0;i<node.variables.length;i++){
+            var t=node.variables[i];
+            if(t&&t.type==='Identifier'){
+              var bb=info.varOf.get(t);
+              if(bb){ if(!assignedStmts.has(bb)) assignedStmts.set(bb, new Set()); assignedStmts.get(bb).add(node); }
+            }
+          }
+        }
+        for(var k in node){if(k==='range'||k==='loc'||k==='parent'||k==='scope')continue;if(Object.prototype.hasOwnProperty.call(node,k))markAssigned(node[k]);}
+      }
+      markAssigned(ast.body);
+      // 可移动纯表达式：不含调用/全局/变参；标识符必须解析为局部
+      function movable(node){
+        if(!node||typeof node!=='object') return false;
+        switch(node.type){
+          case 'NumericLiteral': case 'StringLiteral': case 'BooleanLiteral': case 'NilLiteral': return true;
+          case 'Identifier': {
+            if(!(info.varOf.get(node)!==null && info.varOf.get(node)!==undefined)) return false;
+            if(!aliasB.has(node.name)) return true;
+            // 字符串值别名的读 ≡ 字符串字面量（与 canonical 归一同规则）
+            if(aliasMap && aliasMap.stringAliasByLocal && Object.prototype.hasOwnProperty.call(aliasMap.stringAliasByLocal, node.name)) return true;
+            if(aliasMap && aliasMap.memberByLocal && Object.prototype.hasOwnProperty.call(aliasMap.memberByLocal, node.name)) return true;
+            if(aliasMap && aliasMap.prefixFoldByLocal && Object.prototype.hasOwnProperty.call(aliasMap.prefixFoldByLocal, node.name)) return true;
+            if(aliasMap && (aliasMap.factorLocals||[]).indexOf(node.name)>=0) return true;
+            return false;
+          }
+          case 'UnaryExpression': return movable(node.argument);
+          case 'BinaryExpression': case 'LogicalExpression': return movable(node.left)&&movable(node.right);
+          case 'MemberExpression': return movable(node.base);   // identifier 是字段名，不求值
+          case 'IndexExpression': return movable(node.base)&&movable(node.index);
+          case 'TableConstructorExpression':
+            for(var i=0;i<node.fields.length;i++){
+              var f=node.fields[i];
+              if(f.type==='TableKey'){ if(!movable(f.key)||!movable(f.value)) return false; }
+              else if(f.type==='TableKeyString'||f.type==='TableValue'){ if(!movable(f.value)) return false; }
+            }
+            return true;
+          default: return false;
+        }
+      }
+      // declLoc: binding → {stmt, idx}（声明符所在 LocalStatement 槽位，变量与 init 对齐）。
+      // declAnyLoc: 同映射击到不对齐声明（init 长度单独记录，供 nil 填充槽联动删除）。
+      // 递归遍历所有块——控制台代码的局部几乎都藏在回调/函数体里，只扫顶层会整批漏掉。
+      var declLoc=new Map(), declAnyLoc=new Map();
+      (function scanDecl(n){
+        if(!n||typeof n!=='object')return;
+        if(Array.isArray(n)){
+          for(var i=0;i<n.length;i++){
+            var it=n[i];
+            if(it && it.type==='LocalStatement' && it.variables){
+              var aligned=it.init && it.variables.length===it.init.length;
+              for(var j=0;j<it.variables.length;j++){
+                var vb=it.variables[j];
+                if(vb && vb.type==='Identifier'){
+                  var bb=info.varOf.get(vb);
+                  if(bb){
+                    declAnyLoc.set(bb, {stmt:it, idx:j});
+                    if(aligned) declLoc.set(bb, {stmt:it, idx:j});
+                  }
+                }
+              }
+            }
+            scanDecl(it);
+          }
+          return;
+        }
+        for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) scanDecl(n[k]); }
+      })(ast.body);
+
+      var cands=[];
+      info.bindings.forEach(function(b){
+        if(b.decls.length!==1) return;
+        if(isAliasNm(b.name)) return;
+        var asg=assignedStmts.get(b);
+        var asgTarget=null, asgIdx=-1;
+        if(asg){
+          if(asg.size!==1) return;               // 多次赋值 → 保守跳过
+          var as=asg.values().next().value;
+          if(as.init.length!==as.variables.length) return;   // 目标与值须对位
+          for(var qi=0; qi<as.variables.length; qi++){
+            var qv=as.variables[qi];
+            if(qv && qv.type==='Identifier' && info.varOf.get(qv)===b){ asgIdx=qi; asgTarget=qv; break; }
+          }
+          if(!asgTarget) return;
+        }
+        // 读点 = uses 减去定义性赋值目标（analyze 把赋值目标也计入 uses）
+        var reads=b.uses.filter(function(u){ return u!==asgTarget; });
+        if(reads.length!==1) return;
+        var use=reads[0];
+        if(!use.range) return;
+        var valueNode=null, delStmt=null, delSlot=false, delIdx=-1;
+        if(asg){
+          // 拆分赋值形态：值来源是该目标在唯一赋值句里的对应值（多目标逐位）。
+          // 必须有 LocalStatement 声明（形参是压缩器的 scratch 惯用法，禁止代入）。
+          var as2=asg.values().next().value;
+          if(!declAnyLoc.get(b)) return;
+          valueNode=as2.init[asgIdx]; delStmt=as2;
+          delSlot=true; delIdx=asgIdx;   // 走槽位合并：从赋值句中成对删除该目标/值
+        }else{
+          // 声明即赋值形态：值来源是声明槽位的 init
+          var loc=declLoc.get(b);
+          if(!loc) return;
+          valueNode=loc.stmt.init[loc.idx]; delStmt=loc.stmt;
+          delSlot=loc.stmt.variables.length>1; delIdx=loc.idx;
+          // RHS 不得引用同语句其他变量（避免槽位删除后引用悬空/前向 nil 语义变化）
+          var refsOther=false;
+          (function scanRefs(n){
+            if(refsOther||!n||typeof n!=='object')return;
+            if(Array.isArray(n)){for(var i=0;i<n.length;i++)scanRefs(n[i]);return;}
+            if(n.type==='Identifier'){
+              var rb=info.varOf.get(n);
+              if(rb && rb!==b && delStmt.variables.some(function(v){return info.varOf.get(v)===rb;})) refsOther=true;
+              return;
+            }
+            for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) scanRefs(n[k]); }
+          })(valueNode);
+          if(refsOther) return;
+        }
+        if(!valueNode || !valueNode.range || !movable(valueNode)) return;
+        if(use.range[0] < delStmt.range[1]) return;  // 使用须在赋值之后
+        // 拆分赋值路径：声明句里的 w 槽（nil 填充）联动删除（如 local p,w=f() 删成 local p=f()）
+        var declDrop=null;
+        if(asg){
+          var dl=declAnyLoc.get(b);
+          if(dl && dl.stmt!==delStmt && dl.idx>=(dl.stmt.init?dl.stmt.init.length:0)){
+            declDrop=dl;   // 仅 nil 填充槽（idx 超出 init 列表）——删除不影响任何求值
+          }
+        }
+        cands.push({valueNode:valueNode, delStmt:delStmt, delSlot:delSlot, delIdx:delIdx, use:use, declDrop:declDrop});
+      });
+      // 候选间冲突：使用点落在其他候选删除语句内 → 被包含方让位
+      cands=cands.filter(function(c){
+        return !cands.some(function(o){
+          return o!==c && o.delStmt.range[0]<=c.use.range[0] && c.use.range[1]<=o.delStmt.range[1];
+        });
+      });
+      return {src:src, cands:cands};
+    }
+
+    function inlinePureEdits(ctx){
+      var src=ctx.src, cands=ctx.cands, edits=[];
+      // 同一声明句内的【所有】槽删除（delSlot 声明槽 + declDrop 联动槽）按句合并成对
+      // 重写，避免相邻槽位的删除区间相互重叠（applyEdits 重叠即抛"调用方 bug"）。
+      var slotGroups=new Map();   // stmt → Set(idx)
+      function addDrop(stmt, idx){
+        if(!slotGroups.has(stmt)) slotGroups.set(stmt, new Set());
+        slotGroups.get(stmt).add(idx);
+      }
+      cands.forEach(function(c){
+        if(c.delSlot) addDrop(c.delStmt, c.delIdx);
+        if(c.declDrop) addDrop(c.declDrop.stmt, c.declDrop.idx);   // 与 delSlot 独立（asg 候选两者皆有）
+      });
+      slotGroups.forEach(function(dropIdx, stmt){
+        var vv=stmt.variables, ii=stmt.init||[];
+        if(dropIdx.size>=vv.length){
+          // 全槽均为候选（init 纯且已代入使用点）→ 整条声明删除
+          edits.push({start:stmt.range[0], end:stmt.range[1], name:''});
+          return;
+        }
+        var newVars=[], newInits=[];
+        for(var k=0;k<vv.length;k++){
+          if(dropIdx.has(k)) continue;
+          newVars.push(src.slice(vv[k].range[0], vv[k].range[1]));
+          newInits.push(k<ii.length ? src.slice(ii[k].range[0], ii[k].range[1]) : null);  // null = nil 填充槽
+        }
+        // 尾部 nil 填充槽可省略（Lua 自动补 nil）；中间的必须显式 nil 以保持对位。
+        // 项目惯例（README §3.3）视不对齐尾部槽为 nil，与 fwd-lit 归一一致。
+        while(newInits.length && newInits[newInits.length-1]===null) newInits.pop();
+        edits.push({start:vv[0].range[0], end:vv[vv.length-1].range[1], name:newVars.join(',')});
+        if(ii.length){
+          var initTxt=newInits.map(function(v){ return v===null?'nil':v; }).join(',');
+          // 分隔守卫：原 init 若以符号收尾（如 }），替换值以字母收尾时，紧跟的关键字
+          // 会与之融合成非法 token——按 needsSepAfter 补空格。
+          var afterPos=ii[ii.length-1].range[1];
+          var nx2=(afterPos<src.length)?src[afterPos]:undefined;
+          if(initTxt && needsSepAfter(initTxt[initTxt.length-1], nx2)) initTxt+=' ';
+          edits.push({start:ii[0].range[0], end:afterPos, name:initTxt});
+        }
+      });
+      cands.forEach(function(c){
+        // 赋值句删除（declDrop 路径的赋值句；delSlot 路径无独立赋值句）
+        if(!c.delSlot) edits.push({start:c.delStmt.range[0], end:c.delStmt.range[1], name:''});
+        var rhsText=src.slice(c.valueNode.range[0], c.valueNode.range[1]);
+        var repl='('+rhsText+')';   // 代入一律加括号保优先级
+        var nx=(c.use.range[1]<src.length)?src[c.use.range[1]]:undefined;
+        if(needsSepAfter(')', nx)) repl+=' ';
+        edits.push({start:c.use.range[0], end:c.use.range[1], name:repl});
+      });
+      return edits;
+    }
+
+    // 纯代入归一：把"单用纯局部"重写理论应用到不动点（本 fold 专用等价验证的预处理）
+    function normPureCopyProp(src, aliasMap){
+      var cur=src;
+      for(var pass=0; pass<4; pass++){
+        var ctx=inlinePureAnalyze(cur, aliasMap);
+        if(!ctx || !ctx.cands.length) break;
+        var edits=inlinePureEdits(ctx);
+        if(!edits.length) break;
+        var nxt=applyEdits(cur, edits);
+        if(nxt===cur) break;
+        cur=nxt;
+      }
+      return cur;
+    }
+
+    function foldInlinePure(src, priorAlias, steps, rec, originalCode){
+      var ctx=inlinePureAnalyze(src, priorAlias);
+      if(!ctx || !ctx.cands.length) return null;
+      var edits=inlinePureEdits(ctx);
+      if(!edits.length) return null;
+      var candidate=applyEdits(src, edits);
+      if(candidate.length>=src.length) return null;
+      // 专用等价：两侧先各自做纯代入归一（别名感知），再走严格 canonical
+      var ok=false;
+      try{ ok = canonical(normPureCopyProp(originalCode, priorAlias), priorAlias)===canonical(normPureCopyProp(candidate, priorAlias), priorAlias); }catch(e){ ok=false; }
+      if(!ok) return null;
+      assertParses(candidate, 'inline-pure/syntax', steps);
+      if(rec) rec('纯表达式代入(提交)', src.length, candidate.length, '代入 '+edits.length/2+' 处');
       return {code:candidate, aliasMap:priorAlias};
     }
 
@@ -3408,7 +3676,7 @@
       return {code:candidate, aliasMap:priorAlias};
     }
 
-    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldAliasDedup=foldAliasDedup; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline; C.foldDotAlias=foldDotAlias;
+    C.preprocess=preprocess; C.foldMethods=foldMethods; C.foldFieldPrefix=foldFieldPrefix; C.foldStringLiterals=foldStringLiterals; C.foldStringFactors=foldStringFactors; C.foldAliasDedup=foldAliasDedup; C.foldInlinePure=foldInlinePure; C.normPureCopyProp=normPureCopyProp; C.foldBlockWrapper=foldBlockWrapper; C.foldCallSugar=foldCallSugar; C.splitMultiAssign=splitMultiAssign; C.isSplitSafe=isSplitSafe; C.foldLocals=foldLocals; C.foldReuse=foldReuse; C.foldDeclHoist=foldDeclHoist; C.foldIfNot=foldIfNot; C.foldBracketDot=foldBracketDot; C.foldReadonlyInline=foldReadonlyInline; C.foldConstant=foldConstant; C.foldConstCondition=foldConstCondition; C.foldConstLoop=foldConstLoop; C.foldEarlyReturn=foldEarlyReturn; C.foldDeMorgan=foldDeMorgan; C.foldTableFields=foldTableFields; C.foldBoolNil=foldBoolNil; C.foldNumbers=foldNumbers; C.foldParens=foldParens; C.foldCompareReorder=foldCompareReorder; C.foldLocalFunc=foldLocalFunc; C.foldMemberChain=foldMemberChain; C.foldTailSymbol=foldTailSymbol; C.foldMethodFactor=foldMethodFactor; C.foldMemberField=foldMemberField; C.foldGlobalViaG=foldGlobalViaG; C.foldFwdNilInline=foldFwdNilInline; C.foldDotAlias=foldDotAlias;
     // 共享基础设施（供测试/调试直接单测；生产中经各 fold 内部使用）
     C.extendAliasMap=extendAliasMap; C.bumpDrop=bumpDrop; C.clampDrop=clampDrop; C.canCommit=canCommit;
   }});

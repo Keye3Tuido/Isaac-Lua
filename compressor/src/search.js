@@ -58,7 +58,11 @@
 
     function canonicalEq(orig, cand, aliasMap) {
       try {
-        return canonical(orig) === (aliasMap ? canonical(cand, aliasMap) : canonical(cand));
+        // 与压缩管线同口径：先套"纯代入归一"（inlinePure 的默认启用使 canonical
+        // 内部归一生效，比较必须在同一归一宇宙内进行），异常时回退原文。
+        var no=orig, nc=cand;
+        try{ no=C.normPureCopyProp(orig, aliasMap||null); nc=C.normPureCopyProp(cand, aliasMap||null); }catch(e){ no=orig; nc=cand; }
+        return canonical(no) === (aliasMap ? canonical(nc, aliasMap) : canonical(nc));
       } catch (e) { return false; }
     }
 

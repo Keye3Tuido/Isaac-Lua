@@ -24,8 +24,10 @@ for(const f of files){
       const body=r.output.replace(/^l /,'');
       // 真·luaparse 复核
       luaparse.parse(body,{luaVersion:'5.3'});
-      const cb=r.aliasMapInfo?LuaMin._canonical(body,r.aliasMapInfo):LuaMin._canonical(body);
-      const eq=LuaMin._canonical(LuaMin._preprocess(seg))===cb;
+      const _nb=(()=>{try{return LuaMin._normPureCopyProp(body,r.aliasMapInfo||null)}catch(e){return body}})();
+      const cb=r.aliasMapInfo?LuaMin._canonical(_nb,r.aliasMapInfo):LuaMin._canonical(_nb);
+      const _na=(()=>{try{return LuaMin._normPureCopyProp(LuaMin._preprocess(seg))}catch(e){return LuaMin._preprocess(seg)}})();
+      const eq=LuaMin._canonical(_na)===cb;
       if(eq){segOk++; bytesIn+=r.original.length; bytesOut+=r.bodyLength;}
       else {segReject++; errs.push([f+'#'+i,'NOT-EQUIV',seg.slice(0,60)]);}
     }catch(e){

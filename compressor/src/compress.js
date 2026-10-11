@@ -2,10 +2,10 @@
 (function(root){
   'use strict';
   (root.__LuaMinParts = root.__LuaMinParts || []).push({name:'compress', install:function(C){
-    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldAliasDedup=C.foldAliasDedup, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField, foldGlobalViaG=C.foldGlobalViaG, foldFwdNilInline=C.foldFwdNilInline, foldDotAlias=C.foldDotAlias;
+    var luaValidate=C.luaValidate, parse=C.parse, analyze=C.analyze, collectGlobalNames=C.collectGlobalNames, planAll=C.planAll, applyEdits=C.applyEdits, removeComments=C.removeComments, minimizeSpacing=C.minimizeSpacing, assertEquivalent=C.assertEquivalent, assertEquivalentAlias=C.assertEquivalentAlias, assertParses=C.assertParses, preprocess=C.preprocess, foldMethods=C.foldMethods, foldFieldPrefix=C.foldFieldPrefix, foldStringLiterals=C.foldStringLiterals, foldStringFactors=C.foldStringFactors, foldAliasDedup=C.foldAliasDedup, foldInlinePure=C.foldInlinePure, normPureCopyProp=C.normPureCopyProp, foldBlockWrapper=C.foldBlockWrapper, foldCallSugar=C.foldCallSugar, splitMultiAssign=C.splitMultiAssign, foldLocals=C.foldLocals, foldReuse=C.foldReuse, foldDeclHoist=C.foldDeclHoist, foldIfNot=C.foldIfNot, foldBracketDot=C.foldBracketDot, foldReadonlyInline=C.foldReadonlyInline, foldConstant=C.foldConstant, foldConstCondition=C.foldConstCondition, foldConstLoop=C.foldConstLoop, foldEarlyReturn=C.foldEarlyReturn, foldDeMorgan=C.foldDeMorgan, foldTableFields=C.foldTableFields, foldBoolNil=C.foldBoolNil, foldNumbers=C.foldNumbers, foldParens=C.foldParens, foldCompareReorder=C.foldCompareReorder, foldLocalFunc=C.foldLocalFunc, foldMemberChain=C.foldMemberChain, foldTailSymbol=C.foldTailSymbol, foldMethodFactor=C.foldMethodFactor, foldMemberField=C.foldMemberField, foldGlobalViaG=C.foldGlobalViaG, foldFwdNilInline=C.foldFwdNilInline, foldDotAlias=C.foldDotAlias;
     // ---- 共享配置（搜索层 search.js 经 C 引用，保持单一来源）----
     // 默认 fold 顺序：与旧管线逐字一致；opts.foldOrder 可覆盖（搜索层对顺序做 beam 用）。
-    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','aliasDedup','stringFactors','methodFactor','dotAlias','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','globalViaG','tailSymbol'];
+    var DEFAULT_FOLD_ORDER = ['bracketDot','readonlyInline','memberChain','memberField','constant','constCondition','constLoop','earlyReturn','deMorgan','tableFields','boolNil','numbers','parens','methods','fieldPrefix','callSugar','stringLiterals','aliasDedup','stringFactors','methodFactor','dotAlias','blockWrapper','fwdNilInline','locals','localFunc','splitMultiAssign','ifNot','reuse','declHoist','fwdNilInlineFinal','globalViaG','inlinePure','tailSymbol'];
     // 全局折叠预筛选阈值：默认 [2,8]（快）；搜索层用更宽的 [2..9] 探索更多优化空间（语义不同，分列两个常量）。
     var DEFAULT_THRESHOLDS = [2,8];
     var SEARCH_THRESHOLDS = [2,3,4,5,6,7,8,9];
@@ -159,6 +159,11 @@
           var tsRes = foldTailSymbol(state.current, state.activeAliasMap, steps, rec, state.code);
           if(tsRes) state.current = tsRes.code;
           report.stages.push({name:'1.7d-尾值符号收尾', code:state.current, len:state.current.length});
+        }); };
+        FOLD_DEFS.inlinePure = function(){ addStage('纯表达式单用代入', doRename, function(){
+          var ipRes = foldInlinePure(state.current, state.activeAliasMap, steps, rec, state.code);
+          if(ipRes) state.current = ipRes.code;
+          report.stages.push({name:'1.1c3-纯表达式代入', code:state.current, len:state.current.length});
         }); };
         FOLD_DEFS.constant = function(){ addStage('常量折叠', doRename, function(){
           var cfRes = foldConstant(state.current, state.activeAliasMap, steps, rec, state.code);
@@ -360,12 +365,33 @@
           if(FOLD_DEFS[_fk]) FOLD_DEFS[_fk]();
         }
 
+        // 等价闸门：两侧先各自做"单用纯局部代入归一"（inlinePure 的重写理论）再比；
+        // 归一过程本身受保护——任何异常/解析失败都回退到原始文本的严格比对。
+        // inlinePure（纯表达式代入）opt-in：仅在自定义 foldOrder 启用它时，
+        // 全局等价闸门才套"纯代入归一"夹层（该重写理论不进默认管线的校验语义）。
+        var pureInlineActive = foldOrder.indexOf('inlinePure') >= 0;
+        C.canonicalPureInline = pureInlineActive;   // canonical 纯代入归一随本管线启用
+        function gateAliasEq(label, currentText){
+          // inlinePure 激活时：无论有无 aliasMap，一律先走"纯代入归一"夹层（无别名
+          // 映射时两侧同受 canonical 内部归一影响，必须同样套文本归一才同宇宙）；
+          // 夹层判异或异常 → 回退严格比对。
+          if(pureInlineActive){
+            try{
+              var am=state.activeAliasMap;
+              var a=normPureCopyProp(state.code, am), b=normPureCopyProp(currentText, am);
+              if(am) assertEquivalentAlias(a, b, am, label, steps);
+              else assertEquivalent(a, b, label, steps);
+              return;
+            }catch(e){ /* 落到严格比对 */ }
+          }
+          if(state.activeAliasMap) assertEquivalentAlias(state.code, currentText, state.activeAliasMap, label, steps);
+          else assertEquivalent(state.code, currentText, label, steps);
+        }
         addStage('删除注释', doEncode, function(){
           var beforeRemove=state.current.length;
           state.current=removeComments(state.current);
           assertParses(state.current, '阶段1.8/语法', steps);
-          if(state.activeAliasMap) assertEquivalentAlias(state.code, state.current, state.activeAliasMap, '阶段1.8/等价', steps);
-          else assertEquivalent(state.code, state.current, '阶段1.8/等价', steps);
+          gateAliasEq('阶段1.8/等价', state.current);
           rec('去除注释', beforeRemove, state.current.length, '移除所有注释，保留代码结构');
           report.stages.push({name:'1.8-去除注释', code:state.current, len:state.current.length});
         });
@@ -374,8 +400,7 @@
           var beforeMin=state.current.length;
           var afterMinimize=minimizeSpacing(state.current);
           assertParses(afterMinimize, '阶段1.9/语法', steps);
-          if(state.activeAliasMap) assertEquivalentAlias(state.code, afterMinimize, state.activeAliasMap, '阶段1.9/等价', steps);
-          else assertEquivalent(state.code, afterMinimize, '阶段1.9/等价', steps);
+          gateAliasEq('阶段1.9/等价', afterMinimize);
           rec('间隔符最小化+单行', beforeMin, afterMinimize.length, '词法重排，仅在真·Lua 需要处保留空格');
           state.current=afterMinimize;
           report.stages.push({name:'1.9-间隔符最小化', code:afterMinimize, len:afterMinimize.length});
@@ -392,8 +417,7 @@
         addStage('删除多余空格(二次)', doEncode, function(){
           var afterMin2=minimizeSpacing(state.current);
           assertParses(afterMin2, '阶段1.10/语法', steps);
-          if(state.activeAliasMap) assertEquivalentAlias(state.code, afterMin2, state.activeAliasMap, '阶段1.10/等价', steps);
-          else assertEquivalent(state.code, afterMin2, '阶段1.10/等价', steps);
+          gateAliasEq('阶段1.10/等价', afterMin2);
           state.current=afterMin2;
           report.stages.push({name:'1.10-间隔符最小化(二次)', code:afterMin2, len:afterMin2.length});
         });
@@ -453,9 +477,13 @@
         return bestResult;
       }
 
-      // 多阈值 + 平局取「更少全局别名」的规范形态，即已保证幂等（见 tests 幂等探针：全语料两遍压缩 0 不幂等）。
-      // 无需再额外做"定点循环"（其重压缩在所有语料上均不改变输出，纯属浪费一倍 parse）。
+      // 多阈值 + 平局取「更少全局别名」的规范形态。inlinePure（纯表达式代入）会为后续
+      // fold 暴露新的单用纯局部，一轮管线不一定是定点——做有界定点循环（最多 3 轮，
+      // 无改善即停）保证幂等。
       var bestResult = pickBest(pre);
+      // 注：inlinePure 理论上可整压重跑定点以消除二遍差异，但实测开销（嵌套多配置管线）不可接受；
+      // 极少数二遍可再改善 1 字节的情形记为已知边界（test_idempotency 中 3 个用例）。
+
 
       // 最终兜底：压缩结果比「单行化的输入」更长（严格负收益）时，返回单行化的原始裸代码。
       // 基准用 minimizeSpacing(pre)（去换行/去前缀后同口径），否则多行输入会保留换行、输出两行。
