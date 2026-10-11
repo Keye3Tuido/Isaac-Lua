@@ -371,13 +371,8 @@
             case 'BinaryExpression': case 'LogicalExpression': return movable(node.left)&&movable(node.right);
             case 'MemberExpression': return movable(node.base);
             case 'IndexExpression': return movable(node.base)&&movable(node.index);
-            case 'TableConstructorExpression':
-              for(var i=0;i<node.fields.length;i++){
-                var f=node.fields[i];
-                if(f.type==='TableKey'){ if(!movable(f.key)||!movable(f.value)) return false; }
-                else if(f.type==='TableKeyString'||f.type==='TableValue'){ if(!movable(f.value)) return false; }
-              }
-              return true;
+            // 表构造【刻意不可移动】：引用语义（对象身份/多次求值），代入会改变语义
+            case 'TableConstructorExpression': return false;
             default: return false;
           }
         }

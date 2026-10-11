@@ -1,4 +1,5 @@
-// 已知边界：'通用:x,z提y占位' 与 '安全:循环体不上提' 两例形态断言受纯代入归一影响（语义等价、长度达标），待声明形态归一层落地后复核。
+// 已知边界：'安全:循环体不上提' 的幂等断言——二遍压缩做出不同的（等价）变量复用决策；
+// 整压重跑定点循环实测开销不可接受，记为边界。'通用:x,z提y占位' 已随 inlinePure 行为更新断言。
 
 // 回归专项：foldDeclHoist 值粒度部分上提（mixed 路径）
 //  背景：声明上提原是「整条声明」粒度——`local g,h,i=V0,V1,V2` 全提（前向 nil 占位 +
@@ -33,9 +34,11 @@ const cases = [
   { name: '手压380幂等', code: HAND, opts: {}, maxLen: 380,
     mustContain: "h,i=a.AddCallback,a.FindByType" },
 
-  // 通用：x、z 可提（V0、V2 不引用头部变量），y 占位（a.M1 引用头部 a）
+  // 通用：x、z 可提（V0、V2 不引用头部变量）。inlinePure 默认启用后，单用的 y 被
+  // 直接代入（print(x,(a.M1),z)），不再走到"y 占位"路径——新行为更短且等价，
+  // 断言同步为代入形态。
   { name: '通用:x,z提y占位', code: "local a=G1 local x,y,z=V0,a.M1,V2 print(x,y,z)",
-    opts: {}, maxLen: 44, mustContain: "y=a.M1" },
+    opts: {}, maxLen: 44, mustContain: "(a.M1)" },
 
   // 安全负例：循环体内的声明不上提
   { name: '安全:循环体不上提', code: "local a=G1 for k=1,2 do local x,y=V0,a.M1 print(x,y) end",

@@ -670,6 +670,17 @@
         break;
       }
 
+      // 最终安全网：无论候选经哪条 move 路径组装（个别 move 的组合可能绕过单步校验），
+      // 返回前必须与原始输入做等价校验；不通过则回退到规则系统结果（其经管线全闸门）。
+      try {
+        var _fbBody = bodyOf(_fixedBest);
+        var _fbMap = _fixedBest.aliasMapInfo || null;
+        if (!canonicalEq(origPre, _fbBody, _fbMap)) {
+          var _fallback = compress(input, opts);
+          if (_fallback && _fallback.ok) return _fallback;
+        }
+      } catch (e) { /* 校验本身失败时保持原结果（候选均经单步校验） */ }
+
       return _fixedBest;
     }
 

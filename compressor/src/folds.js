@@ -2105,7 +2105,12 @@
       var cands=[];
       info.bindings.forEach(function(b){
         if(b.decls.length!==1) return;
-        if(isAliasNm(b.name)) return;
+        // 字符串值别名（string/member 别名局部）不跳过：单读时代入其【恢复后的字面量】，
+        // 与 canonical 的 detectLit 归一（715 行索引位点形式还原）收敛到同一范式——
+        // 消除"别名出处不同导致两遍代入判定不同"的幂等裂缝。其余别名（byName/
+        // transparent/chain/factor/prefix）维持排除。
+        var aliasVal=(aliasMap && ((aliasMap.stringAliasByLocal&&Object.prototype.hasOwnProperty.call(aliasMap.stringAliasByLocal,b.name)&&aliasMap.stringAliasByLocal[b.name])
+                                   ||(aliasMap.memberByLocal&&Object.prototype.hasOwnProperty.call(aliasMap.memberByLocal,b.name)&&aliasMap.memberByLocal[b.name])))||null;
         var asg=assignedStmts.get(b);
         var asgTarget=null, asgIdx=-1;
         if(asg){
@@ -2123,6 +2128,16 @@
         if(reads.length!==1) return;
         var use=reads[0];
         if(!use.range) return;
+        if(aliasVal!==null){
+          // 字符串值别名候选：代入【恢复后的字面量】（与 canonical 的 detectLit 归一
+          // 收敛同范式），声明槽经槽位合并删除。仅限单读。
+          var aloc=declLoc.get(b);
+          if(!aloc) return;
+          if(use.range[0] < aloc.stmt.range[1]) return;
+          var vt=canSingleQuote(aliasVal)?("'"+aliasVal+"'"):('"'+aliasVal+'"');
+          cands.push({valueNode:null, valueText:vt, delStmt:aloc.stmt, delSlot:true, delIdx:aloc.idx, use:use, declDrop:null});
+          return;
+        }
         var valueNode=null, delStmt=null, delSlot=false, delIdx=-1;
         if(asg){
           // 拆分赋值形态：值来源是该目标在唯一赋值句里的对应值（多目标逐位）。
@@ -2215,11 +2230,25 @@
       cands.forEach(function(c){
         // 赋值句删除（declDrop 路径的赋值句；delSlot 路径无独立赋值句）
         if(!c.delSlot) edits.push({start:c.delStmt.range[0], end:c.delStmt.range[1], name:''});
-        var rhsText=src.slice(c.valueNode.range[0], c.valueNode.range[1]);
+        var rhsText=c.valueText || src.slice(c.valueNode.range[0], c.valueNode.range[1]);
+        // 索引位使用点且值为标识符安全字符串 → 直接写成点访问（与 canonical 的
+        // detectLit 归一（715 行索引位还原 normAccess）收敛同范式，避免括号形态残留）
+        var bare=null;
+        var mQ=/^['"]([A-Za-z_][A-Za-z0-9_]*)['"]$/.exec(rhsText);
+        if(mQ) bare=mQ[1];
+        var u0=c.use.range[0], u1=c.use.range[1];
+        var bracketed=(u0>0 && src[u0-1]==='[' && u1<src.length && src[u1]===']');
+        if(bare && bracketed){
+          var dotRepl='.'+bare;
+          var nxD=(u1+1<src.length)?src[u1+1]:undefined;
+          if(needsSepAfter(bare[bare.length-1], nxD)) dotRepl+=' ';
+          edits.push({start:u0-1, end:u1+1, name:dotRepl});
+          return;
+        }
         var repl='('+rhsText+')';   // 代入一律加括号保优先级
-        var nx=(c.use.range[1]<src.length)?src[c.use.range[1]]:undefined;
+        var nx=(u1<src.length)?src[u1]:undefined;
         if(needsSepAfter(')', nx)) repl+=' ';
-        edits.push({start:c.use.range[0], end:c.use.range[1], name:repl});
+        edits.push({start:u0, end:u1, name:repl});
       });
       return edits;
     }

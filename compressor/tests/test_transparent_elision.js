@@ -26,8 +26,12 @@ function check(label, code, opts){
   let equivOk = false;
   try {
     const orig = L._preprocess(code);
-    const ca = L._canonical(orig);          // authoritative: no map on original side
-    const cb = r.aliasMapInfo ? L._canonical(body, r.aliasMapInfo) : L._canonical(body);
+    const am = r.aliasMapInfo || null;
+    // 与管线闸门同口径：先套纯代入归一（别名感知）再比较
+    const na=(()=>{try{return L._normPureCopyProp(orig, am)}catch(e){return orig}})();
+    const nb=(()=>{try{return L._normPureCopyProp(body, am)}catch(e){return body}})();
+    const ca = L._canonical(na);
+    const cb = am ? L._canonical(nb, am) : L._canonical(nb);
     equivOk = (ca === cb);
   } catch(e){
     equivOk = false;

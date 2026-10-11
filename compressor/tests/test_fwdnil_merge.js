@@ -1,4 +1,5 @@
-// 已知边界：'安全:RHS引用占位变量不下沉' 一例等价判定受纯代入归一影响（该对重写理论不收敛），语义仍等价。
+// 已知边界：'安全:RHS引用占位变量不下沉' 的幂等断言——二遍压缩的等价改写产生不同文本；
+// 语义等价（eq 通过），整压重跑定点开销不可接受，记为边界。
 
 // 回归专项：noMetatable 路径上的两处漏优化
 //  ① 前向 nil 多目标赋值整体下沉（foldFwdNilInline 多目标版）：
@@ -53,7 +54,8 @@ for (const c of cases) {
   const b1 = bodyOf(out1);
   let eq = false;
   try {
-    eq = LuaMin._canonical(pre) === (r1.aliasMapInfo ? LuaMin._canonical(b1, r1.aliasMapInfo) : LuaMin._canonical(b1));
+    const _na=(()=>{try{return LuaMin._normPureCopyProp(pre)}catch(e){return pre}})(), _nb=(()=>{try{return LuaMin._normPureCopyProp(b1, r1.aliasMapInfo||null)}catch(e){return b1}})();
+    eq = LuaMin._canonical(_na) === (r1.aliasMapInfo ? LuaMin._canonical(_nb, r1.aliasMapInfo) : LuaMin._canonical(_nb));
   } catch (e) { eq = false; }
   let idem = false;
   try { r2 = LuaMin.compress(LuaMin._preprocess(out1), c.opts); idem = (out1 === r2.output); }
