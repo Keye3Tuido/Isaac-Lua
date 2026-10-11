@@ -936,9 +936,10 @@ def _validate_deps(e, registry):
 
 
 def _inject_framework(entries):
-    """框架注入：每个挑战文件注入框架前置块（深拷贝），并在后置块后追加框架的
-    random-string 引用块。挑战文件无分隔线后无法自写前置区，注入无条件进行。
-    注入后对所有带 region 的条目统一分配编号。"""
+    """框架注入：每个挑战文件注入框架前置块（深拷贝）与框架后置自定义块
+    （非模板引用、非模板定义的后置块，如"展示清理代码的提示文字"，深拷贝），
+    并在后置块后追加框架的 random-string 引用块。挑战文件无分隔线后无法自写前置区，
+    注入无条件进行。注入后对所有带 region 的条目统一分配编号。"""
     framework = next((e for e in entries
                       if not e["isChallenge"] and e["fname"] == FRAMEWORK_FNAME), None)
     challenges = [e for e in entries if e["isChallenge"]]
@@ -949,6 +950,11 @@ def _inject_framework(entries):
             f"错误：挑战文件需要框架前置块，但未找到框架文件 lua/utils/{FRAMEWORK_FNAME}。"
         )
     fw_pre = [b for b in framework["blocks"] if b.get("region") == "pre"]
+    # 框架后置自定义块：随每个挑战注入其后置区（重开块之后、random-string 引用之前）
+    fw_post = [b for b in framework["blocks"]
+               if b.get("region") == "post"
+               and b["meta"].get("模板") is None
+               and not b["meta"].get("作为模板")]
     fw_random = next((b for b in framework["blocks"]
                       if b.get("region") == "post"
                       and str(b["meta"].get("模板")) == RANDOM_STRING_TPL), None)
@@ -959,7 +965,8 @@ def _inject_framework(entries):
             f"错误：框架文件 {FRAMEWORK_FNAME} 的后置区缺少 {RANDOM_STRING_TPL} 引用块。"
         )
     for e in challenges:
-        e["blocks"] = copy.deepcopy(fw_pre) + e["blocks"] + [copy.deepcopy(fw_random)]
+        e["blocks"] = (copy.deepcopy(fw_pre) + e["blocks"]
+                       + copy.deepcopy(fw_post) + [copy.deepcopy(fw_random)])
     for e in entries:
         if any(b.get("region") for b in e["blocks"]):
             _number_blocks(e["blocks"])

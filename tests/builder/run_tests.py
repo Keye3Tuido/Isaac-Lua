@@ -253,7 +253,8 @@ class TestKbEntries(unittest.TestCase):
 
 
 class TestFrameworkInjection(unittest.TestCase):
-    """框架注入（无条件）：每个挑战文件注入框架前置块（深拷贝），
+    """框架注入（无条件）：每个挑战文件注入框架前置块（深拷贝）与框架后置自定义块
+    （非模板引用、非模板定义，深拷贝，位于重开块之后、random-string 引用之前），
     后置块后追加框架的 random-string 引用块；挑战文件不能自写前置区。"""
 
     @classmethod
@@ -263,11 +264,12 @@ class TestFrameworkInjection(unittest.TestCase):
         cls.fw = next(e for e in cls.entries if e["fname"] == G.FRAMEWORK_FNAME)
 
     def test_injected_numbering_and_regions(self):
-        # 注入前置 2 块（0、I），正文 1，文件自带重开 II，追加的 random-string III
+        # 注入前置 2 块（0、I），正文 1，文件自带重开 II，
+        # 框架后置自定义块"框架重开" III，追加的 random-string IV
         self.assertEqual([b["num"] for b in self.ch["blocks"]],
-                         ["0", "I", "1", "II", "III"])
+                         ["0", "I", "1", "II", "III", "IV"])
         self.assertEqual([b["region"] for b in self.ch["blocks"]],
-                         ["pre", "pre", "body", "post", "post"])
+                         ["pre", "pre", "body", "post", "post", "post"])
 
     def test_injected_pre_blocks_expanded(self):
         b0, b1 = self.ch["blocks"][:2]
@@ -276,11 +278,24 @@ class TestFrameworkInjection(unittest.TestCase):
         self.assertEqual(b1["comment"], "框架前置乙。")
         self.assertEqual(b1["final_code"], "print(FA)")
 
+    def test_injected_post_custom_block(self):
+        # 框架后置自定义块（非模板引用、非模板定义）注入重开块之后、random-string 之前
+        b = self.ch["blocks"][4]
+        self.assertEqual(b["num"], "III")
+        self.assertEqual(b["region"], "post")
+        self.assertEqual(b["comment"], "框架重开。")
+        self.assertEqual(b["final_code"], 'print("restart")')
+
     def test_injected_blocks_are_deep_copies(self):
         # 深拷贝：注入块与框架条目的块不是同一对象，互不影响
         fw_pre = [b for b in self.fw["blocks"] if b["region"] == "pre"]
         self.assertIsNot(self.ch["blocks"][0]["meta"], fw_pre[0]["meta"])
         self.assertIsNot(self.ch["blocks"][0], fw_pre[0])
+        fw_post_custom = [b for b in self.fw["blocks"]
+                          if b.get("region") == "post"
+                          and b["meta"].get("模板") is None
+                          and not b["meta"].get("作为模板")]
+        self.assertIsNot(self.ch["blocks"][4], fw_post_custom[0])
 
     def test_injected_deps_and_names(self):
         # 注入块内部的 名称/依赖 关系照常校验与输出
@@ -292,7 +307,7 @@ class TestFrameworkInjection(unittest.TestCase):
     def test_random_string_block_appended(self):
         b = self.ch["blocks"][-1]
         self.assertEqual(b["region"], "post")
-        self.assertEqual(b["num"], "III")
+        self.assertEqual(b["num"], "IV")
         self.assertEqual(b["tpl"], "random-string-output")
         self.assertEqual(b["comment"], "输出随机字符串。")
         self.assertEqual(b["final_code"],
@@ -311,18 +326,20 @@ class TestFrameworkInjection(unittest.TestCase):
         kb = G.build_kb_entries(self.entries, self.registry)
         ch = next(e for e in kb if e["fname"] == "1.空前置.lua")
         self.assertEqual([b["num"] for b in ch["blocks"]],
-                         ["0", "I", "1", "II", "III"])
+                         ["0", "I", "1", "II", "III", "IV"])
         last = ch["blocks"][-1]
         self.assertEqual(last["tpl"], "random-string-output")
         self.assertEqual(last["code"],
                          "Isaac.ConsoleOutput(tostring({}):match('%w%w%w%w$'))")
-        # 组装文本末尾：重开行 → random 行 → --.（块间空行不计）
+        # 组装文本末尾：自带重开行 → 框架后置自定义行 → random 行 → --.（块间空行不计）
         tail = [l for l in ch["code"].split("\n") if l.strip()]
         self.assertEqual(tail[-1], "--.")
         self.assertEqual(tail[-2],
                          "l Isaac.ConsoleOutput(tostring({}):match('%w%w%w%w$'))")
-        self.assertEqual(tail[-3], "--III. 输出随机字符串。")
+        self.assertEqual(tail[-3], "--IV. 输出随机字符串。")
         self.assertEqual(tail[-4], "l print(\"restart\")")
+        self.assertEqual(tail[-5], "--III. 框架重开。")
+        self.assertEqual(tail[-6], "l print(\"restart\")")
 
 
 class TestErrors(unittest.TestCase):

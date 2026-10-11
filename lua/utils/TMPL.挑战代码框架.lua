@@ -39,12 +39,6 @@ l MEC()
 l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding,CLM,MEC,DEMEC,_MEC,GetZhFont,DecBase92,EncRaw=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
 
 --[[
-说明: 展示清理代码的提示文字
-依赖: [清理代码, 获取中文字体, Base92编解码]
-]]
-l local a,T,F,S=Isaac,0,GetZhFont(),DecBase92"%XK]&7B!N`.@37lx)cqxL)d,U-W~<kD@-$`^C78z>XcZG8@-&p&X9,;gWi)e_MylgB@HyBmWhX&xHVIq?Aq33w"a.AddCallback({},ModCallbacks.MC_POST_RENDER,function(t)t=a.GetFrameCount()if Game():IsPaused()then if t-T>59 then F:DrawStringUTF8(S,a.GetScreenWidth()/2-F:GetStringWidthUTF8(S)/2,a.GetScreenHeight()/8,KColor.Cyan)end else T=t end end)
-
---[[
 模板: lock-achievements
 ]]
 
@@ -86,6 +80,12 @@ l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,
   P1: {类型: "全局名列表", 默认: "", 性质: 局部, 说明: "形如 'a', 'b' 的 Lua 字符串字面量序列"}
 ]]
 l _CodeEnding={P1}
+
+--[[
+说明: 展示清理代码的提示文字
+依赖: [清理代码, 获取中文字体, Base92编解码]
+]]
+l local a,T,F,S=Isaac,0,GetZhFont(),DecBase92"%XK]&7B!N`.@37lx)cqxL)d,U-W~<kD@-$`^C78z>XcZG8@-&p&X9,;gWi)e_MylgB@HyBmWhX&xHVIq?Aq33w"a.AddCallback({},ModCallbacks.MC_POST_RENDER,function(t)t=a.GetFrameCount()if Game():IsPaused()then if t-T>59 then F:DrawStringUTF8(S,a.GetScreenWidth()/2-F:GetStringWidthUTF8(S)/2,a.GetScreenHeight()/8,KColor.Cyan)end else T=t end end)
 
 --[[
 模板: random-string-output
