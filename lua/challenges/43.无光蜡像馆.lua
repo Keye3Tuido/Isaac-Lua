@@ -24,7 +24,7 @@ l local d,b,c,M=Isaac,Vector,math,ModCallbacks local A,P=d.AddCallback,MakePixel
 说明: 主角色锥形视野内的实体冻结
 依赖: [夜灯光锥方向模拟]
 ]]
-l local a=Isaac a.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(p,v)p=a.GetPlayer()v=GetNightLightDirection(p)for _,e in ipairs(a.GetRoomEntities())do if e:ToNPC()and e.Type~=EntityType.ENTITY_PLAYER then if(3^.5)/2<=(e.Position-p.Position):Normalized():Dot(v)then e:AddFreeze(EntityRef(p),1)end end end end)
+l local a=Isaac a.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(p,v)p=a.GetPlayer()v=GetNightLightDirection(p)for _,e in ipairs(a.GetRoomEntities())do if e:ToNPC()then if(3^.5)/2<=(e.Position-p.Position):Normalized():Dot(v)then e:AddFreeze(EntityRef(p),1)end end end end)
 
 --[[
 模板: restart-game
