@@ -98,5 +98,35 @@ run('NEG 多目标赋值不代入',
   "l local p,w=Isaac.GetPlayer(0),e.Position-p.Position print(w:Normalized())",
   function(body){ return body.indexOf('w=Isaac.GetPlayer(0),e.Position-p.Position') >= 0; });
 
+
+// ---------- NEG 支配/作用域（2026-10-13 事故回归）----------
+// 赋值句在 if/for 体内、使用点在外部：赋值可能未执行（控制流跳过），且 RHS 局部在
+// 块外不可见。旧实现只做"文本在后"检查，代入后产出运行期即炸的代码（global 'P'/'t'）。
+// 修复：赋值形态要求赋值句与使用点在同一块语句列中且赋值在前（sameBlkBefore）。
+function execLua(body){
+  const L2 = f.lauxlib.luaL_newstate();
+  f.lualib.luaL_openlibs(L2);
+  const st = f.lauxlib.luaL_dostring(L2, f.to_luastring(body.replace(/\.0/g, '0.0')));
+  return st === f.lua.LUA_OK ? String(f.lua.lua_tonumber(L2, -1)) : 'ERR:' + f.lua.lua_tojsstring(L2, -1).slice(0, 60);
+}
+(function(){
+  const src = "local function f(k,g) local ls=0 for a=1,k do local P=a*2 if g<=P then break end ls=P+1 end return ls end return f(5,7)+f(0,1)";
+  const r = L.compress(src, { noMetatable: false, beamWidth: 4 });
+  const body = r.output.replace(/^l /, '');
+  const got = execLua(body);
+  const ok = got === '7';
+  if (ok) { pass++; console.log('✓ NEG 循环支配不代入 ->', body.length, '字, 执行=', got); }
+  else { fail++; console.log('✗ NEG 循环支配不代入 -> 执行=', got, '|', body); }
+})();
+(function(){
+  const src = "local function f(p,pal) local r=0 if p>0 then local t=pal[p] r=t[1] end return r end return f(1,{{42}})+f(0,{{7}})";
+  const r = L.compress(src, { noMetatable: false, beamWidth: 4 });
+  const body = r.output.replace(/^l /, '');
+  const got = execLua(body);
+  const ok = got === '42';
+  if (ok) { pass++; console.log('✓ NEG if支配不代入 ->', body.length, '字, 执行=', got); }
+  else { fail++; console.log('✗ NEG if支配不代入 -> 执行=', got, '|', body); }
+})();
+
 console.log('\n=== inline-pure: ' + pass + ' pass, ' + fail + ' fail ===');
 process.exit(fail ? 1 : 0);

@@ -2017,6 +2017,34 @@
     function inlinePureAnalyze(src, aliasMap){
       var ast; try{ ast=parse(src); }catch(e){ return null; }
       var info=analyze(ast);
+      // 语句 → 所属块语句列（内层块覆盖外层标记）。用于支配/作用域检查：
+      // 赋值句形态的代入要求赋值句与使用点【同块且文本在前】——否则赋值可能
+      // 未执行（if/for 体跳过），且 RHS 局部在块外不可见（2026-10-13 运行期炸码事故）。
+      var blkOf=(function(){
+        var m=new Map();
+        function tagTree(n, blk){
+          if(!n||typeof n!=='object')return;
+          if(Array.isArray(n)){for(var i=0;i<n.length;i++)tagTree(n[i],blk);return;}
+          m.set(n, blk);
+          for(var k in n){
+            if(k==='range'||k==='loc'||k==='comments'||k==='body'||k==='clauses')continue;
+            var c=n[k];
+            if(c&&typeof c==='object') tagTree(c, blk);
+          }
+          if(Array.isArray(n.body)) blockOfList(n.body);
+          if(n.clauses){ for(var j=0;j<n.clauses.length;j++){
+            if(n.clauses[j].condition) tagTree(n.clauses[j].condition, blk);
+            if(Array.isArray(n.clauses[j].body)) blockOfList(n.clauses[j].body);
+          } }
+        }
+        function blockOfList(list){ for(var i=0;i<list.length;i++) tagTree(list[i], list); }
+        blockOfList(ast.body);
+        return m;
+      })();
+      function sameBlkBefore(a, b){
+        var la=blkOf.get(a), lb=blkOf.get(b);
+        return la!=null && la===lb && a.range[0] < b.range[0];
+      }
       // 别名感知：与 canonical 相同的排除集合（byName/member/string/factor/prefix/chain/transparent）
       var aliasB=new Set();
       if(aliasMap){
@@ -2144,6 +2172,7 @@
           // 必须有 LocalStatement 声明（形参是压缩器的 scratch 惯用法，禁止代入）。
           var as2=asg.values().next().value;
           if(!declAnyLoc.get(b)) return;
+          if(!sameBlkBefore(as2, use)) return;   // 支配+作用域：赋值句与使用点须同块且在前
           valueNode=as2.init[asgIdx]; delStmt=as2;
           delSlot=true; delIdx=asgIdx;   // 走槽位合并：从赋值句中成对删除该目标/值
         }else{
