@@ -301,7 +301,6 @@
         closeBtn.textContent = '×';
         closeBtn.onclick = function () {
             el.style.display = 'none';
-            try { sessionStorage.setItem('scriptPanel.visible', '0'); } catch (e) { /* 忽略 */ }
         };
         head.append(title, closeBtn);
         var bar = document.createElement('div');
@@ -353,12 +352,8 @@
             panel.body.appendChild(pane);
             panel.tabs[id] = { btn: btn, pane: pane };
         }
-        try {
-            sessionStorage.setItem('scriptPanel.tools', JSON.stringify(Object.keys(panel.tabs)));
-        } catch (e) { /* 忽略 */ }
         if (panel.el.style.display === 'none') {
             panel.el.style.display = 'block';
-            try { sessionStorage.setItem('scriptPanel.visible', '1'); } catch (e) { /* 忽略 */ }
             if (!panel.el.style.left) {
                 panel.el.style.left = Math.max(8, window.innerWidth - panel.el.offsetWidth - 24) + 'px';
                 panel.el.style.top = '72px';
@@ -376,11 +371,6 @@
 
     window.SCRIPT_TOOLBOX = { open: open, runTool: runTool };
 
-    // 页面重载后恢复已打开的工具页签与显隐状态（表单值与文件不恢复）
-    try {
-        var saved = JSON.parse(sessionStorage.getItem('scriptPanel.tools') || '[]');
-        var wantHidden = sessionStorage.getItem('scriptPanel.visible') === '0';
-        saved.forEach(function (id) { if (specOf(id)) open(id); });
-        if (saved.length && wantHidden) panel.el.style.display = 'none';
-    } catch (e) { /* 忽略 */ }
+    // 不自动恢复：面板显隐与页签只存活于当前页面会话，整页重载（含自动刷新）
+    // 与跨标签页都不再重新弹窗；表单输入/输出仍由 scriptPanel.state.* 持久化。
 })();
