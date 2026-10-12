@@ -980,7 +980,7 @@ _LUA_STRIP_STR_RE = re.compile(r"'[^'\n]*'|\"[^\"\n]*\"")
 _LUA_LOCAL_RE = re.compile(r"\blocal\s+(?!function\b)([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)")
 _LUA_LOCALFN_RE = re.compile(r"\blocal\s+function\s+([A-Za-z_]\w*)")
 _LUA_FOR_RE = re.compile(r"\bfor\s+([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*(?:=|in\b)")
-_LUA_PARAM_RE = re.compile(r"\bfunction\s*\(([^)]*)\)")
+_LUA_PARAM_RE = re.compile(r"\bfunction\s*(?:[A-Za-z_]\w*\s*)?\(([^)]*)\)")
 _LUA_ASSIGN_RE = re.compile(r"(?<![\w.:])([A-Za-z_]\w*)\s*=[^=~<>]")
 # 多重赋值目标链：A,B,C=…（链首不得 preceded by =({, —— 那是 local/调用的初始化值列表）
 _LUA_CHAIN_RE = re.compile(
@@ -1042,19 +1042,22 @@ def _find_created_globals(code):
 
 
 def _auto_clean_globals(e, registry):
-    """挑战文件：自动扫描正文（body，模板展开后）代码中创建的全局变量；
-    有则自动生成 clean-globals 尾置块（依赖各来源块，并含模板定义处的依赖并集），
-    插入重开块之后、random-string 引用之前；无全局变量则不添加，无需手写。
-    挑战文件已手写 clean-globals 引用时尊重手写（不重复添加）。"""
+    """挑战文件：自动扫描前置（pre，框架注入）与正文（body，均模板展开后）代码中
+    创建的全局变量，一起加入生成的 clean-globals 尾置块（依赖各来源块，并含模板
+    定义处的依赖并集），插入重开块之后、random-string 引用之前；无全局变量则不
+    添加，无需手写。前置代码自己只负责释放 _CodeEnding 表本身，其全局变量由
+    本块统一登记。挑战文件已手写 clean-globals 引用时尊重手写（不重复添加）。"""
     if not e["isChallenge"] or "clean-globals" not in registry:
         return
     if any(str(b["meta"].get("模板")) == "clean-globals" for b in e["blocks"]):
         return
     found = []  # [(name, source_block)]，按出现顺序去重
     for b in e["blocks"]:
-        if b.get("region") != "body" or not b.get("final_code"):
+        if b.get("region") not in ("pre", "body") or not b.get("final_code"):
             continue
         for name in _find_created_globals(b["final_code"]):
+            if name == "_CodeEnding":
+                continue  # 清理入口自身：由前置代码在循环结束后自行释放
             if all(n != name for n, _ in found):
                 found.append((name, b))
     if not found:

@@ -36,7 +36,7 @@ l MEC()
 名称: 清理代码
 依赖: [安全包装, 清理回调]
 ]]
-l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding,CLM,MEC,DEMEC,_MEC,GetZhFont,DecBase92,EncRaw=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
+l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
 
 --[[
 模板: lock-achievements
