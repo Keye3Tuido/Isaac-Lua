@@ -314,297 +314,162 @@ l local a,P,Q,R=Vector,MakePixel()function DrawQR(q,p,s)s=s or 1 local n,z=#q,R 
 名称: 彩色图像素迭代器
 内嵌脚本: [png2base92]
 说明: |-
-  PixelMap(s) 把彩色图压缩串解码为像素迭代器，每次返回 ox, oy, Color(r,g,b,a)。
-  输入 s：彩色图编码串（头部自带调色板与宽高）。
-  输出：ox/oy 为 0 起 x/y 偏移，按行优先顺序迭代；c 为 Color 克隆对象（r/g/b/a 均 0..1），
-  调色板信息含在压缩串内，本块只解码不编码，不暴露其他全局。
+  PixelMap(s) 把彩色图编码串解码为像素迭代器，每次返回 ox, oy, Color(r,g,b,a)。
+  输入 s：彩色图编码串（v3：首字节 alpha 标志 0/1，调色板按频率降序内嵌串内，
+  索引面为左邻上下文自适应算术码流；标志 1 时附原始 alpha 字节，索引面置于串尾）。
+  不支持旧版编码串。
+  输出：ox/oy 为 0 起 x/y 偏移，按行优先顺序迭代；c 为 Color 克隆对象（r/g/b/a 均 0..1）。
+  本块只解码不编码，自包含、不依赖其他代码块，不暴露其他全局。
 ]]
-l local J,K,O,e,u,C,l,o='payload truncated','alpha truncated','data too short',string.byte,string.sub,math.floor,2^31,2^30 local function t(v)return type(v)=='number'and v>0 and 1 or 0 end local function z(s,a)local n,q,m,b,c,d,k=#s if a+1>n then return nil,O end q=e(s,a)a=a+1 local w,h if q==255 then if a+3>n then return nil,O end w=e(s,a)*256+e(s,a+1)h=e(s,a+2)*256+e(s,a+3)a=a+4 else w,h=q,e(s,a)a=a+1 end m={}for x=1,w do m[x]={}end if w==0 or h==0 then return m,a end if a>n then return nil,"missing payload"end local g,r,j=a,e(s,a),0 local function v()j=j+1 if j>8 then j=1 g=g+1 r=g<=n and e(s,g)or 0 end return(r>>(8-j))&1 end b,c,d=.0,(2^32-1),.0 for _=1,32 do d=d*2.0+v()end k={}for i=0,7 do k[i]=32768 end for y=1,h do for x=1,w do local A=t((x>1 and m[x-1][y]or 0))*4+t((y>1 and m[x][y-1]or 0))*2+t((x>1 and y>1 and m[x-1][y-1]or 0))local f=k[A]local i,p=b+C((c-b+1.0)*f/65536.0)if d<i then p=0 c=i-1.0 f=f+((65536-f)>>5)else p=1 b=i f=f-(f>>5)end k[A]=f m[x][y]=p while 1 do if c<l then elseif b>=l then b=b-l c=c-l d=d-l elseif b>=o and c<(3*2^30)then b=b-o c=c-o d=d-o else break end b=b*2.0 c=c*2.0+1.0 d=d*2.0+v()end end end return m,g+1 end local function F(a,i)if i==0 then return 0,0,0 end local c=a.rgb[i]return c[1],c[2],c[3]end local function G(s)local n,j,H,A,N,q,B,m,f=#s if n<6 then return nil,O end if 0xCC~=e(s,1)then return nil,"not a color codec stream"end j=e(s,2)if j>2 then return nil,"bad mode"end local d,r=3 H=e(s,d)d=d+1 if H==0xFF then local a,b=e(s,d)d=d+1 if not a or a<1 or n<d+a*3-1 then return nil,"palette truncated"end b={}for i=1,a do b[i]={e(s,d),e(s,d+1),e(s,d+2)}d=d+3 end r={rgb=b,size=a}else return nil,"bad palette"end A=e(s,d)d=d+1 local w,h if A==0xFF then if n<d+3 then return nil,"dims truncated"end w=e(s,d)*256+e(s,d+1)h=e(s,d+2)*256+e(s,d+3)d=d+4 else w,h=A,e(s,d)d=d+1 end if not h or w<1 or h<1 then return nil,"bad dims"end N=r.size local g=1 while(1<<g)<(j==0 and N or N+1)do g=g+1 end q=e(s,d)d=d+1 B,m=g<=8 and 1 or 2,{}for x=1,w do m[x]={}end f={}if q&8~=0 then if d>n then return nil,J end local M=e(s,d)d=d+1 if M>N then return nil,"bad plane count"end if n<d+M-1 then return nil,J end local c={}for i=1,M do c[i]=e(s,d)d=d+1 end for _=1,w*h do f[#f+1]=0 end for i=1,M do if d+1>n then return nil,J end local a=e(s,d)*256+e(s,d+1)d=d+2 if a<1 or n<d+a-1 then return nil,J end local p,v=z(u(s,d,d+a-1),1)if not p then return nil,v end d=d+a local b=c[i]if j==0 then b=b-1 end for k=1,w*h do if 1==p[(k-1)%w+1][(k-1)//w+1]then f[k]=b end end end elseif q&4~=0 then local c,a=w*h,0 while a<c do if d+B>n then return nil,J end local b,v=e(s,d)if B==1 then v=e(s,d+1)d=d+2 else v=e(s,d+1)|(e(s,d+2)<<8)d=d+3 end if b<1 or a+b>c then return nil,"bad index rle"end for _=1,b do a=a+1 f[a]=v end end else if(n-d+1)*8<w*h*g then return nil,J end local b,a=0,0 local function c()while a<g do if d>n then return nil end b=(b<<8)|e(s,d)d=d+1 a=a+8 end a=a-g b=b&((1<<a)-1)return(b>>a)end for _=1,w*h do local v=c()if v==nil then return nil,J end f[#f+1]=v end end for k=1,w*h do local c=j==0 and(f[k]+1)or f[k]m[(k-1)%w+1][(k-1)//w+1]={c=c,a=j==2 and 0 or(c==0 and 0 or 255)}end if j==2 then if q&16~=0 then for b=0,7 do if d+1>n then return nil,K end local a=e(s,d)*256+e(s,d+1)d=d+2 if a<1 or n<d+a-1 then return nil,K end local c,i=z(u(s,d,d+a-1),1)if not c then return nil,i end d=d+a for k=1,w*h do if 1==c[(k-1)%w+1][(k-1)//w+1]then local p=m[(k-1)%w+1][(k-1)//w+1]p.a=p.a|(1<<b)end end end else local i=q&3 if i==2 then if n-d+1<w*h then return nil,K end for y=1,h do for x=1,w do m[x][y].a=e(s,d)d=d+1 end end elseif i==1 then local k,b=w*h,0 while b<k do if d+1>n then return nil,K end local c,a=e(s,d),e(s,d+1)d=d+2 if c<1 or b+c>k then return nil,"bad alpha rle"end for _=1,c do b=b+1 m[(b-1)%w+1][(b-1)//w+1].a=a end end else return nil,"bad alpha flag"end end end return m,r end function PixelMap(s)local m,a=G(s)if not m then return nil,a end local w,h=#m,#m[1]local d,i={},0 for y=1,h do for x=1,w do local p=m[x][y]local r,g,b=F(a,p.c)i=i+1 d[i]=Color(r/255,g/255,b/255,p.a/255)end end local k=0 return function()k=k+1 if k>(w*h)then return nil end local c=d[k]return(k-1)%w,(k-1)//w,Color(c.R,c.G,c.B,c.A)end end
+l local d,H,I,J,j,o,K,L=string.byte,string.sub,math.floor,2^32-1,2^31,2^30,3*2^30 L=function(s)local n,q,M,v,b,A,c,e,g=#s if n<5 then return nil,'ds'end q,M=0<d(s,1),d(s,2)if not M or M<1 or n<3+M*3 then return nil,'pal'end v={}for i=1,M do v[i]={d(s,3*i),d(s,3*i+1),d(s,3*i+2)}end b=3+M*3 A=d(s,b)b=b+1 local w,h if A==255 then if n<b+3 then return nil,'ds'end w=d(s,b)*256+d(s,b+1)h=d(s,b+2)*256+d(s,b+3)b=b+4 else w=A h=d(s,b)if not h then return nil,'ds'end b=b+1 end if not h or w<1 or h<1 then return nil,'dim'end A=nil if q then if n<b+w*h-1 then return nil,'alpha'end A=H(s,b,b+w*h-1)b=b+w*h end local k,p,C,l,D=M+1,b,d(s,b),0 D=function()l=l+1 if l>8 then l=1 p=p+1 C=p<=n and d(s,p)or 0 end return(C>>(8-l))&1 end c,e,g=.0,J,.0 for _=1,32 do g=g*2+D()end local E,N={}N=function(f)local z=E[f]if not z then local t={}for a=1,k do t[a]=1 end z={t,k}E[f]=z end return z end M={}for a=1,w do M[a]={}end for y=1,h do local F=k for x=1,w do local z=N(F)local f,t,O,G,i,r=z[1],z[2],e-c+1,c,0,0 for a=1,k do local P=f[a]r=r+P P=c+I(O*r/t)-1 if g<=P then i=a-1 e=P break end G=P+1 end c=G f[i+1]=f[i+1]+1 t=t+1 if t>=32768 then local u=0 for a=1,k do t[a]=(t[a]+1)//2 u=u+t[a]end z[2]=u else z[2]=t end M[x][y]={c=i,a=q and 0 or(i==0 and 0 or 255)}F=i while 1 do if e<j then elseif c>=j then c=c-j e=e-j g=g-j elseif c>=o and e<K then c=c-o e=e-o g=g-o else break end c=c*2 e=e*2+1 g=g*2+D()end end end if q then local a=1 for y=1,h do for x=1,w do M[x][y].a=d(A,a)a=a+1 end end end return M,v end function PixelMap(s)local m,a=L(s)if not m then return nil,a end local w,h,e,i=#m,#m[1],{},0 for y=1,h do for x=1,w do local p,r,g,b=m[x][y],0,0,0 if p.c>0 then local t=a[p.c]r=t[1]g=t[2]b=t[3]end i=i+1 e[i]=Color(r/255,g/255,b/255,p.a/255)end end local k=0 return function()k=k+1 if k>w*h then return nil end local c=e[k]return(k-1)%w,(k-1)//w,Color(c.R,c.G,c.B,c.A)end end
 
 --[==[ 源代码
---彩色图像素迭代器（自包含，不依赖任何其他代码块）
---PixelMap(编码) -> 迭代器; 每次返回 x偏移, y偏移, Color(r,g,b,a) 克隆
+-- 彩色图像素迭代器（自包含，不依赖其他代码块）
+-- 格式 v3：alpha 标志(0/1) | N | N×3 调色板(按频率降序) | 宽高(短式2B，255 转 5B) | [alpha: w×h 原始字节] | 索引面（至串尾）
+-- 索引面：左邻上下文自适应多符号算术码流（WNC 32 位定点，E1/E2/E3 重整，频率表 ≥32768 折半）。
+-- 符号集 0..N：0=全透明，1..N=调色板项；上下文 = 左邻符号（行首用特殊上下文 N+1）。
+-- 索引面置于串尾：解码器尾部超读由零填充兜底，不影响已解码符号，故无需长度前缀。
 local byte, sub = string.byte, string.sub
 local floor = math.floor
-
---位图算术解码 (WNC 32位定点, E1/E2/E3 重整, 8 上下文自适应概率, 与 util5 BinMatrixCodec 同格式)
-local FULL, HALF, Q1, Q3 = 2 ^ 32 - 1, 2 ^ 31, 2 ^ 30, 3 * 2 ^ 30
-local function b2i(v) return type(v) == 'number' and v > 0 and 1 or 0 end
-
--- 返回矩阵与流结束位置(含, 即下次读取 pos)
-local function bm_dec(s, pos)
-	local n = #s
-	if pos + 1 > n then return nil, "data too short" end
-	local wb = byte(s, pos); pos = pos + 1
-	local w, h
-	if wb == 255 then
-		if pos + 3 > n then return nil, "data too short" end
-		w = byte(s, pos) * 256 + byte(s, pos + 1)
-		h = byte(s, pos + 2) * 256 + byte(s, pos + 3)
-		pos = pos + 4
-	else
-		w, h = wb, byte(s, pos)
-		pos = pos + 1
-	end
-	local m = {}
-	for x = 1, w do m[x] = {} end
-	if w == 0 or h == 0 then return m, pos end
-	if pos > n then return nil, "missing payload" end
-	local bp, bb, bn = pos, byte(s, pos), 0
-	local function getbit()
-		bn = bn + 1
-		if bn > 8 then
-			bn = 1
-			bp = bp + 1
-			bb = bp <= n and byte(s, bp) or 0
-		end
-		return (bb >> (8 - bn)) & 1
-	end
-	local low, high = 0.0, FULL
-	local code = 0.0
-	for _ = 1, 32 do
-		code = code * 2.0 + getbit()
-	end
-	local probs = {}
-	for i = 0, 7 do probs[i] = 32768 end
-	for y = 1, h do
-		for x = 1, w do
-			local L = x > 1 and m[x - 1][y] or 0
-			local U = y > 1 and m[x][y - 1] or 0
-			local UL = x > 1 and y > 1 and m[x - 1][y - 1] or 0
-			local ctx = b2i(L) * 4 + b2i(U) * 2 + b2i(UL)
-			local p0 = probs[ctx]
-			local split = low + floor((high - low + 1.0) * p0 / 65536.0)
-			local bit
-			if code < split then
-				bit = 0
-				high = split - 1.0
-				p0 = p0 + ((65536 - p0) >> 5)
-			else
-				bit = 1
-				low = split
-				p0 = p0 - (p0 >> 5)
-			end
-			probs[ctx] = p0
-			m[x][y] = bit
-			while true do
-				if high < HALF then
-				elseif low >= HALF then
-					low = low - HALF
-					high = high - HALF
-					code = code - HALF
-				elseif low >= Q1 and high < Q3 then
-					low = low - Q1
-					high = high - Q1
-					code = code - Q1
-				else
-					break
-				end
-				low = low * 2.0
-				high = high * 2.0 + 1.0
-				code = code * 2.0 + getbit()
-			end
-		end
-	end
-	return m, bp + 1
-end
-
-local function pal_rgb(pal, i)
-	if i == 0 then return 0, 0, 0 end
-	if pal.rgb then
-		local c = pal.rgb[i]
-		return c[1], c[2], c[3]
-	end
-	local L = pal.level
-	local j = i - 1
-	local r, g, b = j // (L * L), (j // L) % L, j % L
-	if L < 2 then return 0, 0, 0 end
-	local d = 255 / (L - 1)
-	return floor(r * d + .5), floor(g * d + .5), floor(b * d + .5)
-end
+local FULL, HALF, Q1, Q3 = 2^32-1, 2^31, 2^30, 3*2^30
 
 local function cc_dec(s)
-	local n = #s
-	if n < 6 then return nil, "data too short" end
-	if byte(s, 1) ~= 0xCC then return nil, "not a color codec stream" end
-	local mode = byte(s, 2)
-	if mode > 2 then return nil, "bad mode" end
-	local pos = 3
-	local pal
-	local pb = byte(s, pos); pos = pos + 1
-	if pb == 0xFF then
-		local sz = byte(s, pos); pos = pos + 1
-		if not sz or sz < 1 or n < pos + sz * 3 - 1 then return nil, "palette truncated" end
-		local rgb = {}
-		for i = 1, sz do
-			rgb[i] = { byte(s, pos), byte(s, pos + 1), byte(s, pos + 2) }
-			pos = pos + 3
-		end
-		pal = { rgb = rgb, size = sz }
-	elseif pb >= 1 and pb <= 8 then
-		pal = { level = pb, size = pb * pb * pb }
-	else
-		return nil, "bad palette"
-	end
-	local wb = byte(s, pos); pos = pos + 1
-	local w, h
-	if wb == 0xFF then
-		if n < pos + 3 then return nil, "dims truncated" end
-		w = byte(s, pos) * 256 + byte(s, pos + 1)
-		h = byte(s, pos + 2) * 256 + byte(s, pos + 3)
-		pos = pos + 4
-	else
-		w, h = wb, byte(s, pos)
-		pos = pos + 1
-	end
-	if not h or w < 1 or h < 1 then return nil, "bad dims" end
-	local N = pal.size
-	local cnt = mode == 0 and N or N + 1
-	local bits = 1
-	while (1 << bits) < cnt do bits = bits + 1 end
-	local flag = byte(s, pos); pos = pos + 1
-	local es = bits <= 8 and 1 or 2
-	local m = {}
-	for x = 1, w do m[x] = {} end
-	local flat = {}
-	if flag & 8 ~= 0 then
-		-- 位图算术平面索引面: M + 编号表 + M×(2字节长度+流)
-		if pos > n then return nil, "payload truncated" end
-		local M = byte(s, pos); pos = pos + 1
-		if M > N then return nil, "bad plane count" end
-		if n < pos + M - 1 then return nil, "payload truncated" end
-		local used = {}
-		for i = 1, M do
-			used[i] = byte(s, pos); pos = pos + 1
-		end
-		for _ = 1, w * h do
-			flat[#flat + 1] = 0
-		end
-		for i = 1, M do
-			if pos + 1 > n then return nil, "payload truncated" end
-			local len = byte(s, pos) * 256 + byte(s, pos + 1); pos = pos + 2
-			if len < 1 or n < pos + len - 1 then return nil, "payload truncated" end
-			local bm, err = bm_dec(sub(s, pos, pos + len - 1), 1)
-			if not bm then return nil, err end
-			pos = pos + len
-			local uc = used[i]
-			if mode == 0 then uc = uc - 1 end
-			for k = 1, w * h do
-				if bm[(k - 1) % w + 1][(k - 1) // w + 1] == 1 then
-					flat[k] = uc
-				end
-			end
-		end
-	elseif flag & 4 ~= 0 then
-		-- 字节RLE索引面
-		local total, got = w * h, 0
-		while got < total do
-			if pos + es > n then return nil, "payload truncated" end
-			local run = byte(s, pos)
-			local v
-			if es == 1 then v = byte(s, pos + 1); pos = pos + 2
-			else v = byte(s, pos + 1) | (byte(s, pos + 2) << 8); pos = pos + 3 end
-			if run < 1 or got + run > total then return nil, "bad index rle" end
-			for _ = 1, run do
-				got = got + 1
-				flat[got] = v
-			end
-		end
-	else
-		-- 位打包索引面
-		if (n - pos + 1) * 8 < w * h * bits then return nil, "payload truncated" end
-		local acc, acnt = 0, 0
-		local function get()
-			while acnt < bits do
-				if pos > n then return nil end
-				acc = (acc << 8) | byte(s, pos)
-				pos = pos + 1
-				acnt = acnt + 8
-			end
-			acnt = acnt - bits
-			local v = acc >> acnt
-			acc = acc & ((1 << acnt) - 1)
-			return v
-		end
-		for _ = 1, w * h do
-			local v = get()
-			if v == nil then return nil, "payload truncated" end
-			flat[#flat + 1] = v
-		end
-	end
-	for k = 1, w * h do
-		local c = mode == 0 and (flat[k] + 1) or flat[k]
-		m[(k - 1) % w + 1][(k - 1) // w + 1] = { c = c, a = mode == 2 and 0 or (c == 0 and 0 or 255) }
-	end
-	if mode == 2 then
-		if flag & 16 ~= 0 then
-			-- alpha 8 位平面算术编码: 8×(2字节长度+流)
-			for b = 0, 7 do
-				if pos + 1 > n then return nil, "alpha truncated" end
-				local len = byte(s, pos) * 256 + byte(s, pos + 1); pos = pos + 2
-				if len < 1 or n < pos + len - 1 then return nil, "alpha truncated" end
-				local bm, err = bm_dec(sub(s, pos, pos + len - 1), 1)
-				if not bm then return nil, err end
-				pos = pos + len
-				for k = 1, w * h do
-					if bm[(k - 1) % w + 1][(k - 1) // w + 1] == 1 then
-						local p = m[(k - 1) % w + 1][(k - 1) // w + 1]
-						p.a = p.a | (1 << b)
-					end
-				end
-			end
-		else
-			local af = flag & 3
-			if af == 2 then
-				if n - pos + 1 < w * h then return nil, "alpha truncated" end
-				for y = 1, h do
-					for x = 1, w do
-						m[x][y].a = byte(s, pos)
-						pos = pos + 1
-					end
-				end
-			elseif af == 1 then
-				local total, got = w * h, 0
-				while got < total do
-					if pos + 1 > n then return nil, "alpha truncated" end
-					local run, a = byte(s, pos), byte(s, pos + 1)
-					pos = pos + 2
-					if run < 1 or got + run > total then return nil, "bad alpha rle" end
-					for _ = 1, run do
-						got = got + 1
-						m[(got - 1) % w + 1][(got - 1) // w + 1].a = a
-					end
-				end
-			else
-				return nil, "bad alpha flag"
-			end
-		end
-	end
-	return m, pal
+    local n = #s
+    if n < 5 then return nil, 'ds' end
+    local hasalpha = byte(s, 1) > 0
+    local M = byte(s, 2)
+    if not M or M < 1 or n < 3 + M*3 then return nil, 'pal' end
+    local pal = {}
+    for i = 1, M do
+        pal[i] = {byte(s, 3*i), byte(s, 3*i+1), byte(s, 3*i+2)}
+    end
+    local pos = 3 + M*3
+    local wb = byte(s, pos); pos = pos + 1
+    local w, h
+    if wb == 255 then
+        if n < pos + 3 then return nil, 'ds' end
+        w = byte(s, pos)*256 + byte(s, pos+1)
+        h = byte(s, pos+2)*256 + byte(s, pos+3)
+        pos = pos + 4
+    else
+        w = wb
+        h = byte(s, pos)
+        if not h then return nil, 'ds' end
+        pos = pos + 1
+    end
+    if not h or w < 1 or h < 1 then return nil, 'dim' end
+    local alpha = nil
+    if hasalpha then
+        if n < pos + w*h - 1 then return nil, 'alpha' end
+        alpha = sub(s, pos, pos + w*h - 1)
+        pos = pos + w*h
+    end
+    local NSYM = M + 1
+    local bp, bb, bn = pos, byte(s, pos), 0
+    local function getbit()
+        bn = bn + 1
+        if bn > 8 then
+            bn = 1
+            bp = bp + 1
+            bb = bp <= n and byte(s, bp) or 0
+        end
+        return (bb >> (8 - bn)) & 1
+    end
+    local low, high = 0.0, FULL
+    local code = 0.0
+    for _ = 1, 32 do code = code*2 + getbit() end
+    local ctxs = {}
+    local function getctx(key)
+        local z = ctxs[key]
+        if not z then
+            local t = {}
+            for a = 1, NSYM do t[a] = 1 end
+            z = {t, NSYM}
+            ctxs[key] = z
+        end
+        return z
+    end
+    local m = {}
+    for a = 1, w do m[a] = {} end
+    for y = 1, h do
+        local left = NSYM
+        for x = 1, w do
+            local z = getctx(left)
+            local f, t = z[1], z[2]
+            local range = high - low + 1
+            local ls, sym = low, 0
+            local cc = 0
+            for a = 1, NSYM do
+                local fs = f[a]
+                cc = cc + fs
+                local nhs = low + floor(range*cc/t) - 1
+                if code <= nhs then
+                    sym = a - 1
+                    high = nhs
+                    break
+                end
+                ls = nhs + 1
+            end
+            low = ls
+            f[sym+1] = f[sym+1] + 1
+            t = t + 1
+            if t >= 32768 then
+                local nt = 0
+                for a = 1, NSYM do t[a] = (t[a]+1) // 2; nt = nt + t[a] end
+                z[2] = nt
+            else
+                z[2] = t
+            end
+            m[x][y] = {c = sym, a = hasalpha and 0 or (sym == 0 and 0 or 255)}
+            left = sym
+            while true do
+                if high < HALF then
+                elseif low >= HALF then
+                    low = low - HALF; high = high - HALF; code = code - HALF
+                elseif low >= Q1 and high < Q3 then
+                    low = low - Q1; high = high - Q1; code = code - Q1
+                else break end
+                low = low*2; high = high*2 + 1; code = code*2 + getbit()
+            end
+        end
+    end
+    if hasalpha then
+        local ap = 1
+        for y = 1, h do
+            for x = 1, w do
+                m[x][y].a = byte(alpha, ap)
+                ap = ap + 1
+            end
+        end
+    end
+    return m, pal
 end
 
 function PixelMap(s)
-	local m, pal = cc_dec(s)
-	if not m then return nil, pal end
-	local w, h = #m, #m[1]
-	local n = w * h
-	local px = {}
-	local i = 0
-	for y = 1, h do
-		for x = 1, w do
-			local p = m[x][y]
-			local r, g, b = pal_rgb(pal, p.c)
-			i = i + 1
-			px[i] = Color(r / 255, g / 255, b / 255, p.a / 255)
-		end
-	end
-	local k = 0
-	return function()
-		k = k + 1
-		if k > n then return nil end
-		local c = px[k]
-		return (k - 1) % w, (k - 1) // w, Color(c.R, c.G, c.B, c.A)
-	end
+    local m, pal = cc_dec(s)
+    if not m then return nil, pal end
+    local w, h = #m, #m[1]
+    local px = {}
+    local i = 0
+    for y = 1, h do
+        for x = 1, w do
+            local p = m[x][y]
+            local r, g, b = 0, 0, 0
+            if p.c > 0 then
+                local t = pal[p.c]
+                r, g, b = t[1], t[2], t[3]
+            end
+            i = i + 1
+            px[i] = Color(r/255, g/255, b/255, p.a/255)
+        end
+    end
+    local k = 0
+    return function()
+        k = k + 1
+        if k > w*h then return nil end
+        local c = px[k]
+        return (k-1) % w, (k-1) // w, Color(c.R, c.G, c.B, c.A)
+    end
 end
 ]==]
 
