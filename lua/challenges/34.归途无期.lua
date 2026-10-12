@@ -25,7 +25,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_GAME_STARTED,function(l,c)if not c t
 --[[
 说明: 不可拾取非任务道具和错误道具。
 ]]
-l local a,A,B,C,D,X,Y,Z=PickupVariant.PICKUP_COLLECTIBLE,Isaac,ModCallbacks,function(c)return c and(c.ID<0 or not c:HasTags(ItemConfig.TAG_QUEST))end,'Collectible'Z=A.AddCallback Y=A.GetItemConfig()X='Get'..D Z({},B.MC_POST_PLAYER_UPDATE,function(i,p,c)if not p:IsItemQueueEmpty()then i=p.QueuedItem.Item if i:IsCollectible()and C(i)then A.Spawn(EntityType.ENTITY_PICKUP,a,i.ID,p.Position,Vector.Zero,p):ToPickup().Touched=true p:FlushQueueItem()end end i=Y[X..'s'](Y).Size repeat i=i-1 c=Y[X](Y,i)if C(c)then while p['Has'..D](p,i,true)do p['Remove'..D](p,i)end end until not c and i<0 end)Z({},B.MC_POST_PICKUP_UPDATE,function(_,e)if C(Y[X](Y,e.SubType))then e.Touched=true end if e.SubType==0 then e:Remove()end end,a)
+l local a,A,B,C,D,X,Y,Z=PickupVariant.PICKUP_COLLECTIBLE,Isaac,ModCallbacks,function(c)return c and(c.ID<0 or not c:HasTags(ItemConfig.TAG_QUEST))end,'Collectible'Z=A.AddCallback Y=A.GetItemConfig()X='Get'..D Z({},B.MC_POST_PLAYER_UPDATE,function(i,p,c)if not p:IsItemQueueEmpty()then i=p.QueuedItem.Item if i:IsCollectible()and C(i)then A.Spawn(EntityType.ENTITY_PICKUP,a,i.ID,p.Position,Vector.Zero,p):ToPickup().Touched=true p:FlushQueueItem()end end i=Y[X..'s'](Y).Size repeat i=i-1 c=Y[X](Y,i)if C(c)then while p['Has'..D](p,i,true)do p['Remove'..D](p,i)end end until not c and i<0 end,0)Z({},B.MC_POST_PICKUP_UPDATE,function(_,e)if C(Y[X](Y,e.SubType))then e.Touched=true end if e.SubType==0 then e:Remove()end end,a)
 
 --[[
 说明: 献祭不再飞升。

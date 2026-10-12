@@ -16,7 +16,7 @@
 参数定义:
   P1: {类型: 数值, 默认: 50, 性质: 全局, 说明: 即死房间概率百分数}
 ]]
-l Fatal=P1;local B,C,I,M,S,G,R,L,D,K,A=Sprite(),CacheFlag.CACHE_DAMAGE,Isaac,ModCallbacks,'!!!'B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=Vector.One*9 B.Color=Color(0,0,0,.3,.5)A=I.AddCallback;A({},M.MC_POST_RENDER,function(d,e,f)G=Game()L=G:GetLevel()e=DoorVariant D=function(i)return L:GetRoomByIdx(i).DecorationSeed%100<Fatal end K=D(L:GetCurrentRoomIndex())R=G:GetRoom()for i=0,7 do d=R:GetDoor(i)f=d and d:GetVariant()if d and e.DOOR_HIDDEN~=f and e.DOOR_UNSPECIFIED~=f and D(d.TargetRoomIndex)then d=I.WorldToRenderPosition(d.Position)+R:GetRenderScrollOffset()d.X=R:IsMirrorWorld()and I.GetScreenWidth()-d.X or d.X I.RenderText(S,d.X-I.GetTextWidth(S)/2,d.Y-5,1,0,0,1)end end if K then B:RenderLayer(0,Vector.Zero)end end)A({},M.MC_EVALUATE_CACHE,function(_,p)if K then p.Damage=p.Damage*2 end end,C)A({},M.MC_POST_PLAYER_UPDATE,function(_,p)p:AddCacheFlags(C)p:EvaluateItems()end)OnHit=function(p)if K then p:Die()end end
+l Fatal=P1;local B,C,I,M,S,G,R,L,D,K,A=Sprite(),CacheFlag.CACHE_DAMAGE,Isaac,ModCallbacks,'!!!'B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=Vector.One*9 B.Color=Color(0,0,0,.3,.5)A=I.AddCallback;A({},M.MC_POST_RENDER,function(d,e,f)G=Game()L=G:GetLevel()e=DoorVariant D=function(i)return L:GetRoomByIdx(i).DecorationSeed%100<Fatal end K=D(L:GetCurrentRoomIndex())R=G:GetRoom()for i=0,7 do d=R:GetDoor(i)f=d and d:GetVariant()if d and e.DOOR_HIDDEN~=f and e.DOOR_UNSPECIFIED~=f and D(d.TargetRoomIndex)then d=I.WorldToRenderPosition(d.Position)+R:GetRenderScrollOffset()d.X=R:IsMirrorWorld()and I.GetScreenWidth()-d.X or d.X I.RenderText(S,d.X-I.GetTextWidth(S)/2,d.Y-5,1,0,0,1)end end if K then B:RenderLayer(0,Vector.Zero)end end)A({},M.MC_EVALUATE_CACHE,function(_,p)if K then p.Damage=p.Damage*2 end end,C)A({},M.MC_POST_PLAYER_UPDATE,function(_,p)p:AddCacheFlags(C)p:EvaluateItems()end,0)OnHit=function(p)if K then p:Die()end end
 
 --[[
 说明: 免疫混乱诅咒。
@@ -37,7 +37,7 @@ l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(32)
 --[[
 说明: 玩家主手持有的道具为破碎的玻璃大炮时，自动充能。
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveSlot.SLOT_PRIMARY if CollectibleType.COLLECTIBLE_BROKEN_GLASS_CANNON==p:GetActiveItem(s)then p:FullCharge(s)end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(s,p)s=ActiveSlot.SLOT_PRIMARY if CollectibleType.COLLECTIBLE_BROKEN_GLASS_CANNON==p:GetActiveItem(s)then p:FullCharge(s)end end,0)
 
 --[[
 模板: give-start-collectibles

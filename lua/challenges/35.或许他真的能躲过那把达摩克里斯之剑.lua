@@ -42,7 +42,7 @@ l DAMOCLES_ALARM=P1;local A,B,C,D,U,V,W,X,Y,Z=Isaac,ModCallbacks,'GetFrameCount'
 --[[
 说明: 当角色为拉撒路时，转换角色为死亡的拉撒路。
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if PlayerType.PLAYER_LAZARUS==p:GetPlayerType()then p:ChangePlayerType(PlayerType.PLAYER_LAZARUS2)end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if PlayerType.PLAYER_LAZARUS==p:GetPlayerType()then p:ChangePlayerType(PlayerType.PLAYER_LAZARUS2)end end,0)
 
 --[[
 模板: restart-game

@@ -25,7 +25,7 @@ l local function OnRewind()P1 end;local I,M,A,E,T=Isaac,ModCallbacks A,T=I.AddCa
   P1: {类型: 毫秒, 默认: '1e3', 性质: 局部, 说明: "长按判定时长(毫秒)，1秒=1e3"}
   P2: {类型: 描述, 默认: "1s", 性质: 局部, 说明: "说明文本中的长按时长显示值（1s=1e3毫秒）"}
 ]]
-l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACTION_ITEM','ACTION_PILLCARD'},{M={}}A(G.M,M.MC_POST_PLAYER_RENDER,function(_,p)local k,n,a=H(p)G[k]=G[k]or{}n=G[k]for _,b in pairs(K)do a=B[b]if Input.IsActionPressed(a,p.ControllerIndex)then n[a]=n[a]or Isaac.GetTime()else n[a]=nil end end end)A(G.M,M.MC_INPUT_ACTION,function(_,e,_,a)e=e and e:ToPlayer()if e then local k,t,s=H(e),Isaac.GetTime()s=G[k]and G[k][a]if s and s<t then return t>P1+s end end end,InputHook.IS_ACTION_TRIGGERED)A(G.M,M.MC_POST_ENTITY_REMOVE,function(_,e)G[H(e)]=nil end,EntityType.ENTITY_PLAYER)
+l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACTION_ITEM','ACTION_PILLCARD'},{M={}}A(G.M,M.MC_POST_PLAYER_RENDER,function(_,p)local k,n,a=H(p)G[k]=G[k]or{}n=G[k]for _,b in pairs(K)do a=B[b]if Input.IsActionPressed(a,p.ControllerIndex)then n[a]=n[a]or Isaac.GetTime()else n[a]=nil end end end,0)A(G.M,M.MC_INPUT_ACTION,function(_,e,_,a)e=e and e:ToPlayer()if e then local k,t,s=H(e),Isaac.GetTime()s=G[k]and G[k][a]if s and s<t then return t>P1+s end end end,InputHook.IS_ACTION_TRIGGERED)A(G.M,M.MC_POST_ENTITY_REMOVE,function(_,e)G[H(e)]=nil end,EntityType.ENTITY_PLAYER)
 
 --[[
 作为模板: true
@@ -33,7 +33,7 @@ l local A,M,H,B,K,G=Isaac.AddCallback,ModCallbacks,GetPtrHash,ButtonAction,{'ACT
 说明: |-
   所有玩家永久蒙眼（在矿洞逃亡中不生效）。
 ]]
-l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end)
+l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p:HasCurseMistEffect()then g[s],f=0 p:TryRemoveNullCostume(14)elseif p:CanShoot()then g[s],f=6 p:AddNullCostume(14)end if not f then p:UpdateCanShoot()end g[s]=c end,0)
 
 --[[
 作为模板: true
@@ -47,7 +47,7 @@ l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p
   P1: {类型: "物品条目列表", 默认: "'c534',{'c649',3},{'t145',5},'c105','c284'", 性质: "全局", 说明: "行首全局变量ITEMS的值，玩家可在控制台手改；'c<id>'=道具、't<id>'=饰品、{'类别',数量}=多件，单件可简写"}
   P2: {类型: "物品描述", 默认: "道具534(书包)、3x道具649(甜甜糖梅宝)、5x饰品145(满分考卷)、道具105(六面骰)、道具284(四面骰)", 性质: "局部", 说明: "说明文本中的物品描述部分"}
 ]]
-l ITEMS={P1}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPlayerType',PlayerType,'Get',Isaac,pairs,EntityType,'Remove',ModCallbacks,{}local A,B,G,J,K,N,O,S,U=I.AddCallback D,B='C'..D,'C'..D:lower()J=H..B K=J..'Num'O=L..B N=function(i,a,b)a,i=table.unpack(type(i)=='table'and i or{i,1})a,b=a:match('(%a)(%d+)')return i,a,tonumber(b)end G=function(_,a,b,p)for _,i in P(ITEMS)do i,a,b=N(i)if a=='c'then while 0<p[K](p,b)do p[O](p,b)end end end end A(T,M.MC_POST_PLAYER_UPDATE,function(a,p,b,c,e,g,h,j,k,l)if F.PLAYER_THESOUL_B~=p[E](p)and not p:HasCurseMistEffect()then c=I.GetItemConfig()e='Trinket'h='Add'for _,i in P(ITEMS)do i,a,b=N(i)if a=='T'then a='t'i=i*2 end if a=='c'then g=Game():GetItemPool()g[O](g,b)g=0 if not p:IsItemQueueEmpty()then g=p.QueuedItem.Item g=g and g['Is'..B](g)and b==g.ID and 1 or 0 end while i>g+p[K](p,b)do if c[J](c,b).Type==ItemType.ITEM_ACTIVE then S=b break else p[h..B](p,b)end end elseif a=='t'then g=H..e l=h..e while 1 do j=i-p[g..'Multiplier'](p,b)if j<=0 then break end k={}for s=0,1 do k[s]=p[g](p,s)p['Try'..L..e](p,k[s])p[l](p,b|((j>1 and s==0 or j>3)and TrinketType.TRINKET_GOLDEN_FLAG or 0))end p:UseActiveItem(C[D..'_SMELTER'],2315)for s=0,1 do p[l](p,k[s],false)end end end end end end)A(T,M.MC_POST_UPDATE,function(d,r,v,s)if S then r=Game():GetRoom()for _,i in P(DoorSlot)do d=r:GetDoor(i)if d then d:Close()end end d=Q.ENTITY_PICKUP v=PickupVariant.PICKUP_COLLECTIBLE s=I.FindByType if 1>#s(d,v,S)then U=U and U+1 or 1 if U>29 then I.Spawn(d,v,S,r:GetCenterPos(),Vector.Zero,nil)end else U=nil end for _,e in P(s(d,v,0))do e:Remove()end end S=nil end)A(T,M.MC_PRE_USE_ITEM,G,C[D..'_D4'])A(T,M.MC_ENTITY_TAKE_DMG,function(d,e,u,f)d=DamageFlag u='DAMAGE_'e=e:ToPlayer()if F.PLAYER_EDEN_B==e[E](e)and 0==f&(d[u..'RED_HEARTS']|d[u..'IV_BAG']|d[u..'FAKE']|d[u..'NO_PENALTIES'])then G(e,e,e,e)end end,Q.ENTITY_PLAYER)
+l ITEMS={P1}local C,D,E,F,H,I,P,Q,L,M,T=CollectibleType,'OLLECTIBLE','GetPlayerType',PlayerType,'Get',Isaac,pairs,EntityType,'Remove',ModCallbacks,{}local A,B,G,J,K,N,O,S,U=I.AddCallback D,B='C'..D,'C'..D:lower()J=H..B K=J..'Num'O=L..B N=function(i,a,b)a,i=table.unpack(type(i)=='table'and i or{i,1})a,b=a:match('(%a)(%d+)')return i,a,tonumber(b)end G=function(_,a,b,p)for _,i in P(ITEMS)do i,a,b=N(i)if a=='c'then while 0<p[K](p,b)do p[O](p,b)end end end end A(T,M.MC_POST_PLAYER_UPDATE,function(a,p,b,c,e,g,h,j,k,l)if F.PLAYER_THESOUL_B~=p[E](p)and not p:HasCurseMistEffect()then c=I.GetItemConfig()e='Trinket'h='Add'for _,i in P(ITEMS)do i,a,b=N(i)if a=='T'then a='t'i=i*2 end if a=='c'then g=Game():GetItemPool()g[O](g,b)g=0 if not p:IsItemQueueEmpty()then g=p.QueuedItem.Item g=g and g['Is'..B](g)and b==g.ID and 1 or 0 end while i>g+p[K](p,b)do if c[J](c,b).Type==ItemType.ITEM_ACTIVE then S=b break else p[h..B](p,b)end end elseif a=='t'then g=H..e l=h..e while 1 do j=i-p[g..'Multiplier'](p,b)if j<=0 then break end k={}for s=0,1 do k[s]=p[g](p,s)p['Try'..L..e](p,k[s])p[l](p,b|((j>1 and s==0 or j>3)and TrinketType.TRINKET_GOLDEN_FLAG or 0))end p:UseActiveItem(C[D..'_SMELTER'],2315)for s=0,1 do p[l](p,k[s],false)end end end end end end,0)A(T,M.MC_POST_UPDATE,function(d,r,v,s)if S then r=Game():GetRoom()for _,i in P(DoorSlot)do d=r:GetDoor(i)if d then d:Close()end end d=Q.ENTITY_PICKUP v=PickupVariant.PICKUP_COLLECTIBLE s=I.FindByType if 1>#s(d,v,S)then U=U and U+1 or 1 if U>29 then I.Spawn(d,v,S,r:GetCenterPos(),Vector.Zero,nil)end else U=nil end for _,e in P(s(d,v,0))do e:Remove()end end S=nil end)A(T,M.MC_PRE_USE_ITEM,G,C[D..'_D4'])A(T,M.MC_ENTITY_TAKE_DMG,function(d,e,u,f)d=DamageFlag u='DAMAGE_'e=e:ToPlayer()if F.PLAYER_EDEN_B==e[E](e)and 0==f&(d[u..'RED_HEARTS']|d[u..'IV_BAG']|d[u..'FAKE']|d[u..'NO_PENALTIES'])then G(e,e,e,e)end end,Q.ENTITY_PLAYER)
 
 --[[
 作为模板: true
@@ -67,7 +67,7 @@ l Isaac.AddCallback({},18,function()Game():SetStateFlag(17,true)end)
   P1: {类型: "饰品id列表", 默认: "85", 性质: "局部", 说明: "要移除的饰品id列表"}
   P2: {类型: "描述", 默认: "85(业报)", 性质: "局部", 说明: "说明文本中的被移除饰品描述"}
 ]]
-l local G,F,b=32768,Isaac.AddCallback,{P1}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
+l local G,F,b=32768,Isaac.AddCallback,{P1}F({},31,function(_,p)for _,i in pairs(b)do if p:HasTrinket(i)then p:TryRemoveTrinket(i)end end end,0)F({},37,function(_,f,v,s)if v==350 then repeat f=1 for _,i in pairs(b)do if i|G==s|G then f,s=0,Game():GetItemPool():GetTrinket()break end end until f>0 return{v,s}end end)
 
 --[[
 作为模板: true
@@ -135,7 +135,7 @@ l local F=Isaac.AddCallback F({},10,function()Game():GetLevel():RemoveCurses(4)e
   P1: {类型: "卡牌符文id列表", 默认: "41,74,83", 性质: "局部", 说明: "要移除的卡牌/符文/魂石id列表"}
   P2: {类型: "描述", 默认: "符文41(黑符文)、卡牌74(月亮?)和魂石83(该隐的魂石)。", 性质: "局部", 说明: "说明文本中的被移除卡牌/符文/魂石描述"}
 ]]
-l local b,Y,F,G={P1},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
+l local b,Y,F,G={P1},true,Isaac.AddCallback,Game()F({},31,function(_,p)for _,i in pairs(b)do for s=0,3 do if p:GetCard(s)==i then p:SetCard(s,0)end end end end,0)F({},37,function(r,f,v,s)if v==300 then repeat f=Y for _,i in pairs(b)do if i==s then f,r=false,G:GetRandomPlayer(Vector.Zero,0):GetCardRNG(REPENTANCE_PLUS and-1 or 0)s=G:GetItemPool():GetCard(r:GetSeed(),22<s and s<32,Y,31<s and s<42 or 55==s or 80<s)r:Next()break end end until f return{v,s}end end)
 
 --[[
 作为模板: true
@@ -409,7 +409,7 @@ l BrokenKeys=P1;WaitFrames=P2;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCou
   P1: {类型: "整数", 默认: "15", 性质: "全局", 说明: "行首全局变量Lag，延迟帧数"}
   P2: {类型: "描述", 默认: "0.5秒", 性质: "局部", 说明: "说明文本中的延迟秒数显示值（15帧÷30fps=0.5秒）"}
 ]]
-l Lag=P1 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
+l Lag=P1 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end,0)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
 
 --[[
 作为模板: true
@@ -437,7 +437,7 @@ l local a,z,b,c,d,I,j,k,l=table.insert,string.format,pairs,KColor,Vector,Isaac,F
 参数定义:
   P1: {类型: 函数体, 性质: 局部, 默认: '', 说明: 函数体内容，默认空（空占位）}
 ]]
-l function OnHit(p)P1 end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)
+l function OnHit(p)P1 end local B,H,I,M,T,A={},GetPtrHash,Isaac,ModCallbacks,{}A=I.AddCallback;A(T,M.MC_POST_PLAYER_UPDATE,function(t,p,h)t=p:GetDamageCooldown()h=H(p)if t>0 and not B[h]then B[h]=t OnHit(p)else B[h]=t>0 end end,0)A(T,M.MC_POST_ENTITY_REMOVE,function(_,e)e=e:ToPlayer()and H(e)if e then B[e]=nil end end,EntityType.ENTITY_PLAYER)
 
 --[[
 作为模板: true
@@ -465,7 +465,7 @@ l local c,A,B,T,M,Y,W=Game,Isaac,ModCallbacks.MC_POST_UPDATE,{}Y=function()M.sta
   P1: {类型: "道具id", 默认: "485", 性质: "全局", 说明: "行首全局变量POCKET，副手主动道具id"}
   P2: {类型: "描述", 默认: "485（掰弯的硬币）", 性质: "局部", 说明: "说明文本中的副手道具描述"}
 ]]
-l POCKET=P1;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p,s)c=POCKET s=ActiveSlot.SLOT_POCKET if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s)end end)
+l POCKET=P1;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p,s)c=POCKET s=ActiveSlot.SLOT_POCKET if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s)end end,0)
 
 --[[
 作为模板: true
@@ -473,7 +473,7 @@ l POCKET=P1;Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(c,p
 说明: |-
   辨认传送胶囊。
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(t,p)t=Game():GetItemPool()for _,c in pairs(PillColor)do if t:GetPillEffect(c,p)==PillEffect.PILLEFFECT_TELEPILLS and not t:IsPillIdentified(c)then t:IdentifyPill(c)end end end,0)
 
 --[[
 模板: remove-collectibles
@@ -509,7 +509,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)f.State=1 en
 模板id: no-hallucination-stack
 说明: 保持致幻层数为0。
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(a,p,b)a=CollectibleType.COLLECTIBLE_WAVY_CAP b=NullItemID.ID_WAVY_CAP_1 p=p:GetEffects()p:RemoveCollectibleEffect(a,p:GetCollectibleEffectNum(a))p:RemoveNullEffect(b,p:GetNullEffectNum(b))end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(a,p,b)a=CollectibleType.COLLECTIBLE_WAVY_CAP b=NullItemID.ID_WAVY_CAP_1 p=p:GetEffects()p:RemoveCollectibleEffect(a,p:GetCollectibleEffectNum(a))p:RemoveNullEffect(b,p:GetNullEffectNum(b))end,0)
 
 --[[
 作为模板: true
@@ -574,7 +574,7 @@ l for _=1,P1 do Game():End(0)end
   P1: {类型: "道具id", 默认: "706", 性质: "局部", 说明: "拾取非任务道具时触发使用的主动道具id"}
   P2: {类型: "描述", 默认: "706-无底坑", 性质: "局部", 说明: "说明文本中的触发道具描述"}
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(i,p)i=p.QueuedItem.Item if not p:IsItemQueueEmpty()and i:IsCollectible()and not i:HasTags(ItemConfig.TAG_QUEST)then p:UseActiveItem(P1)end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(i,p)i=p.QueuedItem.Item if not p:IsItemQueueEmpty()and i:IsCollectible()and not i:HasTags(ItemConfig.TAG_QUEST)then p:UseActiveItem(P1)end end,0)
 
 --[[
 作为模板: true

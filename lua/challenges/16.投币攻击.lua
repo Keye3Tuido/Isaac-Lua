@@ -40,6 +40,11 @@
 ]]
 
 --[[
+说明: 玩家没有道具"魔术手指"时，强制给予到主手
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(40==p:GetPlayerType()or p:HasCurseMistEffect()or p:HasCollectible(295))then p:AddCollectible(295)end end,0)
+
+--[[
 说明: |-
   强制玩家变为{P3}，给予副手道具{P4}，移动速度变为金钱数量*0.003
 参数定义:
@@ -48,7 +53,7 @@
   P3: {类型: 描述, 默认: "堕化店主", 性质: 局部, 说明: "说明文本中的角色描述（对应P1）"}
   P4: {类型: 描述, 默认: "金剃刀片", 性质: 局部, 说明: "说明文本中的副手道具描述（对应P2）"}
 ]]
-l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)p.MoveSpeed=3e-3+3e-3*p:GetNumCoins()end)A(T,M.MC_POST_PLAYER_UPDATE,function(_,p)local k,c,s=P1,P2,ActiveSlot.SLOT_POCKET if k~=p:GetPlayerType()then p:ChangePlayerType(k)end if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s,true)end end)
+l local A,M,T=Isaac.AddCallback,ModCallbacks,{}A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)p.MoveSpeed=3e-3+3e-3*p:GetNumCoins()end)A(T,M.MC_POST_PLAYER_UPDATE,function(_,p)local k,c,s=P1,P2,ActiveSlot.SLOT_POCKET if k~=p:GetPlayerType()then p:ChangePlayerType(k)end if c~=p:GetActiveItem(s)then p:SetPocketActiveItem(c,s,true)end end,0)
 
 --[[
 模板: sticky-to-nickel
@@ -80,7 +85,7 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{T={}}A(T,M.MC_USE_ITEM,function(_,
 参数定义:
   P1: {类型: 数值, 默认: "0.3", 性质: 局部, 说明: "非主角色的透明度（0~1）"}
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,P1,c.RO,c.GO,c.BO)end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,P1,c.RO,c.GO,c.BO)end end,0)
 
 --[[
 模板: restart-as-character

@@ -39,7 +39,7 @@
   P3: {类型: 描述, 默认: "道具59(被动形式彼列之书)、道具122(巴比伦大淫妇)、道具584(美德之书)、道具703(小以扫)", 性质: 局部, 说明: "说明文本中的道具黑名单描述（对应P1）"}
   P4: {类型: 描述, 默认: "饰品64(彩虹蠕虫)、饰品75(错误)、饰品154(骰子袋)、饰品180(复得游魂)", 性质: 局部, 说明: "说明文本中的饰品黑名单描述（对应P2）"}
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{P1})D4_1(p,{P2})end end)
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(Game():GetRoom():IsClear()or p:HasCurseMistEffect())then D4(p,{P1})D4_1(p,{P2})end end,0)
 
 --[[
 模板: remove-collectibles

@@ -17,7 +17,7 @@ l local f,g,k,a,b,c,h,j=Isaac,ModCallbacks,pairs,Vector.Zero,EntityType.ENTITY_B
 --[[
 说明: 玩家会自动举起接触到的金色即爆炸弹。
 ]]
-l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_BOMB_COLLISION,function(a,b,p)p=p:ToPlayer()a=p and p:GetData()[c]if a and a<0 and p:AreControlsEnabled()then p:TryHoldEntity(b)end end,BombVariant.BOMB_GOLDENTROLL)d[f]({},e.MC_POST_PLAYER_UPDATE,function(a,p)a=p:GetData()if p:IsHoldingItem()then a[c]=30 else a[c]=(a[c]or 0)-1 end end)
+l local d,e,f,c=Isaac,ModCallbacks,'AddCallback','HoldingItem'd[f]({},e.MC_PRE_BOMB_COLLISION,function(a,b,p)p=p:ToPlayer()a=p and p:GetData()[c]if a and a<0 and p:AreControlsEnabled()then p:TryHoldEntity(b)end end,BombVariant.BOMB_GOLDENTROLL)d[f]({},e.MC_POST_PLAYER_UPDATE,function(a,p)a=p:GetData()if p:IsHoldingItem()then a[c]=30 else a[c]=(a[c]or 0)-1 end end,0)
 
 --[[
 模板: force-give-items
