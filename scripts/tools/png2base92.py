@@ -5,7 +5,7 @@
 # desc: 图片缩至 128x128 内、量化后编码为 Base92 彩色图编码（预算内取最大色数，内置自检，输出带引号字面量）
 # inputs: [{name: img, type: file, label: 图片文件, accept: "image/png,image/jpeg"}, {name: budget, type: number, label: 字符预算, default: 3000}, {name: max-size, type: number, label: 尺寸上限, default: 128}]
 # ]]
-"""png2base92.py — PNG -> ColorCodec 编码 -> Base92 文本 (游戏内 PixelMap 用)
+"""png2base92.py — PNG -> 彩色图编码 -> Base92 文本 (游戏内 PixelMap 用)
 
 输出文本最后一行即编码; 自行解出编码串后交给 PixelMap 迭代:
 每次返回 ox, oy (0 起像素偏移) 与 Color(r,g,b,a) 克隆。
@@ -33,7 +33,7 @@ except ImportError:
 B92 = "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 assert len(B92) == 92
 
-# ---------------- WNC 位图算术编解码 (与 util5 BitmapCodec 同格式/同算法) ----------------
+# ---------------- WNC 位图算术编解码 (与 util5 BinMatrixCodec 同格式/同算法) ----------------
 
 FULL, HALF, Q1, Q3 = 2.0 ** 32 - 1, 2.0 ** 31, 2.0 ** 30, 3.0 * 2.0 ** 30
 
@@ -43,7 +43,7 @@ def b2i(v):
 
 
 def bm_enc(bits, w, h):
-    """bits: 行优先 0/1 列表 -> BitmapCodec 格式 bytes"""
+    """bits: 行优先 0/1 列表 -> BinMatrixCodec 格式 bytes"""
     out = bytearray()
     if w <= 254 and h <= 254:
         out += bytes([w, h])
@@ -176,7 +176,7 @@ def bm_dec(data, pos=0):
     return bits, w, h, bp + 1
 
 
-# ---------------- ColorCodec 编码器 ----------------
+# ---------------- 彩色图编码器 ----------------
 
 def _mode_of(pixels):
     partial = any(a not in (0, 255) for _, a in pixels)
@@ -436,7 +436,7 @@ def build_pixels(img, ncolors):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="PNG -> Base92(ColorCodec), 供 PixelMap 使用")
+    ap = argparse.ArgumentParser(description="PNG -> Base92(彩色图编码), 供 PixelMap 使用")
     ap.add_argument("png", help="输入 PNG 路径")
     ap.add_argument("-o", "--output", help="输出文件 (默认 stdout)")
     ap.add_argument("--colors", type=int, default=64, help="自定义调色板色数 1..255 (默认 64)")
