@@ -314,12 +314,9 @@ l local a,P,Q,R=Vector,MakePixel()function DrawQR(q,p,s)s=s or 1 local n,z=#q,R 
 名称: 彩色图像素迭代器
 内嵌脚本: [png2base92]
 说明: |-
-  PixelMap(s) 把彩色图编码串解码为像素迭代器，每次返回 ox, oy, Color(r,g,b,a)。
-  输入 s：彩色图编码串（v3：首字节 alpha 标志 0/1，调色板按频率降序内嵌串内，
-  索引面为左邻上下文自适应算术码流；标志 1 时附原始 alpha 字节，索引面置于串尾）。
-  不支持旧版编码串。
-  输出：ox/oy 为 0 起 x/y 偏移，按行优先顺序迭代；c 为 Color 克隆对象（r/g/b/a 均 0..1）。
-  本块只解码不编码，自包含、不依赖其他代码块，不暴露其他全局。
+  PixelMap(s): 把彩色图编码串解码为像素迭代器，每次返回 ox, oy, Color(r,g,b,a)。
+  输入 s：彩色图编码串
+  输出：ox/oy 为 0 起 x/y 偏移，按行优先顺序迭代；c 为 Color 克隆对象（r/g/b/a 均 0~1）。
 ]]
 l local d,H,I,J,j,o,K,L=string.byte,string.sub,math.floor,2^32-1,2^31,2^30,3*2^30 L=function(s)local n,q,M,v,b,A,c,e,g=#s if n<5 then return nil,'ds'end q,M=0<d(s,1),d(s,2)if not M or M<1 or n<3+M*3 then return nil,'pal'end v={}for i=1,M do v[i]={d(s,3*i),d(s,3*i+1),d(s,3*i+2)}end b=3+M*3 A=d(s,b)b=b+1 local w,h if A==255 then if n<b+3 then return nil,'ds'end w=d(s,b)*256+d(s,b+1)h=d(s,b+2)*256+d(s,b+3)b=b+4 else w=A h=d(s,b)if not h then return nil,'ds'end b=b+1 end if not h or w<1 or h<1 then return nil,'dim'end A=nil if q then if n<b+w*h-1 then return nil,'alpha'end A=H(s,b,b+w*h-1)b=b+w*h end local k,p,C,l,D=M+1,b,d(s,b),0 D=function()l=l+1 if l>8 then l=1 p=p+1 C=p<=n and d(s,p)or 0 end return(C>>(8-l))&1 end c,e,g=.0,J,.0 for _=1,32 do g=g*2+D()end local E,N={}N=function(f)local z=E[f]if not z then local t={}for a=1,k do t[a]=1 end z={t,k}E[f]=z end return z end M={}for a=1,w do M[a]={}end for y=1,h do local F=k for x=1,w do local z=N(F)local f,t,O,G,i,r=z[1],z[2],e-c+1,c,0,0 for a=1,k do local P=f[a]r=r+P P=c+I(O*r/t)-1 if g<=P then i=a-1 e=P break end G=P+1 end c=G f[i+1]=f[i+1]+1 t=t+1 if t>=32768 then local u=0 for a=1,k do t[a]=(t[a]+1)//2 u=u+t[a]end z[2]=u else z[2]=t end M[x][y]={c=i,a=q and 0 or(i==0 and 0 or 255)}F=i while 1 do if e<j then elseif c>=j then c=c-j e=e-j g=g-j elseif c>=o and e<K then c=c-o e=e-o g=g-o else break end c=c*2 e=e*2+1 g=g*2+D()end end end if q then local a=1 for y=1,h do for x=1,w do M[x][y].a=d(A,a)a=a+1 end end end return M,v end function PixelMap(s)local m,a=L(s)if not m then return nil,a end local w,h,e,i=#m,#m[1],{},0 for y=1,h do for x=1,w do local p,r,g,b=m[x][y],0,0,0 if p.c>0 then local t=a[p.c]r=t[1]g=t[2]b=t[3]end i=i+1 e[i]=Color(r/255,g/255,b/255,p.a/255)end end local k=0 return function()k=k+1 if k>w*h then return nil end local c=e[k]return(k-1)%w,(k-1)//w,Color(c.R,c.G,c.B,c.A)end end
 
