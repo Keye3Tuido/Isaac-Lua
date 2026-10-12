@@ -39,6 +39,11 @@ l MEC()
 l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
 
 --[[
+说明: 在第12层的初始房间右下角，生成一个传送至Delirium房间的传送门
+]]
+l local f,a,c,b,S,e,P=math.random,Isaac,ModCallbacks,Game,Sprite()e=a.AddCallback S:Load('gfx/1000.161_portal teleport.anm2',true)S:Play'Opened'e({},c.MC_POST_NEW_ROOM,function(l)l=b():GetLevel()P=LevelStage.STAGE7==l:GetStage()and l:GetCurrentRoomIndex()==l:GetStartingRoomIndex()if P then l=b():GetRoom()for i=0,l:GetGridSize()-1 do if not l:GetGridEntity(i)then P=l:GetGridPosition(i)end end end end)e({},c.MC_POST_RENDER,function()if P then if 1>1&a.GetFrameCount()then S:Update()end S.Color=Color.Lerp(S.Color,Color(f(),f(),f(),f(),f(),f(),f()),f())S:Render(a.WorldToScreen(P))end end)e({},c.MC_POST_PLAYER_UPDATE,function(r,p,s)if P and 20>p.Position:Distance(P)then s=b():GetLevel():GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then b():StartRoomTransition(r.SafeGridIndex,Direction.NO_DIRECTION)break end end P=nil end end,0)
+
+--[[
 模板: lock-achievements
 ]]
 
