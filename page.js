@@ -590,16 +590,6 @@ function displayComment(state) {
     lines[0] = state.block.num + '. ' + lines[0];
     return lines.join('\n');
 }
-// 复制全部/下载 zip 组装文本用：控制台粘贴格式「--N. 首行」，
-// 与构建产物 _assemble_raw 口径一致，不随页面显示格式改动
-function rawComment(state) {
-    const c = String(state.getComment() || '');
-    if (state.block.num === undefined || state.block.num === null) return c;
-    const lines = c.split('\n');
-    lines[0] = '--' + state.block.num + '. ' + lines[0];
-    // 续行补 '--' 前缀（空续行为 '--'），与 _assemble_raw 口径一致，保证 zip 的 main.lua 合法
-    return lines.map((l, k) => k === 0 ? l : '--' + l).join('\n');
-}
 function withLPrefix(code) {
     return String(code).split('\n').map(l => 'l ' + l).join('\n');
 }
@@ -762,23 +752,14 @@ function bindHover(el, charCount) {
     el.onmouseleave = hideHoverTip;
 }
 
-// 复制全部 / 下载 zip 用的当前全文：文件头 + 各块（面板当前值现场生成），部分之间空一行
+// 复制全部 / 下载 zip 用的当前全文：各块代码（面板当前值现场生成），块间空一行。
+// 注释（块头 --N. 说明、文件头、--===-- 分隔线）一律不携带——粘贴与模组都只需要可执行代码。
 function currentRawText() {
     const f = ALL_FILES[currentFileId];
     if (!f) return '';
     const parts = [];
-    const header = f.header || [];
-    if (header.length) parts.push(header.join('\n'));
-    let prevRegion = null;
     for (const st of currentBlocks) {
-        // 区域切换处插入分隔线，与构建产物 _assemble_raw / kb.json 口径一致
-        const region = st.block.region || null;
-        if (region && region !== prevRegion) {
-            parts.push('--===--');
-            prevRegion = region;
-        }
-        const c = rawComment(st);
-        parts.push((c ? c + '\n' : '') + withLPrefix(st.getCode()));
+        parts.push(withLPrefix(st.getCode()));
     }
     let out = parts.join('\n\n');
     if (f.isChallenge) out = out.replace(/\n+$/, '') + '\n\n';   // 末尾归一为一个固定空行

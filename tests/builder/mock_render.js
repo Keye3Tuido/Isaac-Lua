@@ -5,7 +5,7 @@
 //   ④ 罗马数字锚点路由（#c1sII 滚动命中，非法锚点回列表）
 //   ⑤ 显示格式：注释头无 -- 前缀（N. 说明）；说明自带数字编号时不叠加块编号
 //   ⑥ 名称标签（.name-badge）：有 name 的块渲染、无 name 的块不渲染
-//   ⑦ 复制全部组装文本保持 --N. 与 l 前缀（控制台粘贴格式不随页面显示改动）
+//   ⑦ 复制全部组装文本不含注释（块头 --N. / 文件头 / 分隔线），仅保留 l 前缀代码（粘贴与模组同口径）
 //   ⑧ 列表搜索：文件/模板id/注释/名称的块级命中，两栏结果（文件标题 + 关键字匹配），清空恢复
 // 运行：node tests/builder/mock_render.js
 'use strict';
@@ -222,12 +222,14 @@ check('s3 渲染名称标签「数据保存」',
     nameBadges3.length === 1 && nameBadges3[0].textContent === '数据保存');
 check('s1（无 name）不渲染名称标签', findByClass(sec1, 'name-badge').length === 0);
 
-// ⑦ 复制全部组装文本保持 --N. 与 l 前缀（说明自带编号也照常叠加，不随页面显示改动）
+// ⑦ 复制全部组装文本：注释（块头 --N. / 文件头 / --===-- 分隔线）一律不携带，仅保留 l 前缀代码
 const rawText = vm.runInContext('currentRawText()', sandbox);
-check('复制文本保留「--0. 前置安全包装。\\nl MEC()」',
-    rawText.includes('--0. 前置安全包装。\nl MEC()'));
-check('复制文本照常叠加「--3. 数据保存：门编号持久化。」',
-    rawText.includes('--3. 数据保存：门编号持久化。\nl Save(1)'));
+check('复制文本不含块注释头「--0.」',
+    !rawText.includes('--0.'));
+check('复制文本不含文件头与分隔线（--样例 / --===--）',
+    !rawText.includes('--样例') && !rawText.includes('--==='));
+check('复制文本保留 l 前缀代码「l MEC()」与「l Save(1)」',
+    rawText.includes('l MEC()') && rawText.includes('l Save(1)'));
 
 // ④ 罗马数字锚点路由：#c1sII 命中后置块；#c1sZ 非法回列表
 locationStub.hash = '#c1sII';
