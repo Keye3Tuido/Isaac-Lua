@@ -550,7 +550,11 @@ class TestPublishBuild(unittest.TestCase):
         pub = {os.path.relpath(os.path.join(dp, fn), self.out).replace(os.sep, "/")
                for dp, _, fns in os.walk(self.out) for fn in fns}
         for name in self.assets:
-            self.assertIn(f"assets/{name}", pub)
+            if f"assets/{name}" in pub:
+                continue
+            # 目录型资源（如 pyodide/）：正则推导只拿到目录名，由 assemble 整目录拷贝
+            self.assertTrue(any(p.startswith(f"assets/{name}/") for p in pub),
+                            f"资源 assets/{name} 未发布")
 
     def test_only_necessary_files_published(self):
         pub = {os.path.relpath(os.path.join(dp, fn), self.out).replace(os.sep, "/")

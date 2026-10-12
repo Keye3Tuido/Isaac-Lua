@@ -257,11 +257,16 @@ def encode_color_codec(w, h, pixels, palette, wnc=True):
     if len(rleb) < len(best):
         best, flag = rleb, 4
     if wnc:
-        used = sorted({c for c, _a in pixels if c >= 1})
+        # 平面按"有效索引"构造：模式 1 的透明像素（stored=0）不得按其调色板编号
+        # 入平面，否则解码端按平面编号还原时会把它当成不透明（盘上格式：平面存
+        # 真实 1 基 c，0=透明）
+        eff = [0 if (mode == 1 and pixels[i][1] == 0) else pixels[i][0]
+               for i in range(n)]
+        used = sorted({v for v in eff if v >= 1})
         planes = bytearray([len(used)])
         planes += bytes(used)
         for uc in used:
-            bm = [1 if c == uc else 0 for c, _a in pixels]
+            bm = [1 if v == uc else 0 for v in eff]
             st = bm_enc(bm, w, h)
             planes += len(st).to_bytes(2, "big")
             planes += st
@@ -428,6 +433,7 @@ COLOR_STEPS = [255, 224, 192, 160, 128, 112, 96, 80, 64, 56, 48, 40, 32,
 
 
 def build_pixels(img, ncolors):
+    ncolors = min(max(1, ncolors), 255)  # 色板数以 1 字节存储，上限 255
     palette_rgb, idx = quantize_adaptive(img, ncolors)
     pal = ('custom', palette_rgb)
     px = list(img.getdata())

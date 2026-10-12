@@ -694,7 +694,7 @@ l function OnQuestionInit(p)P1 end;local a,S=Vector,Sprite()S:Load'gfx/005.100_c
 模板id: delirium-teleport
 说明: 如果本层存在，则传送玩家到精神错乱房间
 ]]
-l local l,s,r=Game():GetLevel()s=l:GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then Game():ChangeRoom(r.SafeGridIndex)break end end
+l local s,r=Game():GetLevel():GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then Game():StartRoomTransition(r.SafeGridIndex,Direction.NO_DIRECTION)break end end
 
 --[[
 作为模板: true

@@ -28,6 +28,18 @@ l MEC()
 ]]
 
 --[[
+模板: pixel-factory
+]]
+
+--[[
+模板: color-codec
+]]
+
+--[[
+模板: draw-image
+]]
+
+--[[
 说明: |-
   游戏胜利后自动清除代码效果; 长按重开键10秒自动清空代码效果。
   提供一个全局表_CodeEnding, 清理代码后会置表内的全局元素为nil，并释放该当前表。
@@ -37,6 +49,12 @@ l MEC()
 依赖: [安全包装, 清理回调]
 ]]
 l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
+
+--[[
+说明: 在第12层的初始房间右下角，生成一个传送至Delirium房间的传送门
+依赖: [整图绘制, Base92编解码]
+]]
+l local a,c,b=Isaac,ModCallbacks,Game local e,S,P=a.AddCallback,DecBase92"%QjK8v^y<M~Ti}z`K]h{=<%c*J(CcLa);xy;#s{&7#2NZB!'GNJ$AS_E!yY]b#t-M>&%a]*!!!OB:#88$WIe@T'W6;>1&=G&!#Xc29>zP1QrLC:DTNK)%6Bek!'0:!!!!!5*Xn-a<o$Wb9|[5p(rop^0V5CsKm5*ZLY]]~.xh#mNO|R^#|gV{2rwvZK(76E$w~;N8C;1o+I6u*!!!hZSfC{F-5Onq[%pp$(nV-=V)9dlJyEj!?!uYTXtAWt?|oSF0}vqk&<f^?8zoff<A*)(0X,,D:TP(0(:AL81&=G&!#@DSH/X1QM72wT>Xbi9@>kT#Kewb|!ohS]1&=G&!#P4n1&5R4[64YY$ly6U:~e*<<Ti$9BBu9Q7j:xA3W9kx1&=G&!$$;NUJ%$PY?ukyV0nTLYt1'?-7F7T6Wd*oJWje0*)#B|<n+#2S6ZnUCl@mD7$ZCs$emlZ:XZf>^UDfYJ(KT'MlJ751wHi7*$J5+/<bqFRme|sCf/p`:Z]GWVL4760}vqk%W2kuAk~`GS`MdPUKX%hG+3i*$rzcs!!!Hw(3:|(1x*X{"e({},c.MC_POST_NEW_ROOM,function(l)l=b():GetLevel()P=LevelStage.STAGE7==l:GetStage()and l:GetCurrentRoomIndex()==l:GetStartingRoomIndex()if P then l=b():GetRoom()for i=0,l:GetGridSize()-1 do if not l:GetGridEntity(i)then P=l:GetGridPosition(i)end end end end)e({},c.MC_POST_RENDER,function()if P then DrawImage(S,a.WorldToScreen(P))end end)e({},c.MC_POST_PLAYER_UPDATE,function(r,p,s)if P and 20>p.Position:Distance(P)then s=b():GetLevel():GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then b():StartRoomTransition(r.SafeGridIndex,Direction.NO_DIRECTION)break end end P=nil end end,0)
 
 --[[
 模板: lock-achievements

@@ -923,7 +923,11 @@ def _validate_deps(e, registry):
         # 同名警告只针对显式声明的重复：同一模板被引用多次时继承名天然相同，属正常
         if nm in names and explicit and names[nm][2]:
             print(f"警告：{e['fname']} 中 名称 {nm!r} 重复声明（块{names[nm][1]} 与 块{b['num']}）。")
-        names[nm] = (idx, b["num"], explicit)
+        # 先到先得：同名时保留最靠前的提供者。依赖校验只要求"存在同名块排在当前
+        # 块之前"，最靠前的实例天然满足；取后者会把框架前置实例误报为顺序错误
+        # （框架前置与挑战正文引用同名模板时，同名块跨越两处出现）
+        if nm not in names:
+            names[nm] = (idx, b["num"], explicit)
     for idx, b in enumerate(e["blocks"]):
         deps = b["deps"] if "deps" in b else _deps_list(b["meta"], e["fname"], b["num"])
         for d in deps:
