@@ -511,6 +511,25 @@ function renderSections(f) {
             section.appendChild(dep);
         }
 
+        // 内嵌脚本启动器：块头声明 内嵌脚本 时出现；工具实现/样式由 scripts/tools/ 自包含
+        if (block.tools && block.tools.length) {
+            const tl = document.createElement('div');
+            tl.className = 'tool-launch';
+            for (const tid of block.tools) {
+                const def = (window.__TOOLS_MANIFEST__ || []).find(t => t.id === tid);
+                const btn = document.createElement('button');
+                btn.className = 'tool-launch-btn';
+                btn.textContent = '⚒ ' + (def ? def.title : tid);
+                btn.title = def && def.desc ? def.desc : tid;
+                btn.onclick = (ev) => {
+                    ev.stopPropagation();
+                    if (window.SCRIPT_TOOLBOX) window.SCRIPT_TOOLBOX.open(tid);
+                };
+                tl.appendChild(btn);
+            }
+            section.appendChild(tl);
+        }
+
         section.classList.add('collapsed');
         head.onclick = () => {
             section.classList.toggle('collapsed');

@@ -1,3 +1,9 @@
+# --[[ 工具规格
+# id: enc92_tool
+# title: 字符串转 Base92
+# desc: 把任意字符串（含中文）编码为带引号的 base-92 字面量，可直接粘进控制台
+# inputs: [{name: text, type: text, label: 输入字符串, placeholder: 要转换的字符串（含中文）…}]
+# ]]
 """enc92_tool：base-92 编码器。
 
 无参数运行：进入交互模式，逐行输入任意文本（可含中文），回车即输出 base-92 字面量；

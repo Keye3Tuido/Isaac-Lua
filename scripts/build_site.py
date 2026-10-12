@@ -143,13 +143,23 @@ def assemble(out_dir):
         if src_rel is None:
             raise SystemExit(f"错误：缺少第三方库 {dest_rel}（候选源都不存在：{cands}）")
         written.append(_copy(src_rel, os.path.join(out, dest_rel)))
-    # ④ 自动推导的资源
+    # ④ 自动推导的资源（目录名引用跳过，由 ⑤ 整目录拷贝）
     assets = sorted(derived_assets())
     for name in assets:
         src_rel = f"assets/{name}"
+        if os.path.isdir(os.path.join(REPO_ROOT, src_rel)):
+            continue
         if not os.path.isfile(os.path.join(REPO_ROOT, src_rel)):
             raise SystemExit(f"错误：页面引用了资源 {src_rel}，但仓库中不存在")
         written.append(_copy(src_rel, os.path.join(out, "assets", name)))
+    # ⑤ 内嵌脚本工具运行时（JS 动态拼路径加载，正则推导覆盖不到，整目录拷贝）
+    pyodide_dir = os.path.join(REPO_ROOT, "assets", "pyodide")
+    if os.path.isdir(pyodide_dir):
+        for fn in sorted(os.listdir(pyodide_dir)):
+            src_rel = f"assets/pyodide/{fn}"
+            if not os.path.isfile(os.path.join(REPO_ROOT, src_rel)):
+                continue
+            written.append(_copy(src_rel, os.path.join(out, "assets", "pyodide", fn)))
     return out, assets, written
 
 

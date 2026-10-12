@@ -33,7 +33,7 @@ RANDOM_STRING_TPL = "random-string-output"
 RESTART_TPLS = {"restart-game", "restart-as-character"}
 
 # 块头允许出现的键（未知键仅警告，便于发现笔误）
-KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "参数定义"}
+KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "参数定义", "内嵌脚本"}
 
 # 参数占位符名：P1、P2 … Pn
 PARAM_NAME_RE = re.compile(r"^P\d+$")
@@ -1156,6 +1156,9 @@ def build_all_files(lua_entries):
                 blk["name"] = eff
             elif meta.get("名称") is not None:
                 blk["name"] = str(meta["名称"])
+            tools = _tools_list(meta)
+            if tools:
+                blk["tools"] = tools
             if meta.get("作为模板") and meta.get("模板id"):
                 blk["tplDef"] = meta["模板id"]
             if "tpl" in b:
@@ -1188,6 +1191,67 @@ def build_templates_json(registry):
     return out
 
 
+def _tools_list(meta):
+    """块头 内嵌脚本 键 → 工具id列表（标量归一为单元素列表）。"""
+    v = (meta or {}).get("内嵌脚本")
+    if v is None:
+        return None
+    items = v if isinstance(v, list) else [v]
+    out = [str(t).strip() for t in items if str(t).strip()]
+    return out or None
+
+
+# 内嵌脚本工具目录：py = 工具规格头 + 参考实现（唯一事实源），js = 通用前端件
+TOOLS_DIR = os.path.join("scripts", "tools")
+_TOOL_SPEC_BEGIN = "# --[["
+_TOOL_SPEC_END = "# ]]"
+
+
+def _read_tool_spec(py_path):
+    """读取工具 py 的 `# --[[ 工具规格 ... # ]]` 注释头，经块头同款解析器 → dict。"""
+    inner, on = [], False
+    with open(py_path, encoding="utf-8") as f:
+        for ln in f.read().splitlines():
+            if not on:
+                # 起始行允许带后缀（如 `# --[[ 工具规格`），以标记开头即可
+                if ln.lstrip().startswith(_TOOL_SPEC_BEGIN):
+                    on = True
+                continue
+            if ln.strip() == _TOOL_SPEC_END:
+                break
+            s = ln.lstrip()
+            if s.startswith("#"):
+                s = s[1:].lstrip(" ")
+            inner.append(s)
+    if not inner:
+        return None
+    spec = parse_head(inner)
+    if not spec or not spec.get("id"):
+        raise SystemExit(f"错误：{py_path} 的工具规格头无法解析（需要 键: 值 行且含 id）。")
+    return spec
+
+
+def build_tools_embed(tools_dir=TOOLS_DIR):
+    """扫描 tools 目录：py 提取 规格+源码，js 原样内联。返回 (manifest, sources, js_parts)。"""
+    manifest, sources, js_parts = [], {}, []
+    if not os.path.isdir(tools_dir):
+        return manifest, sources, js_parts
+    for fname in sorted(os.listdir(tools_dir)):
+        p = os.path.join(tools_dir, fname)
+        if fname.endswith(".py"):
+            spec = _read_tool_spec(p)
+            stem = fname[:-3]
+            if str(spec["id"]).strip() != stem:
+                raise SystemExit(f"错误：{p} 规格 id '{spec['id']}' 与文件名 '{stem}' 不一致。")
+            manifest.append(spec)
+            with open(p, encoding="utf-8") as f:
+                sources[stem] = f.read()
+        elif fname.endswith(".js"):
+            with open(p, encoding="utf-8") as f:
+                js_parts.append(f.read())
+    return manifest, sources, js_parts
+
+
 def _block_kb(b, registry, fname):
     """把展开后的单个块转成 kb.json 块结构（自包含）。
 
@@ -1207,6 +1271,9 @@ def _block_kb(b, registry, fname):
         blk["name"] = eff
     elif meta.get("名称") is not None:
         blk["name"] = str(meta["名称"])
+    tools = _tools_list(meta)
+    if tools:
+        blk["tools"] = tools
     if meta.get("作为模板") and meta.get("模板id"):
         blk["tplDef"] = str(meta["模板id"])
     if "tpl" in b:
@@ -1371,6 +1438,20 @@ def main():
     if "__ALL_TEMPLATES__" in js:
         js = js.replace("__ALL_TEMPLATES__",
                         json.dumps(build_templates_json(registry), ensure_ascii=False))
+
+    # 内嵌脚本工具：通用扫描 scripts/tools/（py = 规格+参考实现，js = 通用前端件），
+    # 内联进页面；新增工具只需在 tools/ 加 py + 块头写 内嵌脚本，三处公共文件零改动
+    tools_manifest, tools_sources, tools_js = build_tools_embed()
+    tools_prelude = (";window.__TOOLS_MANIFEST__=" + json.dumps(tools_manifest, ensure_ascii=False)
+                     + ";\n;window.__TOOL_SOURCES__=" + json.dumps(tools_sources, ensure_ascii=False)
+                     + ";\n" + "\n;\n".join(tools_js) + "\n")
+    js = tools_prelude + js   # 置前：page.js 首次 route 即可用到 SCRIPT_TOOLBOX
+    known_tools = {t["id"] for t in tools_manifest}
+    for e in lua_entries:
+        for b in e["blocks"]:
+            for tid in ((b.get("meta") or {}).get("内嵌脚本") or []):
+                if str(tid).strip() and str(tid).strip() not in known_tools:
+                    print(f"警告：{e['fname']} 第 {b['line']} 行内嵌脚本 '{tid}' 在 {TOOLS_DIR}/ 下不存在。")
 
     # 输出知识库 JSON（站点同目录发布 kb.json 即可被下载）
     kb_entries = build_kb_entries(lua_entries, registry)

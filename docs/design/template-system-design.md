@@ -64,6 +64,28 @@ clean-globals 引用时尊重手写、不重复生成>
   P1: {类型: 道具id, 默认: 653, 性质: 局部}
 ```
 
+> 2026-10-12 修订（新增键，最终架构）：`内嵌脚本: [enc92_tool, png2base92]` —— 块头可选键，
+> 值为前端悬浮脚本框的工具id列表；构建期透传到 kb.json 与 __ALL_FILES__ 的块 tools 字段，
+> 前端据此在块下方渲染工具启动按钮（悬浮框可拖动、多工具页签、sessionStorage 恢复、
+> 全程本地运行）。
+>
+> 工具体系约定（新增工具的代价 = 两步：scripts/tools/ 加一个 py + 块头加一行 yaml）：
+> - 工具id = `scripts/tools/<id>.py` 的文件名（去 .py），构建期校验 py 规格头 id 与文件名一致。
+> - py 文件头部注释块是唯一事实源，格式：
+>   `# --[[ 工具规格` / `# id: <id>` / `# title: <标题>` / `# desc: <描述>` /
+>   `# inputs: [{name, type: text|file|number|select, label, ...}]` / `# ]]`
+>   （GenerateHtml 复用 parse_head 解析）。前端表单完全由该规格驱动，公共文件零 per-tool 代码。
+> - 运行时在浏览器内以 Pyodide（WASM Python）执行**真实 py 源码**（内联进 index.html；
+>   运行时本体打包在 assets/pyodide/ 约 16 MB，随站点本地加载，无外网依赖；
+>   Pillow 经 pyodide-lock.json 一并本地化）。argv 约定：file 类型按规格顺序写成
+>   `/tmp/in_<name>.<ext>` 作位置参数（file 排在 text 之前）；number/select 作 `--name value`；
+>   工具 py 必须暴露无参 `main()`，stdout 即输出。
+> - 公共文件分工：GenerateHtml.py 仅做通用扫描+内联（tools_prelude 置于 page.js 之前）；
+>   page.js 仅留通用启动器钩子（读块 tools 字段建按钮）；style.css 零改动
+>   （样式由 scripts/tools/_toolbox.js 注入 scoped CSS）。
+> 已知工具id：enc92_tool（任意字符串含中文 → 带引号的 Base92 Lua 字面量）、
+> png2base92（图片 → 128x128 内彩色图 Base92 编码，预算内取最大色数，含自检）。
+
 > 2026-10-10 修订（模板命名继承，不新增键）：模板定义块的 `名称` = 默认名；
 > 模板引用块的 `名称` = 覆盖名，**缺省则使用定义时的名称**（有效名称 = 引用 名称
 > else 定义 名称）。纯展示/依赖语义——名称只驱动依赖匹配与前端名称标签，
