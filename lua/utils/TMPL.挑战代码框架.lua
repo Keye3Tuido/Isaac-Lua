@@ -51,14 +51,14 @@ l MEC()
 l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.AddCallback C=function()DEMEC()CLM()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding=nil end A({},M.MC_POST_GAME_END,function(_,f)if not f then C()end end)A({},M.MC_POST_RENDER,function(p)p=T()for i=1,Game():GetNumPlayers()do if Input.IsActionPressed(ButtonAction.ACTION_RESTART,I.GetPlayer(i).ControllerIndex)then if p-F>=1e4 then C()Game():FinishChallenge()Game():Fadeout(1,2)end return end end F=p end)
 
 --[[
+模板: lock-achievements
+]]
+
+--[[
 说明: 在第12层的初始房间右下角，生成一个传送至Delirium房间的传送门
 依赖: [整图绘制, Base92编解码]
 ]]
 l local a,c,b=Isaac,ModCallbacks,Game local e,S,P=a.AddCallback,DecBase92"$!!q0F&4+[GQtAGY'2]<E-+~_i#s{(jTi~V1URI[?1&=G&!!!!!!!!!!!#%QVM='Z{56G>S*d)*JIoSE=]w}na7G0P3So<Ym5.j;&2mOgmH[o^634!Cb2Yf>v=Ec;pAxY09$dGodAfU}e/JK[q&M@y+AK8<F06bGe)XZ;RTHzLzP,~uN[eJDK>>1F0^;3d=/'oKJA7_^k?AK,[@BJd77BZUROmRkDZw^b`?2=*F-^6gkP>vDY:E|*$5F0,18./)w.6Jk7L[;S?Q'7RA9eYY_B;<BF8y$(pL#9dBR$zR*01{YGS2&_s3{8g/IlH$x/na'#/'4a~Pdttq1hQ#5,EwG<=[{GH)wgOaLlOd|Nrj&fS$?/w/B2g6Y1i58%`nmd:*Z%5={&GX=:g;Z/JWP0:F2Vv1w6{(,`n+V5o.i1<U,PBVu3}9*AUB2"e({},c.MC_POST_NEW_ROOM,function(l)l=b():GetLevel()P=LevelStage.STAGE7==l:GetStage()and l:GetCurrentRoomIndex()==l:GetStartingRoomIndex()if P then l=b():GetRoom()for i=0,l:GetGridSize()-1 do if not l:GetGridEntity(i)then P=l:GetGridPosition(i)end end end end)e({},c.MC_POST_RENDER,function()if P then DrawImage(S,a.WorldToScreen(P))end end)e({},c.MC_POST_PLAYER_UPDATE,function(r,p,s)if P and 20>p.Position:Distance(P)then s=b():GetLevel():GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then b():StartRoomTransition(r.SafeGridIndex,Direction.NO_DIRECTION)break end end P=nil end end,0)
-
---[[
-模板: lock-achievements
-]]
 
 --===--
 
