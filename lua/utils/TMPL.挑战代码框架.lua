@@ -55,10 +55,12 @@ l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.A
 ]]
 
 --[[
-说明: 在第12层的初始房间右下角，生成一个传送至Delirium房间的传送门
+说明: |-
+  在第12层的初始房间右下角，生成一个传送至Delirium房间的传送门
+  传送门贴图 by bilibili@迷鼠zas, uid:19166843
 依赖: [整图绘制, Base92编解码]
 ]]
-l local a,c,b=Isaac,ModCallbacks,Game local e,S,P=a.AddCallback,DecBase92"$!!q0F&4+[GQtAGY'2]<E-+~_i#s{(jTi~V1URI[?1&=G&!!!!!!!!!!!#%QVM='Z{56G>S*d)*JIoSE=]w}na7G0P3So<Ym5.j;&2mOgmH[o^634!Cb2Yf>v=Ec;pAxY09$dGodAfU}e/JK[q&M@y+AK8<F06bGe)XZ;RTHzLzP,~uN[eJDK>>1F0^;3d=/'oKJA7_^k?AK,[@BJd77BZUROmRkDZw^b`?2=*F-^6gkP>vDY:E|*$5F0,18./)w.6Jk7L[;S?Q'7RA9eYY_B;<BF8y$(pL#9dBR$zR*01{YGS2&_s3{8g/IlH$x/na'#/'4a~Pdttq1hQ#5,EwG<=[{GH)wgOaLlOd|Nrj&fS$?/w/B2g6Y1i58%`nmd:*Z%5={&GX=:g;Z/JWP0:F2Vv1w6{(,`n+V5o.i1<U,PBVu3}9*AUB2"e({},c.MC_POST_NEW_ROOM,function(l)l=b():GetLevel()P=LevelStage.STAGE7==l:GetStage()and l:GetCurrentRoomIndex()==l:GetStartingRoomIndex()if P then l=b():GetRoom()for i=0,l:GetGridSize()-1 do if not l:GetGridEntity(i)then P=l:GetGridPosition(i)end end end end)e({},c.MC_POST_RENDER,function()if P then DrawImage(S,a.WorldToScreen(P))end end)e({},c.MC_POST_PLAYER_UPDATE,function(r,p,s)if P and 20>p.Position:Distance(P)then s=b():GetLevel():GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then b():StartRoomTransition(r.SafeGridIndex,Direction.NO_DIRECTION)break end end P=nil end end,0)
+l local a,c,b=Isaac,ModCallbacks,Game local e,S,P=a.AddCallback,DecBase92"%!!x1n^ig^.8*al&)$J<rI7w+NZ1Kh1GM;]{!7Si*1&=G&!!!!!!!!!7]>tI2]i;J?Q+R#:WCC'tW{LbzZy'GY^@NSE6n%%CA-#}u90wyL14a]%PogPzBr&jg];7Ii@(87(=N0dVLr1+zDQ?}+[bYZI5fDT+:ym)}/L<{eSGUpZL/aBBMzVZf23-tt;jo2ePbs_p9m&S5L8_S9,Bl<DE_QRY!xW88D8p%vF]OTPXLJ1{3wZ'~39TXO(h;Yr!Odb--r<EU=jg.&P[$,a)t(q4U{=*q>jw?`;HY:b1?*}h;pmHU3Kt^ZZu2bt>f{iKVP=yQYcR}!W7:@|McqZ_%gUg;;9KOQ%3n-pY#Tv~Ix{L7(edcHZIn7]X;#'G!gWS[Q-;L[^:S`d$^Pi;?R&.6;VW|*C5/^%1%7&P#CVJ>VuQ<R'++<eA1FN*SO;>'&qJ$c<1j)TSZ)8E5+AyjPRRjQ(8wP&.~$IuYN*ii:|z{vC?xHaA.Ifu<8]KO=cN!W9.Lf!CBY;5M~qyv+/k5>^[|9O2JTwHSEusw+ei]y1!XLM.cox'1&m|0]<jrBCD,AITx|)N^G.3jTy@K+Hv)H)3/@8KZAkhm(e9~mHg*BP,u-E-@o$XGAWPEe?kL5429h|9P'Env&l`X'PPM0+N%s[WFq|B#6>!Yv)m3pH58km`TnX4xB!*W+L}bll1K1W#>yM*z$dSw`P;;d}'?V%R&$b)r2l<&i#rT[hY^`#U/laSN7*+`_<@`2,?w2(QL}BK0B<EV&PDW-m%~<e%X!'qK.^*tCQj;ks"e({},c.MC_POST_NEW_ROOM,function(l)l=b():GetLevel()P=LevelStage.STAGE7==l:GetStage()and l:GetCurrentRoomIndex()==l:GetStartingRoomIndex()if P then l=b():GetRoom()for i=0,l:GetGridSize()-1 do if not l:GetGridEntity(i)then P=l:GetGridPosition(i)end end end end)e({},c.MC_POST_RENDER,function()if P then DrawImage(S,a.WorldToScreen(P),.5)end end)e({},c.MC_POST_PLAYER_UPDATE,function(r,p,s)if P and 20>p.Position:Distance(P)then s=b():GetLevel():GetRooms()for i=1,#s do r=s:Get(i-1)if r.Data.Name=='Delirium'then b():StartRoomTransition(r.SafeGridIndex,Direction.NO_DIRECTION)break end end P=nil end end,0)
 
 --===--
 
