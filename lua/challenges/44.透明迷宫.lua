@@ -7,9 +7,9 @@
 l local A,B,C=Isaac.AddCallback,ModCallbacks,function(r,g,t)r=Game():GetRoom()for i=1,r:GetGridSize()do g=r:GetGridEntity(i-1)if g then t=g:GetType()if t==14 and 1==g:GetVariant()then g=nil else for _,v in pairs{8,9,12,25}do if v==g:GetType()then g=nil break end end end if g then g:GetSprite().Scale=Vector(0,0)end end end end A({},B.MC_POST_NEW_ROOM,C)A({},B.MC_POST_UPDATE,C)
 
 --[[
-说明: 角色无法飞行
+说明: 角色在祸兽房间之外无法飞行
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.CanFly=false end,CacheFlag.CACHE_FLYING)
+l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.CanFly=Game():GetLevel():GetCurrentRoomDesc().Data.Name=='Beast Room'end,CacheFlag.CACHE_FLYING)
 
 --[[
 模板: remove-collectibles
