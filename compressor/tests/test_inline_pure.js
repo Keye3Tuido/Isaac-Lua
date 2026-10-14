@@ -128,5 +128,24 @@ function execLua(body){
   else { fail++; console.log('✗ NEG if支配不代入 -> 执行=', got, '|', body); }
 })();
 
+
+// NEG 跨重赋值内联（2026-10-14 字节解包误编译回归）：
+// al=a%256 的读被跨过 a=a//256 重赋值内联到使用点，四通道全部失真。
+(function(){
+  const src = "local function f(r) local a=r[5] local al=a%256 a=a//256 local bl=a%256 a=a//256 local gl=a%256 return a//256,gl,bl,al end return f({0,0,0,0,((100*256+20)*256+30)*256+255})";
+  const r = L.compress(src, { noMetatable: false, beamWidth: 4 });
+  const body = r.output.replace(/^l /, '');
+  const L2 = f.lauxlib.luaL_newstate();
+  f.lualib.luaL_openlibs(L2);
+  const st = f.lauxlib.luaL_dostring(L2, f.to_luastring(body.replace(/[.]0/g, '0.0')));
+  const r_ = st === f.lua.LUA_OK ? f.lua.lua_tonumber(L2, -4) : null;
+  const g_ = st === f.lua.LUA_OK ? f.lua.lua_tonumber(L2, -3) : null;
+  const b_ = st === f.lua.LUA_OK ? f.lua.lua_tonumber(L2, -2) : null;
+  const a_ = st === f.lua.LUA_OK ? f.lua.lua_tonumber(L2, -1) : null;
+  const ok = r_ === 100 && g_ === 20 && b_ === 30 && a_ === 255;
+  if (ok) { pass++; console.log('✓ NEG 跨重赋值不代入 ->', body.length, '字, 通道', r_, g_, b_, a_); }
+  else { fail++; console.log('✗ NEG 跨重赋值不代入 ->', r_, g_, b_, a_, '|', body); }
+})();
+
 console.log('\n=== inline-pure: ' + pass + ' pass, ' + fail + ' fail ===');
 process.exit(fail ? 1 : 0);

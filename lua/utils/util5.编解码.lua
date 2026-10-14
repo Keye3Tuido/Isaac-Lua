@@ -267,21 +267,23 @@ end
 名称: 整图绘制
 依赖: [彩色图像素迭代器, 像素工厂]
 说明: |-
-  DrawImage(s, position, scale ?= 1)：把彩色图编码串整图绘制到屏幕。
+  DrawImage(s, position, scale ?= 1, rotation ?= 0)：把彩色图编码串整图绘制到屏幕。
   输入 s：彩色图编码串（头部自带调色板与宽高）。
   输入 position：图像中心屏幕坐标 Vector2D；scale：单个图像像素的屏幕边长，可省略缺省 1。
+  输入 rotation：整图绕 position 的旋转角度（度，顺时针为正，可省略缺省 0 即不旋转）；
+  非 90 倍数角度时合并矩形的接缝处可能有轻微重叠或缝隙（像素画风格）。
   绘制前把同色相邻像素合并为若干矩形再渲染，渲染次数远低于逐像素绘制；全透明像素直接跳过。
   合并结果按编码串内容缓存，同一串重复绘制不重复解码分解。
   解码失败返回 nil 与错误信息。
 ]]
-l local A,C,D,E,P=PixelMap,Vector,Color,math.floor,MakePixel() local F,R local function M(s)local t,u=A(s)if not t then return nil,u end local n,w,i,j,k,p=0,0,{},{},{},{}local x,y,c while true do x,y,c=t()if x==nil then break end n=n+1 i[n]=E(c.R*255+.5)j[n]=E(c.G*255+.5)k[n]=E(c.B*255+.5)p[n]=E(c.A*255+.5)if x+1>w then w=x+1 end end local h=n//w local q,d,v,r={},{},{},{}for z=0,n-1 do local a=p[z+1]q[z]=a==0 and 0 or((i[z+1]*256+j[z+1])*256+k[z+1])*256+a end for x=0,w-1 do local o=0 for y=h-1,0,-1 do local z=y*w+x if q[z]~=0 then if y<h-1 and q[z]==q[z+w]then o=o+1 else o=1 end d[z]=o else o=0 d[z]=0 end end end for y=0,h-1 do for x=0,w-1 do local z=y*w+x local a=d[z]if a>0 and not v[z]then local m=1 while x+m<w do local b=z+m if v[b]or d[b]<a or q[b]~=q[z]then break end m=m+1 end for xx=x,x+m-1 do for yy=y,y+a-1 do v[yy*w+xx]=true end end r[#r+1]={x,y,m,a,q[z]}end end end return r,w,h end function DrawImage(s,f,g)g=g or 1 if s~=F then local r,w,h=M(s)if not r then return nil,w end F,R=s,{r,w,h}end local r,w,h=R[1],R[2],R[3]for i=1,#r do local z=r[i]local a=z[5]local al=a%256 a=a//256 local bl=a%256 a=a//256 local gl=a%256 P.Color=D(a//256/255,gl/255,bl/255,al/255)P.Scale=C(z[3]*g,z[4]*g)P:Render(f+C((z[1]+(z[3]-1)/2-(w-1)/2)*g,(z[2]+(z[4]-1)/2-(h-1)/2)*g))end end
+l local d,w,P,l,f=Vector,math.floor,MakePixel()local function t(s)local m,u=PixelMap(s)if not m then return nil,u end local n,W,o,p,q,r=0,0,{},{},{},{}while 1 do local a,j,c=m()if a==nil then break end n=n+1 o[n]=w(c.R*255+.5)p[n]=w(c.G*255+.5)q[n]=w(c.B*255+.5)r[n]=w(c.A*255+.5)if a+1>W then W=a+1 end end local H,e,g,h,i=n//W,{},{},{},{}for k=0,n-1 do local a=r[k+1]e[k]=a==0 and 0 or((o[k+1]*256+p[k+1])*256+q[k+1])*256+a end for x=0,W-1 do local a=0 for y=H-1,0,-1 do local k=y*W+x if 0~=e[k]then if y<H-1 and e[k]==e[k+W]then a=a+1 else a=1 end g[k]=a else a=0 g[k]=0 end end end for y=0,H-1 do for x=0,W-1 do local k=y*W+x local c=g[k]if c>0 and not h[k]then local a=1 while x+a<W do local j=k+a if h[j]or c>g[j]or e[j]~=e[k]then break end a=a+1 end for j=x,x+a-1 do for v=y,y+c-1 do h[v*W+j]=true end end i[#i+1]={x,y,a,c,e[k]}end end end return i,W,H end function DrawImage(s,h,a,c)a=a or 1 c=c or 0 if s~=l then local e,W,H=t(s)if not e then return nil,W end l,f=s,{e,W,H}end local g=f[1]P.Rotation=c for i=1,#g do local r=g[i]i=r[5]P.Color=Color(i//16777216/255,i//65536%256/255,i//256%256/255,i%256/255)P.Scale=d(r[3]*a,r[4]*a)P:Render(h+d((r[1]+(r[3]-1)/2-((f[2])-1)/2)*a,(r[2]+(r[4]-1)/2-((f[3])-1)/2)*a):Rotated(c))end end
 
 --[==[ 源代码
 -- 整图绘制（依赖 彩色图像素迭代器 的 PixelMap 与 像素工厂 的 MakePixel）
--- DrawImage(编码串, 图像中心屏幕坐标, scale ?= 1)：同色像素合并为矩形再渲染
+-- DrawImage(编码串, 图像中心屏幕坐标, scale ?= 1, rotation ?= 0)：同色像素合并为矩形再渲染
 -- 像素对象在块加载时创建一次，逐次绘制只改 Color/Scale（与 draw-qrcode 同款用法）
-local IMG_Q, IMG_R = nil, nil
 local P = MakePixel()
+local IMG_Q, IMG_R
 
 local function build_runs(s)
     local it, err = PixelMap(s)
@@ -343,24 +345,24 @@ local function build_runs(s)
     return runs, W, H
 end
 
-function DrawImage(s, position, scale)
+function DrawImage(s, position, scale, rotation)
     scale = scale or 1
+    rotation = rotation or 0
     if s ~= IMG_Q then
         local runs, W, H = build_runs(s)
         if not runs then return nil, W end
         IMG_Q, IMG_R = s, {runs, W, H}
     end
     local runs, W, H = IMG_R[1], IMG_R[2], IMG_R[3]
+    P.Rotation = rotation   -- P 为本块私有像素对象，循环内无其他写入，提到循环外
     for i = 1, #runs do
         local r = runs[i]
-        local a = r[5]
-        local al = a % 256 a = a // 256
-        local bl = a % 256 a = a // 256
-        local gl = a % 256
-        P.Color = Color(a // 256 / 255, gl / 255, bl / 255, al / 255)
+        local key = r[5]
+        P.Color = Color(key // 16777216 / 255, key // 65536 % 256 / 255,
+                        key // 256 % 256 / 255, key % 256 / 255)
         P.Scale = Vector(r[3] * scale, r[4] * scale)
         P:Render(position + Vector((r[1] + (r[3] - 1) / 2 - (W - 1) / 2) * scale,
-                                   (r[2] + (r[4] - 1) / 2 - (H - 1) / 2) * scale))
+                                   (r[2] + (r[4] - 1) / 2 - (H - 1) / 2) * scale):Rotated(rotation))
     end
 end
 ]==]

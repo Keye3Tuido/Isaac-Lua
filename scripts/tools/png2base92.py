@@ -267,7 +267,7 @@ def quantize_adaptive(img_rgba, colors):
     q = img_rgba.convert("RGB").quantize(colors=colors, method=Image.Quantize.MEDIANCUT,
                                          dither=Image.Dither.NONE)
     flat = q.getpalette() or []
-    idx = list(q.getdata())
+    idx = list(q.get_flattened_data()) if hasattr(q, "get_flattened_data") else list(q.getdata())
     used = sorted(set(idx))
     palette, remap = [], {}
     for k, ci in enumerate(used):
@@ -287,7 +287,7 @@ def build_pixels(img, ncolors):
     ncolors = min(max(1, ncolors), 255)  # 色板数以 1 字节存储，上限 255
     palette_rgb, idx = quantize_adaptive(img, ncolors)
     pal = ('custom', palette_rgb)
-    px = list(img.getdata())
+    px = list(img.get_flattened_data()) if hasattr(img, "get_flattened_data") else list(img.getdata())
     pixels = [(idx[i] + 1, px[i][3]) for i in range(img.size[0] * img.size[1])]
     return pixels, pal
 
@@ -330,6 +330,9 @@ def main():
         chosen = (f"自适应 {n} 色", n, data, encoded, pixels, pal_rgb)
 
     desc, ncolors, data, encoded, pixels, pal_rgb = chosen
+    if ncolors < args.colors:
+        print(f"提示: 预算 {args.budget} 字符内放不下 {args.colors} 色，已自动降至 {ncolors} 色；"
+              f"提高 --budget 可保留更多颜色", file=sys.stderr)
 
     # 自检: 解码回读比对（索引已按频率重映射，按 RGBA 比对）
     _, _, dec_pixels, pal_color = decode_color_codec(data)

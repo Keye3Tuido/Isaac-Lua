@@ -2101,6 +2101,36 @@
           default: return false;
         }
       }
+      // RHS 引用集合（varOf 解析为局部的标识符 binding）
+      function rhsRefBindings(node){
+        var set=new Set();
+        (function scan(n){
+          if(!n||typeof n!=='object')return;
+          if(Array.isArray(n)){for(var i=0;i<n.length;i++)scan(n[i]);return;}
+          if(n.type==='Identifier'){
+            var rb=info.varOf.get(n);
+            if(rb) set.add(rb);
+            return;
+          }
+          for(var k in n){ if(k==='range'||k==='loc')continue; if(Object.prototype.hasOwnProperty.call(n,k)) scan(n[k]); }
+        })(node);
+        return set;
+      }
+      // 声明/赋值与使用之间，RHS 引用变量不得被重新赋值（否则代入的是变化后的值）：
+      // 2026-10-14 字节解包误编译——al=a%256 的读被跨过 a=a//256 重赋值内联到使用点。
+      function reassignedBetween(rhsNode, fromStmt, useNode){
+        var refs=rhsRefBindings(rhsNode);
+        if(!refs.size) return false;
+        var lo=fromStmt.range[1], hi=useNode.range[0];
+        for(var rb of refs){
+          var asg=assignedStmts.get(rb);
+          if(!asg) continue;
+          for(var st of asg){
+            if(st!==fromStmt && st.range[0]>=lo && st.range[1]<=hi) return true;
+          }
+        }
+        return false;
+      }
       // declLoc: binding → {stmt, idx}（声明符所在 LocalStatement 槽位，变量与 init 对齐）。
       // declAnyLoc: 同映射击到不对齐声明（init 长度单独记录，供 nil 填充槽联动删除）。
       // 递归遍历所有块——控制台代码的局部几乎都藏在回调/函数体里，只扫顶层会整批漏掉。
@@ -2173,6 +2203,7 @@
           var as2=asg.values().next().value;
           if(!declAnyLoc.get(b)) return;
           if(!sameBlkBefore(as2, use)) return;   // 支配+作用域：赋值句与使用点须同块且在前
+          if(reassignedBetween(as2.init[asgIdx], as2, use)) return;   // RHS 引用在使用前不得被改赋值
           valueNode=as2.init[asgIdx]; delStmt=as2;
           delSlot=true; delIdx=asgIdx;   // 走槽位合并：从赋值句中成对删除该目标/值
         }else{
@@ -2197,6 +2228,7 @@
         }
         if(!valueNode || !valueNode.range || !movable(valueNode)) return;
         if(use.range[0] < delStmt.range[1]) return;  // 使用须在赋值之后
+        if(reassignedBetween(valueNode, delStmt, use)) return;  // RHS 引用在使用前不得被改赋值
         // 拆分赋值路径：声明句里的 w 槽（nil 填充）联动删除（如 local p,w=f() 删成 local p=f()）
         var declDrop=null;
         if(asg){
