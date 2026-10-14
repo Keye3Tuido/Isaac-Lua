@@ -12,6 +12,13 @@ l local A,B,C=Isaac.AddCallback,ModCallbacks,function(r,g)r=Game():GetRoom()for 
 l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.CanFly=false end,CacheFlag.CACHE_FLYING)
 
 --[[
+模板: remove-collectibles
+参数:
+  P1: '302,314'
+  P2: '道具302(狮子座)和道具314(霹雳大腿)'
+]]
+
+--[[
 模板: remove-cards
 参数: 
   P1: "10"
