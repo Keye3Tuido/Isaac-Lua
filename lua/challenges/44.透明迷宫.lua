@@ -2,9 +2,9 @@
 
 --[[
 说明: |-
-  角色看不见除了 地刺、炸药桶和刺石头 以外的所有障碍物
+  角色看不见除了 红色大便、地刺、炸药桶和刺石头 以外的所有障碍物
 ]]
-l local A,B,C=Isaac.AddCallback,ModCallbacks,function(r,g)r=Game():GetRoom()for i=1,r:GetGridSize()do g=r:GetGridEntity(i-1)if g then for _,v in pairs{8,9,12,25}do if v==g:GetType()then g=nil break end end if g then g:GetSprite().Scale=Vector(0,0)end end end end A({},B.MC_POST_NEW_ROOM,C)A({},B.MC_POST_UPDATE,C)
+l local A,B,C=Isaac.AddCallback,ModCallbacks,function(r,g,t)r=Game():GetRoom()for i=1,r:GetGridSize()do g=r:GetGridEntity(i-1)if g then t=g:GetType()if t==14 and 1==g:GetVariant()then g=nil else for _,v in pairs{8,9,12,25}do if v==g:GetType()then g=nil break end end end if g then g:GetSprite().Scale=Vector(0,0)end end end end A({},B.MC_POST_NEW_ROOM,C)A({},B.MC_POST_UPDATE,C)
 
 --[[
 说明: 角色无法飞行
