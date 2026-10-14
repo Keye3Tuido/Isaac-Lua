@@ -23,7 +23,7 @@ l local c,l,A,b,D,z=string,table.concat,"!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGH
   Rotation: number - 像素旋转角度
   Render(Vector2D:position) - 在指定位置渲染像素
 ]]
-l local a,b,k,l,m=Vector,Color,'Rotation','Scale','Color'function MakePixel()local d,f,g,h,i=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load'gfx/ui/stage/nightmare_bg.anm2'd:SetFrame('Intro',0)d.Offset=a(0,-15/448)d[l]=f d[m]=b(1,1,1,1,1,1,1)setmetatable(i,{__index=function(_,c)if c==l then return g elseif c==m then return h elseif c==k then return d[k]elseif c=='Render'then return function(_,e)d:RenderLayer(0,e)end end end,__newindex=function(_,e,c)if e==l then g=c d[l]=c*f elseif e==m then h=c d[m]=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)elseif e==k then d[k]=c d.Offset=a.FromAngle(d[k]-90)*15*d.Scale.Y end end})return i end
+l local a,b,k,l,m=Vector,Color,'Rotation','Scale','Color'function MakePixel()local d,f,g,h,i=Sprite(),a(1/784,1/448),a(1,1),b(1,1,1),{}d:Load'gfx/ui/stage/nightmare_bg.anm2'd:SetFrame('Intro',0)d.Offset=a(0,-15/448)d[l]=f d[m]=b(1,1,1,1,1,1,1)setmetatable(i,{__index=function(_,c)if c==l then return g elseif c==m then return h elseif c==k then return d[k]elseif c=='Render'then return function(_,e)if 0<h.A then d:RenderLayer(0,e)end end end end,__newindex=function(_,e,c)if e==l then g=c d[l]=c*f elseif e==m then h=c d[m]=b(1,1,1,c.A,c.R+c.RO,c.G+c.GO,c.B+c.BO)elseif e==k then d[k]=c d.Offset=a.FromAngle(d[k]-90)*15*d.Scale.Y end end})return i end
 
 --[==[ 源代码
 function MakePixel()
@@ -43,8 +43,11 @@ function MakePixel()
 			elseif key == 'Rotation' then
 				return _sprite.Rotation
             elseif key == 'Render' then
+                -- Color.A<=0 时直接跳过不渲染（透明像素免付渲染开销）
                 return function(_, position)
-                    _sprite:RenderLayer(0, position)
+                    if _color.A > 0 then
+                        _sprite:RenderLayer(0, position)
+                    end
                 end
             end
         end,
