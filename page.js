@@ -1,3 +1,13 @@
+// ========== 路径归一（最先执行） ==========
+// 手动输入 /compressor（或 /compressor/）时，静态托管若不做目录索引会回落到主页；
+// 这里检测后重定向到 /compressor/index.html，保留 query 与 hash。
+(function () {
+    const p = location.pathname;
+    if (/\/compressor\/?$/.test(p)) {
+        location.replace(p.replace(/\/?$/, '/index.html') + location.search + location.hash);
+    }
+})();
+
 // ========== DATA（由 Python 构建时注入） ==========
 const ALL_FILES = __ALL_FILES__;
 const TEMPLATES = __ALL_TEMPLATES__;
@@ -139,6 +149,7 @@ function parseHash(body) {
 function route() {
     const hash = location.hash;
     if (hash === '#kb') { downloadKb(); return; }   // #kb → 下载知识库 kb.json
+    if (hash === '#compressor') { location.replace('compressor/index.html'); return; }   // #compressor → 直达压缩器
     if (!hash || hash === '#') { showListView(); return; }
     let body = hash.slice(1);
     try { body = decodeURIComponent(body); } catch (_) { /* 非法转义时按原样匹配 */ }
