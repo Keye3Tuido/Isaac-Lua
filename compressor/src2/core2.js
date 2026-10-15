@@ -179,12 +179,19 @@
     // 若仍能被同管线再缩短（二遍差异），继续迭代到文本不动点（上限 3 轮，v1 注释的
     // 「整压重跑开销不可接受」在 IR 直改 + 缓存 parse 的 v2 上成立不了，实测语料
     // 绝大多数首轮即收敛）。
+    // opts.iterate（迭代收敛）：放开轮数上限（opts.maxIterations 或 20），真正跑到
+    // 文本不动点为止——实测存在第 4 轮才收敛的个案（跨透镜产物形态的二次机会）。
+    // 迭代口径不受 l/lua 前缀影响：第 2 轮起 cur 恒为上轮 output（'l ' 前缀），
+    // preprocess 对输入剥前缀，不动点比较是同口径文本比较。
     function compress(input, opts){
-      // 大输入 fixpoint 限 1 轮（尺寸分级，见 compressOnce 注释）
-      var maxRounds = (opts && opts.fixpointRounds)
-        || (base._preprocess(input).length > BIG_INPUT ? 1 : 3);
-      var cur = input, prev = null, acc = null, origIr0 = null;
+      var iterate = !!(opts && opts.iterate);
+      var maxRounds = iterate
+        ? ((opts && opts.maxIterations) || 20)
+        : ((opts && opts.fixpointRounds)
+        || (base._preprocess(input).length > BIG_INPUT ? 1 : 3));
+      var cur = input, prev = null, acc = null, origIr0 = null, rounds = 0;
       for(var round=0; round<maxRounds; round++){
+        rounds++;
         var r = compressOnce(cur, opts);
         if(!origIr0) origIr0 = r._ir0;   // 首轮输入 IR（原始输入的别名证据）
         if(!acc) acc = r;               // 首轮保底
@@ -199,6 +206,7 @@
       if(acc && origIr0){
         acc.report.aliasMap = canonMod.buildAliasMap(acc._ir);
       }
+      if(acc) acc.report.iterations = rounds;
       return acc;
     }
 
@@ -379,8 +387,11 @@
     // compressAsync(input, opts) -> Promise：compress 的异步镜像（fixpoint 每轮之间让出事件循环）
     function compressAsync(input, opts){
       opts = opts || {};
-      var maxRounds = (opts && opts.fixpointRounds)
-        || (base._preprocess(input).length > BIG_INPUT ? 1 : 3);
+      var iterate = !!opts.iterate;
+      var maxRounds = iterate
+        ? (opts.maxIterations || 20)
+        : ((opts && opts.fixpointRounds)
+        || (base._preprocess(input).length > BIG_INPUT ? 1 : 3));
       var cur = input, prev = null, acc = null, origIr0 = null;
       var round = 0;
       function loop(){
@@ -394,6 +405,9 @@
           acc = r;
           prev = r.bodyLength;
           cur = r.output;
+          // 迭代收敛 UI：每轮实际改善后回调当前最优输出（输入栏不动，输出栏逐轮覆盖；
+          // 仅在 acc 被替换时回调——无改善/不动点轮不产生更长中间态，避免输出栏来回闪烁）
+          if(opts.onIteration) opts.onIteration({ output: r.output, bodyLength: r.bodyLength, round: round });
           return yieldSlice().then(loop);   // fixpoint 每轮之间让出一次
         });
       }
@@ -402,6 +416,7 @@
         if(origIr0){
           acc.report.aliasMap = canonMod.buildAliasMap(acc._ir);
         }
+        acc.report.iterations = round;
         // UI 口径修正：originalLength/codeLength 始终相对【原始输入】（多轮 fixpoint 时
         // 各轮 compressOnce 产出的同名字段是相对该轮输入的）
         acc.originalLength = input.length;
