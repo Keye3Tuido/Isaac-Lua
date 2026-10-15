@@ -15,18 +15,18 @@ compressor/fengari-web.js
 __pycache__/
 
 # ==================== 测试临时文件 ====================
-# 远程测试缓存（remotetest.js 首次联网拉取的外部 main.lua）
-compressor/tests/.remote-cache/
+# 远程测试缓存（首次联网拉取的外部 main.lua）
+compressor/tests2/.remote-cache/
 
-# 批量测试克隆的第三方仓库（bulktest.js 自动下载）
-compressor/tests/_bulk_test_repos/
+# 批量测试克隆的第三方仓库
+compressor/tests2/_bulk_test_repos/
 
 # 压缩测试语料导出（scripts/export_segments.py 生成：默认参数替换后的逐块最终代码）
-compressor/tests/_repo_segments.json
+compressor/tests2/_repo_segments.json
 
 # ==================== 快照基线（保留用于回归测试）====================
-# snapshot.js 生成的压缩结果基线，用于检测意外变化
-# 已移除忽略，现在入库以便团队共享基线
+# tests2/_snapshot.json（v1 历史基线）与 tests2/_baseline_v2.json（v2 自身基线）
+# 均入库以便团队共享基线
 
 # 发布目录（scripts/build_site.py 组装：只含构建产物与运行时资源，不入库）
 /_site/

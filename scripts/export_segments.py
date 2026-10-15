@@ -5,7 +5,7 @@
 文件里的原始 `l ` 行：模板引用块在源文件里根本没有代码行（代码由构建期从模板展开），
 模板定义块则带 `Pn` 占位——裸占位不是合法 Lua 语句，会被「真·Lua 语法校验」拒绝。
 
-输出 compressor/tests/_repo_segments.json（gitignore，测试运行时按需生成）：
+输出 compressor/tests2/_repo_segments.json（gitignore，测试运行时按需生成）：
   {"lua/challenges/1.御灵术.lua": ["<块0代码>", "<块1代码>", ...], ...}
 键为仓库相对路径（与 `_snapshot.json` 的 repo-seg 键前缀一致），值为按构建器块顺序排列的
 默认参数替换后代码，每块一条。
@@ -19,7 +19,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import GenerateHtml as G  # noqa: E402
 
-OUT_REL = os.path.join("compressor", "tests", "_repo_segments.json")
+OUT_REL = os.path.join("compressor", "tests2", "_repo_segments.json")
 
 
 def collect_segments():

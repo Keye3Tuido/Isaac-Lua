@@ -1,31 +1,20 @@
 /* ===================================================================
- * LuaMin - 以撒控制台代码压缩器 核心库 (Lua 5.3)
+ * LuaMin - 以撒控制台代码压缩器 词法基础库 (Lua 5.3)
  * 纯静态语义/语法分析驱动；不改变语义；浏览器与 Node 通用。
  *
- * 设计要点：
- *  - luaparse 不在 AST 保留括号，故【绝不】从 AST 反向生成代码，
- *    一切改写都在 token 流上做，仅依据 AST 的作用域信息。
- *  - 多阶段流水线，每阶段后都做 (a) 重新 parse 语法校验 (b) 规范化 AST 等价校验。
- *    任意校验失败 => 抛错（视为脚本 bug，拒绝输出）。
- *  - 多阈值策略：默认 [2,8]（快），搜索层 [2..9]（更全但慢），取最短结果。
- *  - 搜索层（search.js）：在规则系统输出之上做候选探索（表达式提取、激进变量复用），
- *    canonical 等价验证兜底。无改善则回退 baseline。
+ * 本文件是 v2 透镜架构（src2/）的公共词法基础：
+ *  - Lua 5.3 词法器（token 流是一切改写与成本判定的底座；luaparse 不在 AST
+ *    保留括号，故一切改写都在 token 流上做，仅依据 AST 的作用域信息）；
+ *  - 粘连/引号等廉价字符级安全判定（needSpace 是全 token 级精确判定）；
+ *  - create(luaparse, fengari) 构造共享词法上下文（含 fengari 真·Lua 语法校验器）。
  *
- * 结构（便于维护，按职责拆成 src/ 下的"安装器"模块）：
- *  - core.js（本文件）：词法器 + create() 工厂；create() 构造共享上下文 C，
- *    依序运行各模块安装器（把函数挂到 C 上），最后导出 API。
- *  - src/analyze.js   : parse / analyze（作用域解析）/ 全局名收集 / 候选名 / 成员访问收集
- *  - src/plan.js      : planAll（统一规划：重命名+全局/成员折叠+仿射因子+透明别名消解）/ buildDeclParts / affixCandidate / applyEdits
- *  - src/encode.js    : removeComments / minimizeSpacing（间隔符最小化+分号消除）/ applyEncoding
- *  - src/canonical.js : canonical（SSA 版本化归一 + 各等价归一）/ assert* 校验
- *  - src/folds.js     : preprocess + 各"只缩短才提交"折叠/复用/上提 pass
- *  - src/compress.js  : compress（流水线编排 + 多阈值取短）
- *  - src/search.js    : searchOptimize（搜索层：表达式提取 + 激进变量复用 + canonical 验证）
+ * 上层语义/等价/编码助手（parse/analyze/canonical/encode/preprocess 等）由
+ * src2/shared/ 各安装器模块提供，经 src2/base.js 聚合成统一门面。
  *
  * 加载方式（无需构建步骤）：
- *  - 浏览器：index.html 依序 <script> 引入 src/analyze.js ... src/compress.js 再引入 core.js。
- *    各 part 自注册到 window.__LuaMinParts。
- *  - Node：core.js 在 create() 内 require 各 part（同样注册到 globalThis.__LuaMinParts）。
+ *  - 浏览器：index.html 依序 <script> 引入 core.js、src2/shared/*.js、src2/base.js，
+ *    再引入 src2 其余模块。
+ *  - Node：src2/base.js 在 create() 内 require 本文件。
  * =================================================================== */
 (function (root) {
   'use strict';
@@ -159,7 +148,7 @@
     return !(toks[0].value===aVal && toks[0].end===aVal.length);
   }
 
-  // ---- folds 热路径上的廉价字符级安全判定（needSpace 是全 token 级精确判定、需重词法）----
+  // ---- 热路径上的廉价字符级安全判定（needSpace 是全 token 级精确判定、需重词法）----
   // 短字符串还原：raw 为 '...'/"..." 形态时返回内容，否则（长字符串/缺 raw）返回 null。
   // 长字符串 [[...]] 在 Lua 里不处理转义，与短字符串内容含义不同，刻意排除。
   function unquoteShort(raw){
@@ -181,17 +170,9 @@
     return isNamePart(nextCh) || (nextCh==='.' && isDigit(lastCh));
   }
 
-  // ---------- 模块安装器加载 ----------
-  // 各 src/*.js part 会把 {name, install} 推入 root.__LuaMinParts。
-  // 浏览器侧由 index.html 的 <script> 预先加载；Node 侧在此 require。
-  var PART_ORDER = ['analyze','plan','encode','canonical','folds','compress','search'];
-  if(typeof module !== 'undefined' && module.exports){
-    // Node：显式 require 各 part（它们自注册到 globalThis.__LuaMinParts）
-    PART_ORDER.forEach(function(name){ require('./src/'+name+'.js'); });
-  }
-
   /* ============================================================
-   * 工厂：传入 luaparse 实例（必需）与 fengari 实例（可选，用于真·Lua 语法校验）
+   * 工厂：传入 luaparse 实例（必需）与 fengari 实例（可选，用于真·Lua 语法校验），
+   * 返回共享词法上下文。语义/等价/编码助手见 src2/base.js。
    * ============================================================ */
   function create(luaparse, fengari){
     if(!luaparse) throw new Error('LuaMin.create 需要 luaparse 实例');
@@ -212,8 +193,7 @@
       };
     }
 
-    // 共享上下文：词法器与配置项先放入，随后各安装器把自己的函数挂上来。
-    var C = {
+    return {
       KEYWORDS: KEYWORDS,
       lex: lex,
       needSpace: needSpace,
@@ -228,45 +208,6 @@
       luaValidate: luaValidate,
       luaparse: luaparse,
       fengari: fengari
-    };
-
-    var parts = root.__LuaMinParts || [];
-    var byName = {};
-    parts.forEach(function(p){ byName[p.name]=p; });
-    PART_ORDER.forEach(function(name){
-      var p = byName[name];
-      if(!p) throw new Error('LuaMin: 缺少模块 '+name+'（src/'+name+'.js 未加载）');
-      p.install(C);
-    });
-
-    return {
-      compress: C.compress,
-      searchOptimize: C.searchOptimize,
-      // 以下下划线成员仅供测试/调试使用
-      _parse: C.parse,
-      _analyze: C.analyze,
-      _canonical: C.canonical,
-      _preprocess: C.preprocess,
-      _lex: lex,
-      _needSpace: needSpace,
-      _planAll: C.planAll,
-      _applyEdits: C.applyEdits,
-      _collectGlobalNames: C.collectGlobalNames,
-      _validateFoldOrder: C.validateFoldOrder,
-      _DEFAULT_FOLD_ORDER: C.DEFAULT_FOLD_ORDER,
-      _createNameAllocator: C.createNameAllocator,
-      _collectTakenNames: C.collectTakenNames,
-      _extendAliasMap: C.extendAliasMap,
-      _bumpDrop: C.bumpDrop,
-      _clampDrop: C.clampDrop,
-      _canCommit: C.canCommit,
-      _unquoteShort: C.unquoteShort,
-      _canSingleQuote: C.canSingleQuote,
-      _needsSepAfter: C.needsSepAfter,
-      _foldAliasDedup: C.foldAliasDedup,
-      _foldInlinePure: C.foldInlinePure,
-      _normPureCopyProp: C.normPureCopyProp,
-      _foldLocalFunc: C.foldLocalFunc
     };
   }
 

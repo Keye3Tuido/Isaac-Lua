@@ -36,27 +36,40 @@ console.log(result.output);  // l <压缩后的单行代码>
 
 ### 代码架构（模块化设计，无需构建）
 
-**核心模块**：
-- `core.js` — 词法器 + 工厂函数，构造共享上下文并组装各模块
-- `src/analyze.js` — AST 解析、作用域分析、全局/成员访问收集、元表纯度分析（`analyzeMetatableFree`）
-- `src/plan.js` — 统一规划（重命名+折叠+因子分解+透明别名消解）
-- `src/encode.js` — 去注释、间隔符最小化、分号消除
-- `src/canonical.js` — SSA 版本化归一 + 等价性验证；无别名 canonical 使用精确源码键控的有界 LRU 缓存；整链别名（`chainAliasByLocal`）还原
-- `src/folds.js` — 各种"只缩短才提交"的折叠/复用/上提 pass；纯成员链冗余消除（`foldMemberChain`）
-- `src/compress.js` — 单一阶段注册表 + 同步/异步执行器、多阈值策略、异步进度回调
-- `src/search.js` — 搜索优化器（**beam search**：表达式提取、激进/跨作用域变量复用、块包装策略分支；canonical 验证兜底）。浏览器端走分片执行（每次 compress/move 后让步一帧 + 徽标进度），Node 端走同步路径，两者结果一致
+> 当前引擎为 **v2 透镜架构**（M1–M7 已完成）；唯一权威设计文档 = `docs/v2-architecture-plan.md`。
 
-**加载方式**：浏览器通过 `index.html` 依序加载各模块（自注册到 `window.__LuaMinParts`），Node.js 通过 `core.js` 的 `require` 加载。两条路径产出一致，`tests/snapshot.js --check` 提供字节级回归保护；`compress` 全程同步（无进度条/无异步等待），阶段列表按实际执行顺序输出；浏览器端 `searchOptimize` 分片让步（每次 compress/move 后让步一帧）以保持页面响应。
+**词法基础库与共享模块**：
+- `core.js` — Lua 5.3 词法器 + 粘连/引号安全判定 + `create(luaparse, fengari)` 词法上下文（含 fengari 真·Lua 语法校验器）
+- `src2/shared/analyze.js` — AST 解析、作用域分析、全局/成员访问收集、元表纯度分析（`analyzeMetatableFree`）、候选名分配
+- `src2/shared/canonical.js` — SSA 版本化归一 + 等价性验证（无别名 canonical 使用精确源码键控的有界 LRU 缓存）
+- `src2/shared/encode.js` — 去注释、间隔符最小化、`applyEncoding`
+- `src2/shared/purecopy.js` — 输入预处理（剥 `l`/`lua` 前缀）、`applyEdits` 编辑契约、纯代入归一（`normPureCopyProp`）
+- `src2/base.js` — 门面工厂：把 core.js 与 shared/* 聚成统一门面（`_lex/_parse/_analyze/_canonical/_preprocess/_normPureCopyProp/removeComments/minimizeSpacing/applyEncoding/…`），经 `deps.base` 注入全引擎
+
+**v2 透镜流水线（`src2/`）**：
+- `src2/ir.js` — IR 构建器：parse + analyze + SSA 版本表层 + 证据槽（惰性、随版本失效）+ AliasEnv 别名证据环境
+- `src2/lens.js` — 透镜基座：契约机器检查、`encodeDelta` 精确字节成本、默认 verify（roundtrip 自证）
+- `src2/schedule.js` — 前置条件 DAG 拓扑 + 不动点调度（互斥分叉、全局门禁）
+- `src2/canonical2.js` — 终审等价校验器（luaparse 双解析 + fengari 真·Lua 校验 + canonical 双侧差量还原比对）
+- `src2/lenses/` — 透镜族：`alias.js`（全局/成员/透明/重命名）、`chain.js`（成员链 CSE）、`factor.js`（字符串/前缀/方法因子）、`hoist.js`（声明上提/合并/复用/前向 nil）、`normalize.js`（局部归一 pass 族）、`encode.js`（分号消除/比较重排/尾分隔符）、`block.js`（块包装）
+- `src2/search2.js` — 双向 beam 搜索（extract/inject 互逆，canonical2 验证兜底）
+- `src2/core2.js` — 工厂与对外 API（`LuaMin2.create` → `compress/compressOnce/compressAsync`，多阈值取短 + 负收益兜底）
+
+**加载方式**：浏览器通过 `index.html` 依序加载 `core.js → src2/shared/* → src2/base.js → src2 其余模块`（自注册到 `window.__LuaMin2Modules`），Node.js 各模块直接 `require`。两条路径产出一致；`tests2/snapshot_v2.js --check` 提供字节级回归保护。`compress` 同步路径全程同步；浏览器端 `compressAsync` 宏任务分片让步以保持页面响应。
 
 **UI 特性**：
-- 搜索优化级数下拉框：0=关闭（只用规则系统），1~32=beam search 束宽 K（越大搜得越深、越慢）
+- 搜索优化级数下拉框：0=关闭（只跑贪心不动点），1~32=beam search 束宽 K（越大搜得越深、越慢）
 - 无元表模式勾选框：假定所有变量（含全局）无自定义 `__index`/`__newindex` 元表，放开成员链冗余消除的纯度闸门，允许更激进压缩
 - 压缩阶段列表：按实际执行顺序展示每个阶段，可点开查看相对上一阶段的 diff（相邻阶段公共前缀/后缀裁剪，超大改动显示"diff 过大"提示而非整段红绿）
-- 压缩期间徽标实时进度（"正在计算第 n/N 个候选 · 变换 M/10"，N=最多 6 轮 × K），按钮禁用防重复点击
+- 压缩期间徽标实时进度，按钮禁用防重复点击
 
-**搜索层做什么**：规则系统（`compress`）做的是「可静态证明安全」的贪心优化。搜索层（`searchOptimize`）用 **beam search** 在规则系统输出之上做第二轮搜索：维护一个候选束（默认宽 4），从当前最短的若干候选出发，套用 **move 集合**——既含规则系统因保守而不敢做的窄变换（提取带调用/索引链的重复子表达式、放宽变量复用门槛、跨作用域复用），也含把**抽取类折叠**（字面值内联/字符串因子/块包装/方法折叠/字段前缀/变量复用/声明上提）包装成的可组合 move（`aliasMap` 随候选线程化），并对一级结果再套一层不同 move（深度-2），从而探索"**先 A 后 B vs 先 B 后 A**"的不同操作顺序。此外 `compress` 的 fold 顺序本身已参数化（`opts.foldOrder`），搜索基线内置若干**顺序预设**（块包装提前、字符串因子提前、复用提前等）作为互异起点，让"折叠顺序"成为搜索维度而非事后补丁。每次变换后重跑规则系统让后续 pass 在新结构上生效，用 **canonical 等价去重**（同一等价类只保留最短者）+ 只缩短才提交兜底，连续两轮无改善即收敛，并迭代到幂等固定点。生产运行**不设时间上限**；测试可用 `opts.maxCandidates`（候选压缩次数上限，跨机器结果确定）或 `opts.budget`（墙钟毫秒）限制搜索深度，两者可共存、先到先停。
+**搜索层做什么**：贪心不动点（调度器逐候选"只缩短才提交"）做的是「可静态证明安全」的优化；搜索层（`search2`）在其上做**双向 beam 搜索**：从贪心终点反向撤销（inject）与正向抽取（extract）互逆探索，canonical2 终审兜底，无改善即回退。大输入（>12KB）走尺寸分级：关 beam 搜索、fixpoint 限 1 轮（贪心全局门禁所有尺寸全开）。
 
 ### 压缩流水线
+
+> 下列阶段清单是各变换的**功能清单**（v2 透镜架构下同一批变换以透镜形式组织：
+> alias/chain/factor/hoist/normalize/encode/block 透镜族 + 调度器不动点 + search2 双向 beam，
+> 阶段边界与执行序由调度器 DAG 推导，权威描述见 `docs/v2-architecture-plan.md`）。
 
 ```
 输入预处理（剥 l/lua 前缀、合并单段）
@@ -64,7 +77,6 @@ console.log(result.output);  // l <压缩后的单行代码>
 真·Lua + luaparse 双重语法校验
    ↓
 【阶段 1：结构优化】
-（以下 fold 顺序为默认序；`opts.foldOrder` 可重排这些抽取类 fold，搜索层据此探索不同顺序取最短；有实证的硬顺序前提由 `src/compress.js` 的 FOLD_ORDER_RULES 契约机器校验，违例在压缩入口直接抛错）
 1.1  统一规划：局部重命名 + 全局/成员折叠 + 仿射因子 + 透明别名消解
      ├─ 真·Lua 语法 ✓ + luaparse ✓ + AST 等价 ✓
 1.1b 括号转点（obj["Field"] → obj.Field，关键词字段除外）
@@ -192,36 +204,32 @@ Generated aliases are capped against Lua 5.3's 200-active-local limit; over-limi
 
 **运行测试**：
 ```bash
-npm test                                 # 完整门禁：本地+远程+批量+搜索+快照+性能，并对照历史结果
-npm run test:local                       # 本地快速回归（完整提交前仍必须执行 npm test）
-npm run test:baseline                    # 仅在明确接受新基线时重建“重构前基线”
-node tests/test.js                      # 基础：作用域/遮蔽/全局保护/拒绝边界
-node tests/edge.js                      # 边界：数字-关键字-运算符、goto、varargs、:method
-node tests/realtest.js                  # 真实：仓库每个代码块（构建期默认参数替换后的最终代码）单独压缩（去注释后）
-node tests/remotetest.js                # 远程：4 个真实模组 main.lua（首次联网缓存）
-node tests/bulktest.js                  # 批量：19 个开源 Lua 项目（>150 文件）
-node tests/test_incremental.js          # 增量压缩（单条vs合并）
-node tests/test_idempotency.js          # 幂等（逆向回代）：压缩结果再回代必须不变 + 等价
-node tests/test_chunked_search.js       # 分片搜索（浏览器 onStep 路径）与同步路径结果一致性
-node tests/test_validation_cache.js      # canonical 缓存隔离、命中与语义一致性
-node tests/performance_probe.js          # 确定性性能探针：解析次数与代表性输出长度（逐块、去注释）
-node tests/test_transparent_elision.js  # 透明别名消解专项
-node tests/test_canonical_fwdnil.js     # 死前向声明归一专项（含多目标赋值形态）
-node tests/test_fwdnil_merge.js         # 前向nil多目标下沉 + 链别名映射传播回归（noMetatable 路径）
-node tests/test_method_inject.js        # foldMethods/foldMemberField 注入已有 local 形态 + 任意 base 成员字段 + 安全负例
-node tests/test_declhoist_value.js      # 声明上提值粒度部分上提（mixed 路径）+ 收敛/安全负例
-node tests/test_fold_order_contract.js  # fold 顺序契约（FOLD_ORDER_RULES）：默认顺序/搜索预设过校验，违例抛错
-node tests/test_shared_helpers.js       # 共享助手单测：名称分配器/aliasMap 工厂+dropLeading 校验/字符串与粘连守卫/applyEdits 契约
-node tests/test_dot_alias.js            # 点访问别名复用（obj.Field → obj[已有字符串别名]）+ 负例
-node tests/test_canonical_ifnot.js      # if-not 归一专项
-node tests/snapshot.js --check          # 全语料字节级回归比对（改动安全网）
+npm test                            # v2 全量门禁：tests2/run.js = unit + corpus + regression
+npm run test:snapshot               # v2 自身基线回归：tests2/snapshot_v2.js --check（变长/拒压即失败）
+npm run test:baseline               # 重录 v2 基线（tests2/_baseline_v2.json；仅在明确接受时执行）
+node tests2/unit/ir_invariants.js   # IR 不变量（INV-1/2/3）+ canonicalKey 全集校验
+node tests2/unit/lens_roundtrip.js  # 透镜 extract/inject roundtrip 自证
+node tests2/unit/schedule_topo.js   # 调度器 DAG 拓扑/互斥/不动点
+node tests2/unit/search_inverse.js  # beam 搜索 inject 逆步真实触发
+node tests2/unit/search_idempotency.js  # 搜索产物幂等固定点
+node tests2/regression/basics.js    # 基础回归：作用域/遮蔽/全局保护/拒绝边界
+node tests2/regression/idempotency.js   # 幂等：压缩结果再压必须不变 + 等价
+node tests2/regression/declhoist.js     # 声明上提/前向 nil 回归
+node tests2/regression/method_inject.js # 方法/成员注入形态 + 安全负例
+node tests2/corpus/diff.js          # 全语料差分：成功性 + 幂等 + 对 v1 历史基线无劣化
+node tests2/corpus/search_compare.js    # v2 搜索总量 <= v1 搜索实测基线（总量门）
+node tests2/corpus/snapshot_compare.js  # v2 对 v1 历史快照逐条比对（SNAPSHOT_FULL=1 含 bulk）
+node tests2/corpus/perf.js          # 确定性性能探针：top-5 大段的输出/parse 对录制基线
 ```
 
-**当前状态**：基础 101/101、边界 40/40、仓库真实语料 525/525 块（逐块单独测试、去注释）、增量 3/3、幂等(逆向回代) 50/50、分片搜索一致性 4/4、缓存安全 5/5、前向nil多目标下沉/链别名传播 7/7、方法注入/成员字段base 10/10、声明上提值粒度 9/9、远程模组 4/4、bulktest 已执行文件 152/152 均通过。完整门禁同时对照 `tests/_refactor_baseline.json` 与 `tests/_last_full_result.json`；代表语料（5 个最大块）parse 次数 641，输出 15479 字节。
+**基线与参照物**：
+- `tests2/_snapshot.json` — **v1 历史基线**（v1 管线退役前录制，964 条：unit + repo-seg + remote + bulk；snapshot_compare 与 corpus/diff 的无劣化参照物，永不以 v2 数据覆盖）
+- `tests2/_baseline_v2.json` — v2 自身基线（`snapshot_v2.js` 录制；`--check` 门：REGRESS/LOST-OK 即失败）
+- 语料变更（lua/ 增删改、模板迭代）后：输入已变的条目长度对比自动跳过（inputLen 守卫，与 `--check` 的 SOURCE 口径一致）；search_compare / perf 的 v1 录制常量须按注释重测重锚
 
-**语料测试口径**：仓库真实代码按「每个代码块单独压缩」进行——语料取**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出，与站点 / kb.json 同口径），不是仓库文件里的原始 `l` 行：模板引用块在源文件里没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句。既不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐块测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
+**语料测试口径**：仓库真实代码按「每个代码块单独压缩」进行——语料取**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出到 `tests2/_repo_segments.json`，与站点 / kb.json 同口径），不是仓库文件里的原始 `l` 行：模板引用块在源文件里没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句。既不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐块测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
 
-**注**：测试结果默认只输出到控制台；仓库仅保留快照、重构前基线和上一次通过结果这三类回归所需数据。
+**注**：测试结果默认只输出到控制台；仓库仅保留快照基线这类回归所需数据（`.remote-cache/`、`_bulk_test_repos/`、`_repo_segments.json` 为本地缓存/导出，不入库）。
 
 ### 已知边界
 

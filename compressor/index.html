@@ -89,20 +89,35 @@ window.tjEvent = function(action, label){
 <script>if(!window.luaparse)document.write('<script src="node_modules/luaparse/luaparse.js"><\/script>')</script>
 <script src="fengari-web.js?v=3303327"></script>
 <script>if(!window.fengari)document.write('<script src="node_modules/fengari-web/dist/fengari-web.js"><\/script>')</script>
-<!-- LuaMin 核心：先加载各 src/ 模块（自注册到 window.__LuaMinParts），再加载 core.js 工厂 -->
-<script src="src/analyze.js?v=3"></script>
-<script src="src/plan.js?v=4"></script>
-<script src="src/encode.js?v=2"></script>
-<script src="src/canonical.js?v=7"></script>
-<script src="src/folds.js?v=17"></script>
-<script src="src/compress.js?v=14"></script>
-<script src="src/search.js?v=11"></script>
-<script src="core.js?v=2"></script>
+<!-- LuaMin 词法基础库 + v2 共享安装器模块（自注册到 window.__LuaMin2Modules），再加载 base 门面 -->
+<script src="core.js?v=3"></script>
+<script src="src2/shared/analyze.js?v=1"></script>
+<script src="src2/shared/canonical.js?v=1"></script>
+<script src="src2/shared/encode.js?v=1"></script>
+<script src="src2/shared/purecopy.js?v=1"></script>
+<script src="src2/base.js?v=1"></script>
+<!-- LuaMin v2 引擎：src2 各模块自注册到 window.__LuaMin2Modules（base 门面须已加载：词法/parse/analyze/canonical/encode 助手经它复用）。
+     加载序须满足依赖图：ir → lens → canonical2 → lenses/*(alias 最先，chain/factor 依赖它) → schedule → search2 → core2 -->
+<script src="src2/ir.js?v=2"></script>
+<script src="src2/lens.js?v=2"></script>
+<script src="src2/canonical2.js?v=2"></script>
+<script src="src2/lenses/alias.js?v=2"></script>
+<script src="src2/lenses/chain.js?v=2"></script>
+<script src="src2/lenses/encode.js?v=2"></script>
+<script src="src2/lenses/factor.js?v=2"></script>
+<script src="src2/lenses/hoist.js?v=2"></script>
+<script src="src2/lenses/normalize.js?v=2"></script>
+<script src="src2/lenses/block.js?v=2"></script>
+<script src="src2/schedule.js?v=2"></script>
+<script src="src2/search2.js?v=1"></script>
+<script src="src2/core2.js?v=2"></script>
 <script>
 (function(){
   var lp = window.luaparse;
   var fg = window.fengari || null;   // fengari-web 暴露的真·Lua 5.3 VM（权威语法校验）
-  var engine = window.LuaMin.create(lp, fg);
+  // v2 引擎（src2 透镜流水线）：compress/compressOnce 同步、compressAsync 宏任务分片异步；
+  // 词法/parse/analyze/canonical/encode 助手经 src2/base.js 门面复用（core.js + src2/shared/*）。
+  var engine = window.LuaMin2.create({ luaparse: lp, fengari: fg });
 
   var $in=document.getElementById('in'), $out=document.getElementById('out');
   var $msg=document.getElementById('msg'), $badge=document.getElementById('badge');
@@ -235,33 +250,54 @@ window.tjEvent = function(action, label){
     var noMetatable=$noMetatable.checked;
     var t0=Date.now();
 
-    function showResult(rep, baseline){
+    function showResult(rep){
       setRunning(false);
       var elapsed=(Date.now()-t0)/1000;
 
       $out.value=rep.output;
       $badge.className='badge ok';
-      var modeTag=useSearch
-        ? (baseline
-            ? (rep.bodyLength<baseline.bodyLength
-                ? '搜索 · 省'+ (baseline.bodyLength-rep.bodyLength) +'字'
-                : '搜索 · ±0')
-            : '搜索模式')
-        : '';
+      // v2 阶段序列：report.stages = [{name, len, code, phase}]（phase: input/greedy/search/encode），
+      // len 为编码后长度（encodeDelta 口径，与 bodyLength 同管线）。
+      var stages=(rep.report && rep.report.stages) || [];
+      var greedyEnd=null, searchEnd=null;
+      stages.forEach(function(s){
+        if(s.phase==='greedy') greedyEnd=s.len;
+        else if(s.phase==='search') searchEnd=s.len;
+      });
+      var searchSaved=(greedyEnd!=null && searchEnd!=null) ? greedyEnd-searchEnd : 0;
+      var modeTag=useSearch ? (searchSaved>0 ? '搜索 · 省'+searchSaved+'字' : '搜索 · ±0') : '';
       $badge.textContent='校验通过'+(modeTag?' ('+modeTag+', '+elapsed.toFixed(1)+'s)':' ('+elapsed.toFixed(1)+'s)');
       tjEvent('compress_ok', useSearch ? 'search' : 'basic');
-      // 压缩比按剥前缀后的正文同口径计算（codeLen=剥 l/lua 前缀的输入，bodyLength=不含 'l ' 的输出正文）；
-      // 输入/输出字符数按实际字符数显示（输出含 'l ' 前缀，即 rep.output.length）。
+      // 压缩比按剥前缀后的正文同口径计算（codeLength=剥 l/lua 前缀并单行化的输入长，
+      // bodyLength=不含 'l ' 的输出正文）；输入/输出字符数按实际字符数显示（输出含 'l ' 前缀）。
       var codeLen=(rep.codeLength!=null)?rep.codeLength:rep.originalLength;
       var pct=codeLen? Math.round((codeLen-rep.bodyLength)/codeLen*100):0;
       $inStat.textContent='输入 '+$in.value.length+' 字符';
       $outStat.textContent='输出 '+rep.output.length+' 字符　压缩比 '+pct+'%';
 
-      if(rep.stages && rep.stages.length){
+      if(stages.length){
         $stagesCard.style.display='block';
+        var lensNameMap={
+          'alias.global':'全局别名','alias.member':'成员别名','alias.transparent':'透明别名','alias.rename':'别名重命名',
+          'chain.cse':'成员链复用','factor.method':'方法提取','factor.fieldPrefix':'字段前缀','factor.stringLiteral':'字符串字面量',
+          'factor.stringPrefix':'字符串前缀','factor.dotAlias':'点别名','factor.globalViaG':'全局经_G','factor.callSugar':'调用糖',
+          'block.wrap':'块包装','hoist.fwdNil':'nil上提','hoist.localsMerge':'局部合并','hoist.funcMerge':'函数合并',
+          'hoist.varReuse':'变量复用','hoist.inlineValueToHeader':'值内联到头部','hoist.placeholderHoist':'占位上提',
+          'norm.bracketDot':'括号转点','norm.readonlyInline':'只读内联','norm.constFold':'常量折叠','norm.constCondition':'常量条件',
+          'norm.constLoop':'常量循环','norm.earlyReturn':'提前返回','norm.deMorgan':'德摩根','norm.tableFields':'表字段',
+          'norm.boolNil':'布尔nil','norm.numbers':'数字','norm.parens':'括号','norm.ifNot':'if-not',
+          'norm.splitMultiAssign':'拆分多赋值','norm.inlinePure':'纯内联','norm.tailSymbol':'尾符号',
+          'encode.semicolon':'分号消除','encode.compareReorder':'比较重排','encode.trailingSep':'尾分隔符',
+          '…':'更多优化'
+        };
+        function fmtLensName(name){
+          var base=name.replace(/ ×\d+$/,'');
+          var suffix=name.slice(base.length);
+          return (lensNameMap[base]||base)+suffix;
+        }
         var prevLen=rep.originalLength;
         var prevCode=rep.rawInput!=null ? rep.rawInput : (rep.original!=null ? rep.original : $in.value);
-        rep.stages.forEach(function(stage){
+        stages.forEach(function(stage){
           var delta=prevLen-stage.len;
           var deltaText=delta>0? '-'+delta : delta<0? '+'+Math.abs(delta) : '±0';
           var deltaClass=delta>0? 'positive' : delta<0? 'negative' : '';
@@ -273,7 +309,7 @@ window.tjEvent = function(action, label){
 
           var header=document.createElement('div');
           header.className='stage-header';
-          header.innerHTML='<span class="stage-name">'+stage.name+'</span><span><span class="stage-len">'+stage.len+' 字符</span><span class="stage-delta '+deltaClass+'">'+deltaText+'</span>'+(hasOptimization?'<span class="stage-expand"></span>':'')+'</span>';
+          header.innerHTML='<span class="stage-name">'+fmtLensName(stage.name)+'</span><span><span class="stage-len">'+stage.len+' 字符</span><span class="stage-delta '+deltaClass+'">'+deltaText+'</span>'+(hasOptimization?'<span class="stage-expand"></span>':'')+'</span>';
           item.appendChild(header);
 
           if(hasOptimization){
@@ -302,8 +338,9 @@ window.tjEvent = function(action, label){
           prevCode=stage.code;
         });
 
-        if(useSearch && baseline){
-          var saved=baseline.bodyLength-rep.bodyLength;
+        if(useSearch && greedyEnd!=null){
+          var saved=searchSaved;
+          var searchLen=(searchEnd!=null)?searchEnd:greedyEnd;
           var sItem=document.createElement('div');
           sItem.className='stage-item'+(saved!==0?' expandable':'');
           var sHead=document.createElement('div');
@@ -315,7 +352,7 @@ window.tjEvent = function(action, label){
           if(saved!==0){
             var sBody=document.createElement('div');
             sBody.className='stage-code';
-            sBody.textContent='规则基线 '+baseline.bodyLength+' → 搜索 '+rep.bodyLength+' (省 '+saved+' 字符)';
+            sBody.textContent='贪心 '+greedyEnd+' → 搜索 '+searchLen+'（省 '+saved+' 字）';
             sItem.appendChild(sBody);
             sItem.onclick=function(){ sItem.classList.toggle('expanded'); };
           }
@@ -332,25 +369,23 @@ window.tjEvent = function(action, label){
       setMsg('err','✗ '+ (e && e.message ? e.message : String(e)) + '\n（输入语法不合规或检测到不等价，已拒绝输出。）');
     }
 
-    // 压缩中提示：先禁用按钮(已在 setRunning)+显示提示，让浏览器绘制后再同步压缩——
-    // 这样长代码+K 时用户能看到"压缩中"，而不是白屏卡死看不出在干什么。
+    // 压缩中提示：compressAsync 首片前先让出一次事件循环，浏览器有机会先绘制
+    // 「压缩中…」徽标；之后阈值间/贪心↔搜索间/fixpoint 轮间持续分片，页面保持响应。
     $badge.className='badge busy'; $badge.textContent='压缩中…';
-    setTimeout(function(){
-      if(useSearch){
-        // 分片搜索：每执行一次 compress 后让步一帧并更新提示，页面保持响应（无时间上限，跑满收敛）。
-        engine.searchOptimize(input, {
-          beamWidth: searchLevel,
-          noMetatable: noMetatable,
-          onStep: function(label){ $badge.textContent=label; },
-          _done: function(rep){ showResult(rep, null); },
-          _error: doError
-        });
-      } else {
-        try {
-          showResult(engine.compress(input, { noMetatable: noMetatable }), null);
-        } catch (e) { doError(e); }
+    engine.compressAsync(input, {
+      search: useSearch,            // 0 级 = 纯规则系统（贪心不动点）；N 级 = beamWidth N
+      beamWidth: searchLevel,
+      noMetatable: noMetatable,
+      recordStages: true,
+      onProgress: function(p){
+        var secs=((Date.now()-t0)/1000).toFixed(1);
+        if(p.phase==='search'){
+          $badge.textContent='搜索 第 '+(p.round||0)+' 轮 已展开 '+(p.expanded||0)+' 态 · '+secs+'s';
+        }else{
+          $badge.textContent='贪心 已提交 '+p.commits+' 步 · '+secs+'s';
+        }
       }
-    }, 30);
+    }).then(showResult, doError);
   };
 
   updateInStat();

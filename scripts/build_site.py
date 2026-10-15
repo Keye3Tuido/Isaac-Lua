@@ -37,6 +37,14 @@ COMPRESSOR_ENTRIES = [
     "compressor/core.js",
 ]
 
+# 压缩器 v2 引擎源码（src2 透镜流水线，index.html 依序 <script> 加载）
+def _compressor_sources():
+    """compressor/src2/*.js + compressor/src2/shared/*.js + compressor/src2/lenses/*.js（仓库相对路径，排序稳定）。"""
+    files = []
+    for pattern in ("compressor", "src2", "*.js"), ("compressor", "src2", "shared", "*.js"), ("compressor", "src2", "lenses", "*.js"):
+        files.extend(sorted(_rel(p) for p in glob.glob(os.path.join(REPO_ROOT, *pattern))))
+    return files
+
 # 压缩器第三方库：从 node_modules 取，不入库（发布名 → 候选源，按序取第一个存在的）
 VENDOR_LIBS = [
     ("compressor/luaparse.js",
@@ -110,7 +118,7 @@ def ensure_compressor_deps():
 def derived_assets():
     """从产物中推导站点必需的 assets/ 资源名集合。"""
     names = set()
-    for rel in SCAN_FILES + sorted(_rel(p) for p in glob.glob(os.path.join(REPO_ROOT, "compressor", "src", "*.js"))):
+    for rel in SCAN_FILES + _compressor_sources():
         path = os.path.join(REPO_ROOT, rel)
         if not os.path.isfile(path):
             continue
@@ -124,7 +132,8 @@ def assemble(out_dir):
     if os.path.isdir(out):
         shutil.rmtree(out)
     os.makedirs(os.path.join(out, "assets"))
-    os.makedirs(os.path.join(out, "compressor", "src"))
+    os.makedirs(os.path.join(out, "compressor", "src2", "shared"))
+    os.makedirs(os.path.join(out, "compressor", "src2", "lenses"))
 
     written = []
     # ① 固定入口
@@ -132,8 +141,8 @@ def assemble(out_dir):
         if not os.path.isfile(os.path.join(REPO_ROOT, rel)):
             raise SystemExit(f"错误：缺少必需入口文件 {rel}")
         written.append(_copy(rel, os.path.join(out, rel)))
-    # ② 压缩器入口与源码
-    for rel in COMPRESSOR_ENTRIES + sorted(_rel(p) for p in glob.glob(os.path.join(REPO_ROOT, "compressor", "src", "*.js"))):
+    # ② 压缩器入口与源码（v2 src2/ 全量：core.js 词法库 + shared 基础模块 + 透镜流水线）
+    for rel in COMPRESSOR_ENTRIES + _compressor_sources():
         if not os.path.isfile(os.path.join(REPO_ROOT, rel)):
             raise SystemExit(f"错误：缺少必需文件 {rel}")
         written.append(_copy(rel, os.path.join(out, rel)))

@@ -41,7 +41,7 @@ jobs:
 
       - name: Run compressor tests
         working-directory: compressor
-        run: npm run test:local
+        run: npm test
 
       - name: Build and assemble publish directory
         run: python scripts/build_site.py

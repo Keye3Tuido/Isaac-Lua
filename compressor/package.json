@@ -4,12 +4,9 @@
   "description": "Lua code compressor for The Binding of Isaac console",
   "main": "core.js",
   "scripts": {
-    "test": "node tests/full_regression.js",
-    "test:search": "node tests/test_search_compare.js",
-    "test:bulk": "node tests/bulktest.js",
-    "test:local": "node tests/test.js && node tests/edge.js && node tests/realtest.js && node tests/test_validation_cache.js && node tests/snapshot.js --check",
-    "test:baseline": "node tests/full_regression.js --record-baseline",
-    "test:bulk:offline": "node tests/bulktest.js --offline"
+    "test": "node tests2/run.js",
+    "test:snapshot": "node tests2/snapshot_v2.js --check",
+    "test:baseline": "node tests2/snapshot_v2.js"
   },
   "repository": {
     "type": "git",
