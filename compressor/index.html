@@ -311,6 +311,7 @@ window.tjEvent = function(action, label){
   document.getElementById('run').onclick=function(){
     clearMsg(); $badge.innerHTML=''; $stagesCard.style.display='none'; $stages.innerHTML='';
     $out.value=''; $outStat.textContent=''; resetCopyBtn();
+    refreshGlobals();   // 防抖窗口内直接点压缩时，先同步名单（黑名单基于最新输入）
     var input=$in.value;
     if(!/\S/.test(input)){ setMsg('err','输入为空。'); return; }
 

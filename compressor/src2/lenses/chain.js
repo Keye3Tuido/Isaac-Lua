@@ -190,7 +190,13 @@
           var b = info.varOf.get(site.root);
           if(noMetatable){
             if(b) return mf.stableBindings.has(b);
-            return !mf.setmetatableUsed;   // 全局：用户断言无元表，但本代码调过 setmetatable 则不稳
+            // 全局根：本透镜是【新建快照】（local d=G.F 重复链提取）——恒定才可抽取。
+            // assignedGlobals 含代码内被赋值者与 UI 可变黑名单（buildIR 并入），
+            // 两者都意味着 G 运行时可变，快照固化不等价，判不纯。
+            // 注意区分：代码中【已有】 local d=G.F（b!==null）是用户自选的快照形态，
+            // 其复用/合并不受此闸约束（stableBindings 口径，与黑名单无关）。
+            if(info.assignedGlobals && info.assignedGlobals.has(site.root.name)) return false;
+            return !mf.setmetatableUsed;   // 用户断言无元表，但本代码调过 setmetatable 则不稳
           }
           if(!b || !mf.pureBindings.has(b)) return false;
           if(mf.setmetatableUsed) return false;

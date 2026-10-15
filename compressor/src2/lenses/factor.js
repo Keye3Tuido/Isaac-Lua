@@ -597,6 +597,27 @@
           });
         });
         // ② 字符串字面量 'X' → u（callArg 糖 f'X' → f(u)）
+        // 自引用守卫预收集：variables 含别名名的 LocalStatement 的 init 区间——
+        // 这些字面量是别名的【定义处】（local u='X'），替换会把 init 改成引用自身
+        // （local u=u，运行时解析为未定义全局 = nil；黑名单拦 chain.cse 后
+        // alias.member 注入普通代码区（≥hEnd）的声明实证：local a='AddCallback' → local a=a，
+        // 且 canonical 被 aliasMap 还原同骗、终审漏过）。
+        var aliasDeclInits = [];
+        ir.ast.body.forEach(function(st){
+          if(st.type !== 'LocalStatement' || !st.variables || !st.init) return;
+          for(var vi=0; vi<st.variables.length; vi++){
+            if(ir.aliases.entries.has(st.variables[vi].name)
+               && st.init[vi] && st.init[vi].range)
+              aliasDeclInits.push(st.init[vi].range);
+          }
+        });
+        function inAliasDeclInit(r){
+          for(var gi=0; gi<aliasDeclInits.length; gi++){
+            var dr = aliasDeclInits[gi];
+            if(r[0] >= dr[0] && r[1] <= dr[1]) return true;
+          }
+          return false;
+        }
         var callArgNodes = new Set();
         walkAst(ir.ast.body, function(n){
           if(n.type === 'StringCallExpression' && n.argument && n.argument.type === 'StringLiteral')
@@ -607,6 +628,7 @@
             var content = strContent(n);
             if(content !== null && litToAlias[content] !== undefined){
               var alias = litToAlias[content];
+              if(inAliasDeclInit(n.range)) return false;   // 定义处不替换（自引用守卫）
               var repl;
               if(callArgNodes.has(n)){
                 repl = '(' + alias + ')';
