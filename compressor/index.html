@@ -319,17 +319,18 @@ window.tjEvent = function(action, label){
             var codeDiv=document.createElement('div');
             codeDiv.className='stage-code';
             var toggle=document.createElement('span');
-            toggle.className='diff-toggle active';
-            toggle.textContent='diff';
-            var showingDiff=true;
-            (function(bc,ac,cd,tg){
+            toggle.className='diff-toggle';
+            // diff 过大时默认显示完整代码，按钮提示可切换 diff
+            var diffLen=Math.abs(beforeCode.length-afterCode.length)+beforeCode.length+afterCode.length;
+            var showingDiff=diffLen<=4000;
+            (function(bc,ac,cd,tg,sd){
             function renderMode(){
-              if(showingDiff){ cd.innerHTML=renderDiffHtml(bc,ac); tg.textContent='diff'; tg.classList.add('active'); }
-              else { cd.textContent=ac; tg.textContent='完整'; tg.classList.remove('active'); }
+              if(sd){ cd.innerHTML=renderDiffHtml(bc,ac); tg.textContent='完整'; tg.classList.add('active'); }
+              else { cd.textContent=ac; tg.textContent='diff'; tg.classList.remove('active'); }
             }
-            tg.onclick=function(ev){ ev.stopPropagation(); showingDiff=!showingDiff; renderMode(); };
+            tg.onclick=function(ev){ ev.stopPropagation(); sd=!sd; renderMode(); };
             renderMode();
-            })(beforeCode,afterCode,codeDiv,toggle);
+            })(beforeCode,afterCode,codeDiv,toggle,showingDiff);
             header.querySelector('.stage-expand').appendChild(toggle);
             item.appendChild(codeDiv);
             item.onclick=function(){ item.classList.toggle('expanded'); };
