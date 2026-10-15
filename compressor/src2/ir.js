@@ -309,6 +309,12 @@
     var base = getBase(deps);
     var ast = base._parse(src);
     var info = base._analyze(ast);
+    // 用户声明的可变全局（UI 黑白名单，deps.mutableGlobals）：并入 assignedGlobals——
+    // 凡查 assignedGlobals 的透镜（alias.global 等）自动将其排除出别名候选，
+    // 与「代码内赋值」同口径拦截；快照型别名（local a=G）只对恒定全局成立。
+    if(deps && deps.mutableGlobals){
+      for(var mg=0; mg<deps.mutableGlobals.length; mg++) info.assignedGlobals.add(deps.mutableGlobals[mg]);
+    }
     var ir = {
       src: src,
       ast: ast,
