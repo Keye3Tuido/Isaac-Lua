@@ -256,14 +256,15 @@
         var hooksOn = !!(opts.recordStages || opts.onProgress);
         var best = null, lastErr = null;
         var greedyCommits = 0;
+        var lastGreedyLens = '';
         var ti = 0;
 
         function notifyGreedy(){
-          if(opts.onProgress) opts.onProgress({ phase: 'greedy', commits: greedyCommits, elapsedMs: Date.now() - t0 });
+          if(opts.onProgress) opts.onProgress({ phase: 'greedy', commits: greedyCommits, lens: lastGreedyLens, elapsedMs: Date.now() - t0 });
         }
-        function notifySearch(round, expanded){
+        function notifySearch(round, expanded, lens){
           if(opts.onProgress) opts.onProgress({ phase: 'search', commits: greedyCommits, round: round,
-                                                expanded: expanded, elapsedMs: Date.now() - t0 });
+                                                expanded: expanded, lens: lens || '', elapsedMs: Date.now() - t0 });
         }
 
         // 多阈值取短：每个阈值配置独立跑完整不动点；每个 threshold 之间让出一次事件循环
@@ -279,6 +280,7 @@
             if(hooksOn){
               gate.onCommit = function(c){
                 greedyCommits++;
+                lastGreedyLens = c.lens;
                 if(opts.recordStages) log.push({ lens: c.lens, src: c.src, encLen: c.encLen, phase: 'greedy' });
                 if(opts.onProgress && greedyCommits % 20 === 0) notifyGreedy();
               };
@@ -307,10 +309,12 @@
                 lenses: bestCfg.lenses, scheduler: bestCfg.scheduler });
               var sopts = { beamWidth: opts.beamWidth || 4, topN: opts.topN || 3 };
               if(hooksOn){
+                var lastSearchLens = '';
                 sopts.onCommit = function(c){
+                  lastSearchLens = c.lens;
                   if(opts.recordStages) searchLog.push({ lens: c.lens, src: c.src, encLen: c.encLen, phase: 'search' });
                 };
-                sopts.onRound = function(r){ notifySearch(r.round, r.expanded); };
+                sopts.onRound = function(r){ notifySearch(r.round, r.expanded, lastSearchLens); };
               }
               var sres = searcher.beamSearch({ ir: res.ir, trace: res.trace }, pre, sopts);
               if(sres.length < lensMod.encodeDelta('', res.ir.src, bestCfg.deps)){

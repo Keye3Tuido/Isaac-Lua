@@ -126,6 +126,26 @@ window.tjEvent = function(action, label){
   var $searchLevel=document.getElementById('searchLevel');
   var $noMetatable=document.getElementById('noMetatable');
 
+  var lensNameMap={
+    'alias.global':'全局别名','alias.member':'成员别名','alias.transparent':'透明别名','alias.rename':'别名重命名',
+    'chain.cse':'成员链复用','factor.method':'方法提取','factor.fieldPrefix':'字段前缀','factor.stringLiteral':'字符串字面量',
+    'factor.stringPrefix':'字符串前缀','factor.dotAlias':'点别名','factor.globalViaG':'全局经_G','factor.callSugar':'调用糖',
+    'block.wrap':'块包装','hoist.fwdNil':'nil上提','hoist.localsMerge':'局部合并','hoist.funcMerge':'函数合并',
+    'hoist.varReuse':'变量复用','hoist.inlineValueToHeader':'值内联到头部','hoist.placeholderHoist':'占位上提',
+    'norm.bracketDot':'括号转点','norm.readonlyInline':'只读内联','norm.constFold':'常量折叠','norm.constCondition':'常量条件',
+    'norm.constLoop':'常量循环','norm.earlyReturn':'提前返回','norm.deMorgan':'德摩根','norm.tableFields':'表字段',
+    'norm.boolNil':'布尔nil','norm.numbers':'数字','norm.parens':'括号','norm.ifNot':'if-not',
+    'norm.splitMultiAssign':'拆分多赋值','norm.inlinePure':'纯内联','norm.tailSymbol':'尾符号',
+    'encode.semicolon':'分号消除','encode.compareReorder':'比较重排','encode.trailingSep':'尾分隔符',
+    '…':'更多优化'
+  };
+  function fmtLensName(name){
+    if(!name) return '';
+    var base=name.replace(/ ×\d+$/,'');
+    var suffix=name.slice(base.length);
+    return (lensNameMap[base]||base)+suffix;
+  }
+
   function setMsg(kind, text){ $msg.className=kind; $msg.textContent=text; }
   function clearMsg(){ $msg.className=''; $msg.textContent=''; }
 
@@ -277,24 +297,6 @@ window.tjEvent = function(action, label){
 
       if(stages.length){
         $stagesCard.style.display='block';
-        var lensNameMap={
-          'alias.global':'全局别名','alias.member':'成员别名','alias.transparent':'透明别名','alias.rename':'别名重命名',
-          'chain.cse':'成员链复用','factor.method':'方法提取','factor.fieldPrefix':'字段前缀','factor.stringLiteral':'字符串字面量',
-          'factor.stringPrefix':'字符串前缀','factor.dotAlias':'点别名','factor.globalViaG':'全局经_G','factor.callSugar':'调用糖',
-          'block.wrap':'块包装','hoist.fwdNil':'nil上提','hoist.localsMerge':'局部合并','hoist.funcMerge':'函数合并',
-          'hoist.varReuse':'变量复用','hoist.inlineValueToHeader':'值内联到头部','hoist.placeholderHoist':'占位上提',
-          'norm.bracketDot':'括号转点','norm.readonlyInline':'只读内联','norm.constFold':'常量折叠','norm.constCondition':'常量条件',
-          'norm.constLoop':'常量循环','norm.earlyReturn':'提前返回','norm.deMorgan':'德摩根','norm.tableFields':'表字段',
-          'norm.boolNil':'布尔nil','norm.numbers':'数字','norm.parens':'括号','norm.ifNot':'if-not',
-          'norm.splitMultiAssign':'拆分多赋值','norm.inlinePure':'纯内联','norm.tailSymbol':'尾符号',
-          'encode.semicolon':'分号消除','encode.compareReorder':'比较重排','encode.trailingSep':'尾分隔符',
-          '…':'更多优化'
-        };
-        function fmtLensName(name){
-          var base=name.replace(/ ×\d+$/,'');
-          var suffix=name.slice(base.length);
-          return (lensNameMap[base]||base)+suffix;
-        }
         var prevLen=rep.originalLength;
         var prevCode=rep.rawInput!=null ? rep.rawInput : (rep.original!=null ? rep.original : $in.value);
         stages.forEach(function(stage){
@@ -370,8 +372,8 @@ window.tjEvent = function(action, label){
     }
 
     // 压缩中提示：compressAsync 首片前先让出一次事件循环，浏览器有机会先绘制
-    // 「压缩中…」徽标；之后阈值间/贪心↔搜索间/fixpoint 轮间持续分片，页面保持响应。
-    $badge.className='badge busy'; $badge.textContent='压缩中…';
+    // 「正在压缩…」徽标；之后阈值间/规则↔搜索间/fixpoint 轮间持续分片，页面保持响应。
+    $badge.className='badge busy'; $badge.textContent='正在压缩…';
     engine.compressAsync(input, {
       search: useSearch,            // 0 级 = 纯规则系统（贪心不动点）；N 级 = beamWidth N
       beamWidth: searchLevel,
@@ -379,10 +381,11 @@ window.tjEvent = function(action, label){
       recordStages: true,
       onProgress: function(p){
         var secs=((Date.now()-t0)/1000).toFixed(1);
+        var lensTag=p.lens?(' '+fmtLensName(p.lens)):'';
         if(p.phase==='search'){
-          $badge.textContent='搜索 第 '+(p.round||0)+' 轮 已展开 '+(p.expanded||0)+' 态 · '+secs+'s';
+          $badge.textContent='深度搜索'+lensTag+'：第 '+(p.round||0)+' 轮 已探索 '+(p.expanded||0)+' 个候选 · '+secs+'s';
         }else{
-          $badge.textContent='贪心 已提交 '+p.commits+' 步 · '+secs+'s';
+          $badge.textContent='规则优化'+lensTag+'：已处理 '+p.commits+' 步 · '+secs+'s';
         }
       }
     }).then(showResult, doError);
