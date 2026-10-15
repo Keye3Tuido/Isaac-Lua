@@ -711,3 +711,10 @@ l function GetZhFont(f)f=Font()f:Load'font/cjk/lanapixel.fnt'if f:IsLoaded()then
 名称: 纯黑房间
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(l,r)l=Game():GetLevel()r=l:GetRoomByIdx(l:GetCurrentRoomIndex())r.Flags=r.Flags|RoomDescriptor.FLAG_PITCH_BLACK end)
+
+--[[
+作为模板: true
+模板id: lazarus-no-revive
+说明: 当角色为拉撒路时，转换角色为死亡的拉撒路。
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if PlayerType.PLAYER_LAZARUS==p:GetPlayerType()then p:ChangePlayerType(PlayerType.PLAYER_LAZARUS2)end end,0)
