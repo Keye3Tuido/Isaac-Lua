@@ -143,6 +143,15 @@ const sandbox = {
     innerWidth: 1024, innerHeight: 768,
     setTimeout, clearTimeout,
 };
+// 详情分片懒加载：page.js 的 loadDetail 走 fetch('kb/<key>.json?v=…')；vm 沙盒没有
+// fetch，这里用 ALL_FILES 全量数据模拟分片响应（mock 数据本身即全量结构）
+sandbox.fetch = function(url) {
+    const m = String(url).match(/^kb\/([^/?]+)\.json(?:\?.*)?$/);
+    const data = m ? ALL_FILES[m[1]] : null;
+    return Promise.resolve(data
+        ? { ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(data))) }
+        : { ok: false, status: 404, json: () => Promise.resolve(null) });
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -157,8 +166,14 @@ function check(label, cond) {
 function findById(id) { return walk(bodyEl).find(e => e.id === id) || null; }
 function findByClass(root, cls) { return walk(root).filter(e => e._classes.has(cls)); }
 
+// showDetailView 的详情分片加载已异步化（loadDetail Promise）：fetch mock 立即兑现，
+// 等一轮 macrotask 即可排空整条微任务链（fetch → json → 渲染）
+function flush() { return new Promise(r => setTimeout(r, 0)); }
+
+(async () => {
 // ---------- 渲染详情页 ----------
 vm.runInContext("showDetailView('c1')", sandbox);
+await flush();
 const codeArea = named.codeArea;
 
 // ① 依赖标记：sI 块（pre 组内）dep-note 在 section-header 之后、code-box 之前
@@ -243,6 +258,7 @@ check('非法锚点 #c1sZ 回退到列表视图', named.listView.style.display !
 // ④b 工具命名空间：同一编号的工具用 #u 前缀（与挑战 c1 并存不冲突）
 locationStub.hash = '#u1s0';
 vm.runInContext('route()', sandbox);
+await flush();
 const utilSec0 = findById('s0');
 check('路由 #u1s0 命中工具条目（与挑战同号不冲突）',
     !!utilSec0 && named.detailTitle.textContent === '工具包');
@@ -251,6 +267,7 @@ vm.runInContext('route()', sandbox);
 check('路由 #u1 命中工具文件', named.detailTitle.textContent === '工具包');
 locationStub.hash = '#c1';
 vm.runInContext('route()', sandbox);
+await flush();
 check('路由 #c1 仍命中挑战文件', named.detailTitle.textContent === '样例挑战');
 
 // ⑧ 列表搜索：文件/模板id/注释/名称的块级命中，两栏（文件标题 + 关键字匹配）
@@ -303,3 +320,4 @@ check('清空搜索后恢复列表并隐藏搜索区',
 
 console.log(failures ? `\n合计 ${failures} 项失败` : '\n全部通过');
 process.exit(failures ? 1 : 0);
+})().catch(err => { console.error(err); process.exit(1); });

@@ -2,6 +2,7 @@ import copy
 import os
 import re
 import json
+import time
 
 
 # ========== 配置 ==========
@@ -1190,6 +1191,31 @@ def build_all_files(lua_entries):
     return all_files
 
 
+# 元数据块白名单：主页内嵌数据每块仅保留这些键（缺省省略），
+# 详情数据（header/code/deps/tools/values/params/body/commentTpl）走 kb/<key>.json 分片懒加载
+META_BLOCK_KEYS = ("num", "comment", "name", "tpl", "tplDef", "region")
+
+
+def build_all_files_meta(lua_entries):
+    """主页内嵌的元数据（page.js `__ALL_FILES__` 占位符的填充内容）。
+
+    文件级 {id, key, title, fname, isChallenge, blocks}；每块仅
+    {num, comment, name?, tpl?, tplDef?, region?}（缺省省略）——列表渲染与搜索索引
+    只需这些字段；全量数据逐文件输出为 kb/<key>.json 详情分片。"""
+    all_files = build_all_files(lua_entries)
+    meta = {}
+    for key, f in all_files.items():
+        meta[key] = {
+            "id": f["id"],
+            "key": f["key"],
+            "title": f["title"],
+            "fname": f["fname"],
+            "isChallenge": f["isChallenge"],
+            "blocks": [{k: b[k] for k in META_BLOCK_KEYS if k in b} for b in f["blocks"]],
+        }
+    return meta
+
+
 def build_templates_json(registry):
     """page.js `__ALL_TEMPLATES__` 数据契约：{模板id: {body, params: {Pn: {说明, 性质, 默认, ...}}, 说明}}"""
     out = {}
@@ -1439,7 +1465,25 @@ def main():
     lua_entries, registry = build(LUA_DIR)
     all_files = build_all_files(lua_entries)
 
-    all_files_json = json.dumps(all_files, ensure_ascii=False)
+    # 详情分片：kb/<文件键>.json = 该文件的全量数据（页面按需懒加载，BUILD_TS 击穿缓存）
+    os.makedirs("kb", exist_ok=True)
+    shard_bytes = 0
+    for key, data in all_files.items():
+        path = os.path.join("kb", key + ".json")
+        with open(path, "w", encoding="utf-8") as _f:
+            json.dump(data, _f, ensure_ascii=False, indent=1)
+        shard_bytes += os.path.getsize(path)
+    # kb/ 是构建产物目录：清理已下线文件的陈旧分片，保持与 all_files 一一对应
+    stale = [fn for fn in os.listdir("kb")
+             if fn.endswith(".json") and fn[:-5] not in all_files]
+    for fn in stale:
+        os.remove(os.path.join("kb", fn))
+    print(f"已生成 kb/ 详情分片 {len(all_files)} 个（共 {shard_bytes / 1024:.1f} KB）"
+          + (f"，清理陈旧分片 {len(stale)} 个" if stale else ""))
+
+    # 主页只内嵌元数据（列表渲染与搜索索引的最小字段集）；详情走分片
+    all_files_meta = build_all_files_meta(lua_entries)
+    all_files_json = json.dumps(all_files_meta, ensure_ascii=False)
     js = page_js.replace("__ALL_FILES__", all_files_json)
     # 模板注册表占位符：前端并行开发中，page.js 尚未包含时跳过不报错
     if "__ALL_TEMPLATES__" in js:
@@ -1452,7 +1496,9 @@ def main():
     tools_prelude = (";window.__TOOLS_MANIFEST__=" + json.dumps(tools_manifest, ensure_ascii=False)
                      + ";\n;window.__TOOL_SOURCES__=" + json.dumps(tools_sources, ensure_ascii=False)
                      + ";\n" + "\n;\n".join(tools_js) + "\n")
-    js = tools_prelude + js   # 置前：page.js 首次 route 即可用到 SCRIPT_TOOLBOX
+    # 构建时间戳：page.js fetch 详情分片带 ?v=<BUILD_TS>，新版本发布后击穿浏览器缓存
+    build_ts = 'window.__BUILD_TS__="' + str(int(time.time())) + '";\n'
+    js = tools_prelude + build_ts + js   # 置前：page.js 首次 route 即可用到 SCRIPT_TOOLBOX
     known_tools = {t["id"] for t in tools_manifest}
     for e in lua_entries:
         for b in e["blocks"]:
@@ -1477,7 +1523,8 @@ def main():
 
     size_kb = len(html.encode("utf-8")) / 1024
     print(f"已生成 index.html ({size_kb:.1f} KB)")
-    print(f"  嵌入 {len(lua_entries)} 个文件数据，{len(registry)} 个模板")
+    print(f"  嵌入 {len(lua_entries)} 个文件元数据，{len(registry)} 个模板；"
+          f"详情分片 {len(all_files)} 个共 {shard_bytes / 1024:.1f} KB")
 
 
 if __name__ == "__main__":

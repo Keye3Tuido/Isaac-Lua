@@ -2,7 +2,7 @@
 
 《以撒的结合》控制台代码知识库：收集编号挑战代码与工具代码，生成单文件静态站供浏览、复制、下载，并维护一个面向游戏控制台的 Lua 代码压缩器。
 
-> 本文档最后大更新：2026-10-10（同步 clean-globals 自动生成、模板依赖编译期校验、自动刷新、分享短链、展开状态持久化等）。
+> 本文档最后大更新：2026-10-16（主页改「元数据内嵌 + kb/ 详情分片懒加载」，见 §构建与发布 B5；此前 2026-10-10 同步 clean-globals 自动生成、模板依赖编译期校验、自动刷新、分享短链、展开状态持久化等）。
 
 ## Language
 
@@ -126,17 +126,18 @@ A9. 代码中不得再出现 APIK 相关注释。
 ## 验收门（每次改完代码必须全绿才算完）
 G1. `python scripts/verify_equivalence.py --old-dir /tmp/isaac-old/lua --new-dir lua`：42/42 PASS（字节等价；仅还原引入的空白可豁免，当前仅 stats-switch 一例）。挑战文件数由脚本自动清点，新增挑战自动纳入。
 G2. `python scripts/verify_comments.py`：渲染注释与 621858d 原文一致，差异 0；白名单按 (文件, 模板id, 块号) 精确键控（wisp 前导零、御灵术多选一、15号门编号、15号开图变体、39号用户自定），禁止整文件通配。
-G3. `python GenerateHtml.py`：零警告（当前规模：42 挑战 + 8 工具 = 50 文件、655 代码块（其中 155 块带名称）、106 个模板、kb.json 50 条）。
-G4. `python tests/builder/run_tests.py`：全过（62 项；含 kb.json 结构化 schema 与块自包含断言、分类编号 c/u 断言、发布目录组装断言）。
-G5. `node --check page.js` 通过；`node tests/builder/smoke_real.js .` 渲染冒烟全 PASS（元信息整行/l 前缀/编号/分组/面板/徽标/依赖标记/名称标签/块级搜索两栏结果/分类锚点 #c 与 #u/复制文本保留前缀）。
+G3. `python GenerateHtml.py`：零警告（当前规模：44 挑战 + 9 工具 = 53 文件、1021 代码块（其中 467 块带名称）、111 个模板、kb.json 53 条；产物 = index.html ≈466 KB（内嵌元数据）+ kb/ 53 个详情分片 ≈1038 KB，见 B5）。
+G4. `python tests/builder/run_tests.py`：全过（75 项；含 kb.json 结构化 schema 与块自包含断言、主页元数据契约（无 header/code/deps 等详情字段）与 kb/ 详情分片断言、分类编号 c/u 断言、发布目录组装断言）。
+G5. `node --check page.js` 通过；`node tests/builder/smoke_real.js .` 渲染冒烟全 PASS（元数据块无 code 字段/loading 态/分片渲染/元信息整行/l 前缀/编号/分组/面板/徽标/依赖标记/名称标签/复制文本口径；vm 沙盒注入 document.head（_toolbox.js 注入样式用）与 fetch mock（读仓库 kb/ 分片），详情渲染为异步需排空微任务）。
 G6. 压缩器门禁 = v2 套件（`compressor/tests2/`）：`node tests2/run.js` 全绿 + `node tests2/snapshot_v2.js --check` 无回退（v1 管线已删除，见 G7）。**语料口径**：压缩测试必须针对**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出 `compressor/tests2/_repo_segments.json`，与站点 / kb.json 同口径），逐块单独压缩、压缩前剥注释；禁止直接取仓库文件里的原始 `l` 行——模板引用块在源文件里根本没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句（旧口径既漏掉全部模板引用块，又把 4 条模板体误判为语法失败）。`tests2/_snapshot.json` 的 `repo-seg:` 键必须反映当前 `lua/` 目录布局与文件名（曾整体早于目录分类重构而全部失效，且失效前缀掩盖了回归判定，故 2026-09-18 整体重生成；unit/remote/bulk 三类键值须保持逐字节不变）。
 G7. v2 重写（透镜架构，`compressor/src2/` + `compressor/tests2/`）：`node tests2/run.js` 全绿（当前 14124 pass）。唯一权威设计依据 = `compressor/docs/v2-architecture-plan.md`（含 M6/M7 实施状态附录）。当前进度：**M1–M7 已完成**（IR/透镜基座、别名/改写/编码/SSA 透镜族、块包装、双向 beam 搜索、bulk 差分收口、页面 UI 接入 v2）。M7 验收：804 段搜索总量仍 ≤ v1 搜索（−503）；search_inverse 6 个 inv 真实触发、幂等 50 例固定点。户主硬性规则（`SNAPSHOT_FULL=1`，964 条）：(a) 每条 v2 压缩成功 ✓、(c) bulk 总和严格小于（v1 461157 → v2 456142，−5015；总字节 844113 → 837471，−6642；更短 242 / 持平 722 / 更长 0）✓、(b) 每条 ≤ 快照：**全部通过，无白名单**——此前 7 条局部劣化（multi_callback/parser/config/defs/helpers/empty_blocks/unbalanced_assignments）已全部修复，parser/config 还反超 v1（−54/−103）。压缩器页面已换装 v2 引擎（`compressor/index.html` 挂 `LuaMin2`，搜索级数 → beamWidth，无元表勾选 → `opts.noMetatable`，阶段卡片 → v2 trace，异步 `compressAsync`）。**已知边界**：>12KB 整文件走尺寸分级（关搜索/fixpoint 1 轮，分钟级耗时；贪心全局门禁所有尺寸全开——远程大文件收敛的必要条件）；增量 IR 重建属 M7 之后的进一步优化。**v1 退役（2026-10-15）**：v1 管线（`compressor/src/`）与 v1 测试（`compressor/tests/`）已删除；v2 依赖的共享实现迁移为 `src2/shared/`（analyze/canonical/encode/purecopy 四个安装器模块）+ `src2/base.js` 门面（`deps.base` 注入，`ir._base` 取用），`core.js` 仅余词法基础库；v1 历史基线保留为 `tests2/_snapshot.json`（snapshot_compare 与 corpus/diff 的无劣化参照物，永不以 v2 数据覆盖）。
 
 ## 构建与发布（2026-09-18）
-B1. 只发布构建产物目录：`python scripts/build_site.py` 组装 `_site/`（已 gitignore），其中只含构建产物（index.html / kb.json）与运行时资源（assets/、favicon.svg、jszip.min.js、compressor/ 页面与 v2 引擎源码 src2/）。源码（lua/、GenerateHtml.py 等）、测试、文档、依赖一律留在仓库、不进发布目录。三处部署共用同一条构建命令：GitHub Actions（工作流）、EdgeOne Pages（`edgeone.json`）、ESA Pages（`esa.jsonc`，项目名 isaaclua；该文件存在时 ESA 以其为唯一配置来源，控制台设置被忽略）。
+B1. 只发布构建产物目录：`python scripts/build_site.py` 组装 `_site/`（已 gitignore），其中只含构建产物（index.html / kb.json / kb/ 详情分片）与运行时资源（assets/、favicon.svg、jszip.min.js、compressor/ 页面与 v2 引擎源码 src2/）。源码（lua/、GenerateHtml.py 等）、测试、文档、依赖一律留在仓库、不进发布目录。三处部署共用同一条构建命令：GitHub Actions（工作流）、EdgeOne Pages（`edgeone.json`）、ESA Pages（`esa.jsonc`，项目名 isaaclua；该文件存在时 ESA 以其为唯一配置来源，控制台设置被忽略）。
 B2. 资源清单自动推导：发布脚本从构建产物（index.html / page.js / style.css / compressor 页面与脚本）中提取 `assets/...` 引用，逐个校验存在性，缺一即失败；仓库 assets/ 里未被引用的资源会被点名。禁止再手写资源拷贝清单——曾漏拷 `content-divider.webp` / `challenge-divider.webp` 导致线上「行间分隔线」消失。
 B3. 构建自足：GenerateHtml.py 零第三方依赖（块头自解析，2026-09 起移除 pyyaml）；build_site.py 缺压缩器 node_modules 时自动 `npm ci`，使静态托管平台只配一条构建命令即可。
 B4. 入库原则：第三方库能由构建期取得的就不入库——`compressor/luaparse.js`、`compressor/fengari-web.js` 改由 build_site.py 从 node_modules 拷贝；`jszip.min.js` 不在 npm 清单中（加入需重生成 package-lock）暂留入库，下载 zip 时本地优先、cdnjs 回退。压缩器测试基线（`_snapshot.json` 等）为回归输入，属必要文件，保留入库。
+B5. 主页数据架构（2026-10-16）：**元数据内嵌 + 详情分片懒加载**。index.html 内嵌的 `__ALL_FILES__` 只是元数据——文件级 {id,key,title,fname,isChallenge,blocks}，每块仅 {num,comment,name?,tpl?,tplDef?,region?}，只够列表渲染与搜索索引；详情全量数据（header、含 code 的 blocks、deps/values/params/body/commentTpl 等）逐文件输出为 `kb/<文件键>.json` 分片（GenerateHtml.py 生成到项目根 `kb/`，已 gitignore，build_site.py 整目录发布），page.js 进入详情页时 `loadDetail(fileId)` 懒加载（`DETAIL_CACHE` 内存缓存，fetch 带 `?v=window.__BUILD_TS__` 击穿旧版本缓存，BUILD_TS 由构建嵌入 index.html），先 loading 态后渲染，失败显示错误与重试。复制全部/下载 zip/参数组装以分片数据（`currentDetail`）为准；60 秒整页自动刷新不变，刷新后 route() 重走懒加载（BUILD_TS 未变时命中浏览器 HTTP 缓存）。`kb.json` 保留不变，仍是 `#kb` 下载入口的全量出口（与分片同源、互不影响）。
 
 ## 文档索引
 - `docs/design/template-system-design.md` — 模板代码系统设计定稿，实施的唯一依据；任何偏离先回本文档修订。

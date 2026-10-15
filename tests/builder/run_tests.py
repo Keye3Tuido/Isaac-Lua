@@ -12,6 +12,8 @@
       占位符未替换完全报错 / 框架注入（无条件：编号/region/深拷贝/依赖/展开） /
       main() 端到端 / verify_equivalence.py 的 PASS 与 FAIL /
       kb.json 结构化输出（build_kb_entries：注释/代码分栏、模板参数自包含） /
+      主页元数据契约（build_all_files_meta：仅 num/comment/name/tpl/tplDef/region，
+      无 header/code/deps 等详情字段）与 kb/<key>.json 详情分片输出 /
       分类编号（challenges c<编号> / utils u<编号>，两类目录可同号） /
       发布目录组装（build_site.py：必要资源一个不少、非必要文件一个不多） /
       名称继承（定义默认名/引用覆盖名/依赖按有效名称解析/同名引用不警告）/
@@ -193,6 +195,49 @@ class TestHappyPath(unittest.TestCase):
                       "l local ids={3,34} Isaac.Spawn(5,100,700,Vector.Zero,Vector.Zero,nil)", raw)
         self.assertTrue(raw.startswith("--迷你挑战甲"))
         self.assertEqual(G.clean_code(raw).splitlines()[0], "--迷你挑战甲")
+
+
+class TestMetaContract(unittest.TestCase):
+    """主页内嵌元数据契约（build_all_files_meta）：详情字段（header/code/deps/…）一律
+    不进元数据——它们由 kb/<key>.json 详情分片承载，前端懒加载。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.entries, _registry = build_fixture("new")
+        cls.meta = G.build_all_files_meta(cls.entries)
+        cls.full = G.build_all_files(cls.entries)
+
+    def test_file_level_keys(self):
+        self.assertEqual(set(self.meta), set(self.full))   # 文件键集合与全量一致
+        for f in self.meta.values():
+            self.assertEqual(set(f),
+                             {"id", "key", "title", "fname", "isChallenge", "blocks"})
+            self.assertNotIn("header", f)   # 元信息只进分片
+
+    def test_block_keys_whitelist(self):
+        allowed = {"num", "comment", "name", "tpl", "tplDef", "region"}
+        ban = {"code", "deps", "tools", "values", "params", "body", "commentTpl"}
+        for f in self.meta.values():
+            self.assertTrue(f["blocks"])
+            for b in f["blocks"]:
+                self.assertLessEqual(set(b), allowed)
+                self.assertIn("num", b)
+                self.assertIn("comment", b)
+                self.assertFalse(set(b) & ban, f"元数据块混入详情字段：{set(b) & ban}")
+
+    def test_search_index_fields_kept(self):
+        # 列表搜索索引依赖 num/comment/tpl/tplDef/name，这些必须留在元数据里
+        ch = self.meta["c1"]
+        self.assertEqual(ch["blocks"][0]["name"], "基础设置")
+        self.assertEqual(ch["blocks"][2]["tpl"], "tpl-param")
+        self.assertEqual(ch["blocks"][0]["region"], "pre")
+        u = self.meta["uU1"]
+        self.assertTrue(any(b.get("tplDef") == "tpl-param" for b in u["blocks"]))
+
+    def test_meta_is_smaller_than_full(self):
+        meta_json = json.dumps(self.meta, ensure_ascii=False)
+        full_json = json.dumps(self.full, ensure_ascii=False)
+        self.assertLess(len(meta_json), len(full_json))
 
 
 class TestKbEntries(unittest.TestCase):
@@ -452,7 +497,12 @@ class TestMainEndToEnd(unittest.TestCase):
                 html = f.read()
             with open("kb.json", encoding="utf-8") as f:
                 kb = json.load(f)
-            return html, kb
+            shards = {}
+            for fn in sorted(os.listdir("kb")):
+                if fn.endswith(".json"):
+                    with open(os.path.join("kb", fn), encoding="utf-8") as f:
+                        shards[fn] = json.load(f)
+            return html, kb, shards
         finally:
             os.chdir(old_cwd)
             shutil.rmtree(tmp, ignore_errors=True)
@@ -460,10 +510,18 @@ class TestMainEndToEnd(unittest.TestCase):
     def test_main_with_both_placeholders(self):
         with open(os.path.join(FIX, "site", "page.js"), encoding="utf-8") as f:
             page_js = f.read()
-        html, kb = self._run_main(page_js)
+        html, kb, shards = self._run_main(page_js)
         self.assertNotIn("__ALL_FILES__", html)
         self.assertNotIn("__ALL_TEMPLATES__", html)
         self.assertIn("tpl-param", html)  # 模板注册表已注入
+        # 构建时间戳已嵌入（前端 fetch 详情分片带 ?v=<BUILD_TS> 击穿缓存）
+        self.assertRegex(html, r'window\.__BUILD_TS__="\d+"')
+        # 详情分片：kb/<文件键>.json = 该文件全量数据（header + 含 code 的 blocks）
+        self.assertEqual(set(shards), {"c1.json", "uU1.json", "uU2.json", "uTMPL.json"})
+        ch = shards["c1.json"]
+        self.assertEqual(ch["key"], "c1")
+        self.assertIn("header", ch)
+        self.assertIn("code", ch["blocks"][0])
         # kb.json 新 schema：文件级信息 + 结构化 blocks（注释/代码分栏、模板参数自包含）
         self.assertEqual(len(kb), 4)  # 1 挑战 + 3 工具（含框架文件）
         for entry in kb:
@@ -476,7 +534,7 @@ class TestMainEndToEnd(unittest.TestCase):
         self.assertIn("--0. 前置自定义代码。\nl local X=1 print(X)", ch["code"])
 
     def test_main_without_templates_placeholder(self):
-        html, kb = self._run_main("const ALL_FILES = __ALL_FILES__;\n")
+        html, kb, _shards = self._run_main("const ALL_FILES = __ALL_FILES__;\n")
         self.assertNotIn("__ALL_FILES__", html)
         self.assertEqual(len(kb), 4)
 
@@ -561,6 +619,9 @@ class TestPublishBuild(unittest.TestCase):
                for dp, _, fns in os.walk(self.out) for fn in fns}
         self.assertIn("index.html", pub)
         self.assertIn("kb.json", pub)
+        # 详情分片整目录发布（挑已知文件键：挑战 c1 = 1.御灵术、工具 u1 = 1.灵感）
+        self.assertIn("kb/c1.json", pub)
+        self.assertIn("kb/u1.json", pub)
         self.assertIn("compressor/luaparse.js", pub)   # 由 node_modules 提供，不入库
         self.assertIn("compressor/fengari-web.js", pub)
         # 源码/测试/文档/依赖不得进入发布目录

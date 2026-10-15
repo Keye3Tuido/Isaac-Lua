@@ -141,6 +141,13 @@ def assemble(out_dir):
         if not os.path.isfile(os.path.join(REPO_ROOT, rel)):
             raise SystemExit(f"错误：缺少必需入口文件 {rel}")
         written.append(_copy(rel, os.path.join(out, rel)))
+    # ①b 详情分片（kb/<文件键>.json，GenerateHtml.py 构建产物；页面按需懒加载，整目录拷贝）
+    shard_rels = sorted(_rel(p) for p in glob.glob(os.path.join(REPO_ROOT, "kb", "*.json")))
+    if not shard_rels:
+        raise SystemExit("错误：缺少详情分片 kb/*.json（GenerateHtml.py 构建产物），发布中止")
+    os.makedirs(os.path.join(out, "kb"))
+    for rel in shard_rels:
+        written.append(_copy(rel, os.path.join(out, rel)))
     # ② 压缩器入口与源码（v2 src2/ 全量：core.js 词法库 + shared 基础模块 + 透镜流水线）
     for rel in COMPRESSOR_ENTRIES + _compressor_sources():
         if not os.path.isfile(os.path.join(REPO_ROOT, rel)):

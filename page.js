@@ -12,10 +12,11 @@
 const ALL_FILES = __ALL_FILES__;
 const TEMPLATES = __ALL_TEMPLATES__;
 
-// ALL_FILES 以文件键 key 索引：挑战 c<编号>、工具 u<编号>（即 URL 锚点 #c1 / #u1），
-// 两类目录各自独立编号，故 id 可重号、key 全局唯一。
-// 条目结构：{id,key,title,fname,isChallenge,header:[注释行...],blocks:[{num,comment,code,region?,deps?,name?} 或
-//   {…,tpl,values}（模板引用）或 {…,tplDef}（模板定义）或 {…,params,values,body,commentTpl}（块内参数）]}
+// ALL_FILES = 主页内嵌的元数据，以文件键 key 索引：挑战 c<编号>、工具 u<编号>
+//（即 URL 锚点 #c1 / #u1），两类目录各自独立编号，故 id 可重号、key 全局唯一。
+// 元数据条目：{id,key,title,fname,isChallenge,blocks:[{num,comment,name?,tpl?,tplDef?,region?}]}
+// ——只够列表渲染与搜索索引；详情全量数据（header、含 code 的 blocks、deps/values/params 等）
+// 在 kb/<key>.json 分片，由 loadDetail 懒加载（见下）。
 // num 为字符串编号：挑战前置 0、I、II…，正文 1、2、3…，后置继前置续罗马数字；utils 为整数序号
 // TEMPLATES 结构：{模板id:{body:"含P1..Pn的代码",说明:"含{P1}插值槽的说明",params:{P1:{说明,性质,默认}}}}
 for (const key in ALL_FILES) {
@@ -128,13 +129,31 @@ const noResult = document.getElementById('noResult');
 // ========== 状态 ==========
 // 当前文件键：挑战 c<编号>、工具 u<编号>，即 URL 锚点里 # 之后的那段
 let currentFileId = null;
+// 当前详情页的分片数据（全量结构：header + 含 code 的 blocks），复制/下载/参数组装以其为准
+let currentDetail = null;
 // 当前详情页各代码块的实时状态（模板面板当前值），复制/下载由此现场生成内容
 let currentBlocks = [];
+// 详情分片缓存：fileId -> 分片数据（或在途请求 Promise）；fetch 带 ?v=__BUILD_TS__ 击穿旧缓存
+const DETAIL_CACHE = {};
 // 自动强制刷新定时器（列表页与详情页均启用，切换视图时重置）
 let autoRefreshTimer = null;
 // 左上角刷新时间提示
 let lastRefreshAt = Date.now();
 let refreshHintTimer = null;
+
+// 详情分片懒加载：命中缓存直接返回；失败（网络/404/解析错误）返回 null，由调用方给重试入口
+function loadDetail(fileId) {
+    if (DETAIL_CACHE[fileId]) return Promise.resolve(DETAIL_CACHE[fileId]);
+    const req = fetch('kb/' + fileId + '.json?v=' + (window.__BUILD_TS__ || ''))
+        .then(function(res) { return res && res.ok ? res.json() : null; })
+        .then(function(data) {
+            if (data) DETAIL_CACHE[fileId] = data;
+            else delete DETAIL_CACHE[fileId];   // 失败不留缓存，重试会重新拉取
+            return data;
+        }, function() { delete DETAIL_CACHE[fileId]; return null; });
+    DETAIL_CACHE[fileId] = req;   // 在途请求同样入缓存：同一文件并发导航不重复拉取
+    return req;
+}
 
 // ========== 路由 ==========
 // 锚点：<键>s<段> / <键>l<行号>；键 = c<编号>（挑战）或 u<编号>（工具）。
@@ -156,9 +175,13 @@ function route() {
     const parsed = parseHash(body);
     if (!parsed) { showListView(); return; }
     const fileId = parsed.fileId, secId = parsed.secId;
-    // 同文件只滚动，不同文件完整渲染
+    // 同文件只滚动，不同文件完整渲染；分片仍在加载时重走 showDetailView 挂起段锚点，
+    // 加载完成后随渲染定位（loadDetail 缓存在途请求，不会重复拉取）
     if (fileId === currentFileId) {
-        if (secId) scrollToSection(secId);
+        if (secId) {
+            if (currentDetail) scrollToSection(secId);
+            else showDetailView(fileId, secId);
+        }
     } else {
         showDetailView(fileId, secId);
     }
@@ -241,6 +264,7 @@ function showListView() {
     listView.style.display = '';
     document.body.className = 'home-page';
     currentFileId = null;
+    currentDetail = null;
     currentBlocks = [];
     document.title = '以撒代码挑战 - Keye3Tuido';
     window.scrollTo(0, 0);
@@ -325,7 +349,10 @@ function showDetailView(fileId, secId) {
     detailView.style.display = '';
     document.body.className = 'challenge-page';
     currentFileId = fileId;
+    currentDetail = null;
+    currentBlocks = [];
 
+    // 元数据先行：标题/图例/按钮可见性不等分片
     const f = ALL_FILES[fileId];
     detailTitle.textContent = f.title;
     subLegend.textContent = f.fname + ' - @Keye3Tuido';
@@ -337,15 +364,34 @@ function showDetailView(fileId, secId) {
     // 只剩 2 个按钮时加 utils-group 类，让它们在原 4 列网格中居中
     document.getElementById('buttonGroup').classList.toggle('utils-group', !f.isChallenge);
 
-    renderSections(f);
-    // 刷新前展开的所有条目整组恢复（sessionStorage），hash 里的单条锚点另作滚动定位
-    if (restoreOpenSections()) {
-        for (const st of currentBlocks) {
-            if (st.sectionEl && !st.sectionEl.classList.contains('collapsed') && st.autosizeAll) st.autosizeAll();
+    // 详情数据懒加载：先 loading 态，分片到达后整页渲染；失败显示错误与重试入口
+    codeArea.innerHTML = '<div class="detail-loading">加载中…</div>';
+    loadDetail(fileId).then(function(detail) {
+        if (currentFileId !== fileId) return;   // 已切走，丢弃过期结果
+        if (!detail) {
+            codeArea.innerHTML = '';
+            const err = document.createElement('div');
+            err.className = 'detail-loading';
+            err.textContent = '详情数据加载失败。';
+            const retry = document.createElement('button');
+            retry.className = 'copy-btn detail-retry';
+            retry.textContent = '重试';
+            retry.onclick = function() { showDetailView(fileId, secId); };
+            err.appendChild(retry);
+            codeArea.appendChild(err);
+            return;
         }
-    }
-    if (secId) scrollToSection(secId);
-    else window.scrollTo(0, 0);
+        currentDetail = detail;
+        renderSections(detail);
+        // 刷新前展开的所有条目整组恢复（sessionStorage），hash 里的单条锚点另作滚动定位
+        if (restoreOpenSections()) {
+            for (const st of currentBlocks) {
+                if (st.sectionEl && !st.sectionEl.classList.contains('collapsed') && st.autosizeAll) st.autosizeAll();
+            }
+        }
+        if (secId) scrollToSection(secId);
+        else window.scrollTo(0, 0);
+    });
 
     startAutoRefresh();
 }
@@ -770,8 +816,9 @@ function bindHover(el, charCount) {
 
 // 复制全部 / 下载 zip 用的当前全文：各块代码（面板当前值现场生成），块间空一行。
 // 注释（块头 --N. 说明、文件头、--===-- 分隔线）一律不携带——粘贴与模组都只需要可执行代码。
+// 数据来自详情分片（currentDetail）；分片未就绪时返回空串（按钮在加载完成前不应有点击时机）
 function currentRawText() {
-    const f = ALL_FILES[currentFileId];
+    const f = currentDetail;
     if (!f) return '';
     const parts = [];
     for (const st of currentBlocks) {
@@ -906,7 +953,7 @@ function copyBlock(text, count, e) {
 }
 
 function copyAllCode(e) {
-    const f = ALL_FILES[currentFileId];
+    const f = currentDetail;
     if (!f) return;
     tjEvent('copy_code', currentFileId);
     return copyTextWithToast(currentRawText(), '已复制代码到剪贴板', e);
@@ -949,7 +996,7 @@ function escapeXml(s) {
 }
 
 async function downloadZip(e) {
-    const f = ALL_FILES[currentFileId];
+    const f = currentDetail;
     if (!f) return;
     await ensureJsZip();
     try {
