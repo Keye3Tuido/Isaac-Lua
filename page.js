@@ -241,6 +241,9 @@ function showListView() {
 function startAutoRefresh() {
     stopAutoRefresh();
     autoRefreshTimer = setTimeout(function() {
+        // 内嵌脚本工具运行中（含 Pyodide 首载，可能超过一分钟）：顺延而非重载，
+        // 避免整页刷新杀掉进行中的加载/运行
+        if (window.__SCRIPT_TOOL_RUNNING) { startAutoRefresh(); return; }
         var url = new URL(location.href);
         url.searchParams.set('_r', Date.now().toString());
         location.replace(url.toString());
@@ -294,11 +297,13 @@ function cleanRefreshTimestamp() {
 
 // ========== 详情视图 ==========
 // 路由切走（换文件/回列表）时清掉当前文件的展开状态与脚本面板；
-// 整页刷新（自动刷新/F5）不经此路径，展开状态仍由 persistOpenSections 恢复
+// 整页刷新（自动刷新/F5）不经此路径，展开状态仍由 persistOpenSections 恢复，
+// 脚本面板显隐/页签/位置由 _toolbox.js 经 scriptPanel.ui 恢复
 function resetDetailPageState() {
     if (currentFileId) {
         try { sessionStorage.removeItem('isaac:open:' + currentFileId); } catch (_) { /* 忽略 */ }
     }
+    try { sessionStorage.removeItem('scriptPanel.ui'); } catch (_) { /* 忽略 */ }
     const sp = document.getElementById('scriptPanel');
     if (sp) sp.style.display = 'none';
 }

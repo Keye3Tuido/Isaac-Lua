@@ -2,8 +2,8 @@
 # --[[ 工具规格
 # id: png2base92
 # title: 图片转 Base92
-# desc: 图片缩至 128x128 内、量化后编码为 Base92 彩色图编码 v3（预算内取最大色数，内置自检，输出带引号字面量）
-# inputs: [{name: img, type: file, label: 图片文件, accept: "image/png,image/jpeg"}, {name: budget, type: number, label: 字符预算, default: 3000}, {name: max-size, type: number, label: 尺寸上限, default: 128}]
+# desc: 图片缩至尺寸上限内、按颜色上限量化后编码为 Base92 彩色图编码 v3（预算不足自动降色并提示，内置自检，输出带引号字面量）
+# inputs: [{name: img, type: file, label: 图片文件, accept: "image/png,image/jpeg"}, {name: budget, type: number, label: 字符预算, default: 3000}, {name: colors, type: number, label: 颜色上限, default: 64}, {name: max-size, type: number, label: 尺寸上限, default: 128}]
 # ]]
 """png2base92.py — PNG -> 彩色图编码 -> Base92 文本 (游戏内 PixelMap 用)
 
@@ -12,7 +12,7 @@
 
 特性:
   * 输入不限尺寸: 大于 --max-size 的图先按比例 LANCZOS 缩至适配 (默认 128)
-  * 调色板自动搜索: 从 256 色起逐档降色, 取 Base92 长度 <= --budget(默认 3000) 的最大色数
+  * 调色板自动搜索: 从 --colors 起逐档降色, 取 Base92 长度 <= --budget(默认 3000) 的最大色数
   * 索引面为左邻上下文自适应算术码流 (v3 格式: 无 magic/无调色板哨兵/两态 alpha 标志, 调色板按频率降序), alpha 原始字节
     与 util5 彩色图编解码块 v3 字节级一致, 编码后内置自检; 不支持旧版编码串
 
@@ -303,8 +303,9 @@ def main():
 
     img = Image.open(args.png).convert("RGBA")
     ow, oh = img.size
-    if ow > args.max_size or oh > args.max_size:
-        img.thumbnail((args.max_size, args.max_size), Image.Resampling.LANCZOS)
+    max_size = max(1, args.max_size)
+    if ow > max_size or oh > max_size:
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
     w, h = img.size
 
     def attempt(n):
@@ -316,7 +317,7 @@ def main():
     if not 1 <= args.colors <= 255:
         sys.exit("--colors 需为 1..255")
     steps = [c for c in COLOR_STEPS if c <= args.colors]
-    if steps[0] != args.colors:
+    if not steps or steps[0] != args.colors:
         steps.insert(0, args.colors)
     for n in steps:
         data, encoded, pixels, pal_rgb = attempt(n)
@@ -325,7 +326,10 @@ def main():
             break
     if chosen is None:
         n = steps[-1]
-        print(f"警告: 即使 {n} 色也超出预算 ({len(encoded)} > {args.budget} 字符), 已用最小色数输出",
+        alpha_note = (f"；模式2 半透明通道独占 {w * h}B 原始字节（≈{5 * (w * h) // 4} 字符，"
+                      f"缩小尺寸或降色都无法减免；含半透明边缘多由缩放重采样引入）"
+                      if _mode_of(pixels) == 2 else "")
+        print(f"警告: 即使 {n} 色也超出预算 ({len(encoded)} > {args.budget} 字符), 已用最小色数输出{alpha_note}",
               file=sys.stderr)
         chosen = (f"自适应 {n} 色", n, data, encoded, pixels, pal_rgb)
 
@@ -354,7 +358,9 @@ def main():
         print(f"已写出 {args.output}: {w}x{h}, {desc}, 模式{mode}, {len(data)}B -> {len(encoded)} 字符, 自检通过",
               file=sys.stderr)
     else:
-        # 浏览器/管道模式: 只输出带双引号的 Lua 字面量（编码 alphabet 不含 " 与 \，安全）
+        # 浏览器/管道模式: 只输出带双引号的 Lua 字面量（编码 alphabet 不含 " 与 \，安全）；
+        # 汇总行进 stderr（内嵌前端将其展示在状态区，不污染输出框/复制内容）
+        sys.stderr.write(note)
         sys.stdout.write('"' + encoded + '"\n')
 
 

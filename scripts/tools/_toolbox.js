@@ -40,7 +40,7 @@
         + '.script-pane input[type=text],.script-pane input[type=number]{padding:4px 6px;border:1px solid #cbb57f;border-radius:4px;font-size:12px}'
         + '.script-output{background:#fbfaf5;word-break:break-all}'
         + '.script-count{font-size:11px;color:#a08c5a;min-height:14px}'
-        + '.script-status{font-size:12px;color:#8a6d3b;min-height:16px}'
+        + '.script-status{font-size:12px;color:#8a6d3b;min-height:16px;white-space:pre-wrap}'
         + '.script-dl{font-size:12px;color:#7a5c1e}';
     var st = document.createElement('style');
     st.id = 'scriptToolboxCss';
@@ -120,16 +120,17 @@
                     var v = values[inp.name];
                     if (v === undefined || v === null || v === '') return;
                     if (inp.type === 'file') {
-                        (function (inp2, file) {
+                        // 路径同步算出、按规格顺序占位置参数位；异步仅负责写入
+                        var m = /\.[A-Za-z0-9]+$/.exec(v.name || '');
+                        var path = '/tmp/in_' + inp.name + (m ? m[0] : '');
+                        argv.push(path);
+                        (function (p2, file) {
                             writes = writes.then(function () {
                                 return file.arrayBuffer().then(function (buf) {
-                                    var m = /\.[A-Za-z0-9]+$/.exec(file.name || '');
-                                    var path = '/tmp/in_' + inp2.name + (m ? m[0] : '');
-                                    py.FS.writeFile(path, new Uint8Array(buf));
-                                    argv.push(path);
+                                    py.FS.writeFile(p2, new Uint8Array(buf));
                                 });
                             });
-                        })(inp, v);
+                        })(path, v);
                     } else if (inp.type === 'number' || inp.type === 'select') {
                         argv.push('--' + inp.name, String(v));
                     } else {
@@ -137,21 +138,23 @@
                     }
                 });
                 return writes.then(function () {
-                    var out = '';
+                    var out = '', err = '';
                     py.setStdout({ batched: function (s) { out += s; io.status(s.trim().slice(-80) || '运行中…'); } });
-                    py.setStderr({ batched: function (s) { out += s; } });
+                    // stderr 不进输出框：摘留给状态区，避免提示文字混进复制内容
+                    //（batched 按行上交且不含换行，补回 \n 保住多行摘要）
+                    py.setStderr({ batched: function (s) { err += s + '\n'; } });
                     io.status('运行中…');
                     return py.runPythonAsync('__name__="__tool__"\n' + src)
                         .then(function () {
                             return py.runPythonAsync('import sys\nsys.argv=' + JSON.stringify(argv) + '\nmain()');
                         })
-                        .then(function () { return out; });
+                        .then(function () { return { out: out, err: err }; });
                 });
             });
         });
     }
 
-    // ---- 规格驱动表单（输入/输出状态持久化到 sessionStorage，通用逻辑与具体工具无关） ----
+    // ---- 规格驱动表单（输入/输出/状态区持久化到 sessionStorage，通用逻辑与具体工具无关） ----
     function loadState(id) {
         try { return JSON.parse(sessionStorage.getItem('scriptPanel.state.' + id) || 'null'); }
         catch (e) { return null; }
@@ -211,12 +214,14 @@
                 }
             });
         });
-        function persist() {
+        function persist(st) {
             var v = {};
             pairs.forEach(function (p) {
                 if (p.inp.type !== 'file') v[p.inp.name] = p.input.value;
             });
-            saveState(spec.id, { v: v, out: out.value });
+            // 状态区文本（警告/汇总）随输出一并保存：刷新后输出仍在，解释也应在
+            var prev = loadState(spec.id) || {};
+            saveState(spec.id, { v: v, out: out.value, st: st !== undefined ? st : (prev.st || '') });
         }
         pairs.forEach(function (p) {
             if (p.inp.type === 'file') return;
@@ -239,6 +244,7 @@
             count.textContent = out.value ? '输出 ' + out.value.length + ' 字符' : '';
         }
         if (saved.out) { out.value = saved.out; }
+        if (saved.st) { io.status(saved.st); }
         refreshCount();
         out.addEventListener('click', function () {
             if (!out.value) return;
@@ -262,6 +268,7 @@
             out.value = '';
             refreshCount();
             runBtn.disabled = true;
+            window.__SCRIPT_TOOL_RUNNING = (window.__SCRIPT_TOOL_RUNNING || 0) + 1;   // 运行期间自动刷新顺延（见 page.js）
             io.status('启动中…');
             var p;
             try {
@@ -269,23 +276,46 @@
             } catch (e) {
                 p = Promise.reject(e);
             }
-            Promise.resolve(p).then(function (text) {
-                out.value = text;
+            Promise.resolve(p).then(function (res) {
+                out.value = res.out;
                 refreshCount();
-                persist();
-                io.status('完成，输出 ' + text.length + ' 字符');
+                var tail = (res.err || '').trim();
+                var msg = '完成，输出 ' + res.out.length + ' 字符' + (tail ? '\n' + tail : '');
+                io.status(msg);
+                persist(msg);
             }, function (err) {
                 out.value = '';
                 refreshCount();
-                persist();
-                io.status('失败：' + (err && err.message ? err.message : String(err)));
-            }).then(function () { runBtn.disabled = false; });
+                var msg = '失败：' + (err && err.message ? err.message : String(err));
+                io.status(msg);
+                persist(msg);
+            }).then(function () {
+                runBtn.disabled = false;
+                window.__SCRIPT_TOOL_RUNNING = Math.max(0, (window.__SCRIPT_TOOL_RUNNING || 1) - 1);
+            });
         };
         pane.append(runBtn, count, out, dl);
     }
 
-    // ---- 悬浮面板（单例、可拖动、页签） ----
-    var panel = { el: null, bar: null, body: null, tabs: {} };
+    // ---- 悬浮面板（单例、可拖动、页签；显隐/页签/位置经 sessionStorage 跨刷新恢复） ----
+    var panel = { el: null, bar: null, body: null, tabs: {}, active: null };
+
+    function saveUi() {
+        if (!panel.el) return;
+        try {
+            sessionStorage.setItem('scriptPanel.ui', JSON.stringify({
+                open: panel.el.style.display !== 'none',
+                tabs: Object.keys(panel.tabs),
+                active: panel.active,
+                left: panel.el.style.left || '',
+                top: panel.el.style.top || ''
+            }));
+        } catch (e) { /* 忽略 */ }
+    }
+    function loadUi() {
+        try { return JSON.parse(sessionStorage.getItem('scriptPanel.ui') || 'null'); }
+        catch (e) { return null; }
+    }
 
     function ensurePanel() {
         if (panel.el) return;
@@ -301,6 +331,7 @@
         closeBtn.textContent = '×';
         closeBtn.onclick = function () {
             el.style.display = 'none';
+            saveUi();
         };
         head.append(title, closeBtn);
         var bar = document.createElement('div');
@@ -327,31 +358,36 @@
             el.style.left = x + 'px';
             el.style.top = y + 'px';
         });
-        head.addEventListener('pointerup', function () { dragging = false; });
+        head.addEventListener('pointerup', function () { dragging = false; saveUi(); });
 
         panel.el = el; panel.bar = bar; panel.body = body;
     }
 
-    function open(id) {
+    function ensureTab(id) {
         var spec = specOf(id);
-        if (!spec) { window.alert('未知工具：' + id); return; }
+        if (!spec) return false;
         ensurePanel();
-        if (!panel.tabs[id]) {
-            var btn = document.createElement('button');
-            btn.className = 'script-tab';
-            btn.textContent = spec.title || id;
-            btn.onclick = function () { activate(id); };
-            panel.bar.appendChild(btn);
-            var pane = document.createElement('div');
-            pane.className = 'script-pane';
-            var status = document.createElement('div');
-            status.className = 'script-status';
-            var io = { status: function (s) { status.textContent = s; } };
-            pane.appendChild(status);
-            buildForm(pane, spec, io);
-            panel.body.appendChild(pane);
-            panel.tabs[id] = { btn: btn, pane: pane };
-        }
+        if (panel.tabs[id]) return true;
+        var btn = document.createElement('button');
+        btn.className = 'script-tab';
+        btn.textContent = spec.title || id;
+        btn.onclick = function () { activate(id); };
+        panel.bar.appendChild(btn);
+        var pane = document.createElement('div');
+        pane.className = 'script-pane';
+        var status = document.createElement('div');
+        status.className = 'script-status';
+        var io = { status: function (s) { status.textContent = s; } };
+        pane.appendChild(status);
+        buildForm(pane, spec, io);
+        panel.body.appendChild(pane);
+        panel.tabs[id] = { btn: btn, pane: pane };
+        return true;
+    }
+
+    function open(id) {
+        if (!specOf(id)) { window.alert('未知工具：' + id); return; }
+        ensureTab(id);
         if (panel.el.style.display === 'none') {
             panel.el.style.display = 'block';
             if (!panel.el.style.left) {
@@ -363,14 +399,41 @@
     }
 
     function activate(id) {
+        panel.active = id;
         Object.keys(panel.tabs).forEach(function (k) {
             panel.tabs[k].btn.classList.toggle('active', k === id);
             panel.tabs[k].pane.style.display = k === id ? '' : 'none';
         });
+        saveUi();
     }
 
     window.SCRIPT_TOOLBOX = { open: open, runTool: runTool };
 
-    // 不自动恢复：面板显隐与页签只存活于当前页面会话，整页重载（含自动刷新）
-    // 与跨标签页都不再重新弹窗；表单输入/输出仍由 scriptPanel.state.* 持久化。
+    // 面板显隐/页签/位置经 scriptPanel.ui 持久化，同标签页内整页重载（含每分钟自动
+    // 刷新）后原样恢复；离开当前界面（路由切换）时 page.js resetDetailPageState
+    // 清除该状态，不再恢复。表单输入/输出仍由 scriptPanel.state.* 持久化。
+    (function restoreUi() {
+        var st = loadUi();
+        if (!st || !st.tabs || !st.tabs.length) return;
+        st.tabs.forEach(function (id) { ensureTab(id); });
+        var ids = Object.keys(panel.tabs);
+        if (!ids.length) return;
+        panel.el.style.display = st.open ? 'block' : 'none';
+        if (st.left) {
+            panel.el.style.left = st.left;
+            panel.el.style.top = st.top || '0px';
+        } else if (st.open) {
+            panel.el.style.left = Math.max(8, window.innerWidth - panel.el.offsetWidth - 24) + 'px';
+            panel.el.style.top = '72px';
+        }
+        if (st.open) {
+            // 钳制回视口内（窗口可能已缩放），规则与拖动一致
+            var W = panel.el.offsetWidth;
+            var x = Math.min(Math.max(parseInt(panel.el.style.left, 10) || 0, -W + 60), window.innerWidth - 60);
+            var y = Math.min(Math.max(parseInt(panel.el.style.top, 10) || 0, 0), window.innerHeight - 40);
+            panel.el.style.left = x + 'px';
+            panel.el.style.top = y + 'px';
+        }
+        activate(panel.tabs[st.active] ? st.active : ids[0]);
+    })();
 })();
