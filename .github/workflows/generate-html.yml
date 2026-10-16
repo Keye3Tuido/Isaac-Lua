@@ -31,15 +31,40 @@ jobs:
         with:
           node-version: '20'
 
+      # 压缩器是否变化：只有 compressor/ 有改动时才安装依赖、导出语料并跑压缩测试；
+      # 纯站点改动（lua/、page.js、style.css 等）跳过压缩器测试直接部署。
+      # push 事件按 base/head 比较；workflow_dispatch 无 push 载荷，按「需要跑」处理（保守）。
+      - name: Detect compressor changes
+        id: compressor_scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "非 push 事件，压缩器测试按需执行"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "${{ github.event.before }}" >/dev/null 2>&1 || true
+          if git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- compressor | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "compressor/ 有改动，将运行压缩器测试"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "compressor/ 无改动，跳过压缩器测试"
+          fi
+
       - name: Install compressor dependencies
+        if: steps.compressor_scope.outputs.changed == 'true'
         working-directory: compressor
         run: npm ci
 
       - name: Export compression-test corpus
         # 压缩测试语料 = 构建期默认参数替换后的最终代码（逐块），不是仓库里的原始 l 行
+        if: steps.compressor_scope.outputs.changed == 'true'
         run: python scripts/export_segments.py
 
       - name: Run compressor tests
+        if: steps.compressor_scope.outputs.changed == 'true'
         working-directory: compressor
         run: npm test
 

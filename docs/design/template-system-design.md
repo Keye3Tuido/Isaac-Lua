@@ -139,11 +139,11 @@ deps 字段）。
 
 | 模板id | 来源 | 参数 | 说明 |
 |---|---|---|---|
-| safe-wrap-v1 | util1.安全包装（debug 库版） | 无 | 两个版本都收，当前挑战均用 v2 |
-| safe-wrap-mec | util1.安全包装 v2（MEC 版） | 无 | 段 0 件 1 |
-| clean-anon-callbacks | util3.清理匿名回调 | 无 | 段 0 件 2 |
-| persistent-data | util2.数据保存（单行版） | 无 | 24.拖家带口引用；可读源码注释化保留 |
-| lock-achievements | 0.实用代码合辑 #47 | 无 | 段 0 件 4 |
+| safe-wrap-v1 | 1.安全包装（debug 库版） | 无 | 两个版本都收，当前挑战均用 v2 |
+| safe-wrap-mec | 1.安全包装 v2（MEC 版） | 无 | 段 0 件 1 |
+| clean-anon-callbacks | 2.回调清理 | 无 | 段 0 件 2 |
+| persistent-data | 22.数据保存（单行版） | 无 | 24.拖家带口引用；可读源码注释化保留 |
+| lock-achievements | 5.角色与玩家属性（原 0.实用代码合辑） | 无 | 段 0 件 4 |
 | restart-game | TMPL.挑战代码模板.lua 后置 | P1 = 角色（可空，空则无参 restart） | 覆盖标准版 + 5 个角色变体 |
 
 ## 7. 段 0 标准分解（40 文件逐字节相同）

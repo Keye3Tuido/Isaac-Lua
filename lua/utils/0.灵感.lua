@@ -1,0 +1,160 @@
+--灵感
+
+--[[
+作为模板: true
+模板id: burst-fireball
+说明: 爆裂天火：每Burst(默认{P1})秒随机天降一颗爆裂火球。
+参数定义:
+  P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量Burst，天降爆裂火球的间隔秒数（默认5）"}
+]]
+l Burst=P1;local I,P=Isaac,ProjectileFlags I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()if Game():GetFrameCount()%(30*Burst)<1 then local p=I.Spawn(EntityType.ENTITY_PROJECTILE,ProjectileVariant.PROJECTILE_FIRE,0,I.GetRandomPosition(),Vector.Zero,nil):ToProjectile()p:AddHeight(-30)p:AddProjectileFlags(P.EXPLODE|P.FIRE_WAVE|P.FIRE_WAVE_X|P.FIRE_SPAWN)p:AddEntityFlags(EntityFlag.FLAG_PERSISTENT)end end)
+
+--[[
+作为模板: true
+模板id: poison-aura
+说明: 毒性光晕：屏幕内随机出现PoisonNum(默认{P1})个悬浮毒性光晕。
+参数定义:
+  P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量PoisonNum，悬浮毒性光晕的数量（默认5）"}
+]]
+l PoisonNum=P1;local E,F,I,P=EntityType.ENTITY_PROJECTILE,ProjectileFlags,Isaac,'ToProjectile'F=F.GODHEAD|F.CANT_HIT_PLAYER I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local c,e=0 for k,v in pairs(I.FindByType(E))do e=v[P](v)if e:HasProjectileFlags(F)then c,e.FallingSpeed,e.FallingAccel=c+1,0,-.1 end end while c<PoisonNum do e=I.Spawn(E,0,0,I.GetRandomPosition(),Vector.Zero,nil)c,e=c+1,e[P](e)e:AddProjectileFlags(F)end end)
+
+--[[
+作为模板: true
+模板id: punish-damage-open-doors
+说明: 玩家在当前房间受到惩罚伤害的总次数人均达到Threshold(默认{P1}次)后，打开当前房间所有门。
+参数定义:
+  P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量Threshold，人均惩罚伤害次数阈值（默认5次）"}
+]]
+l Threshold=P1;local A,D,E,M,N,T=Isaac.AddCallback,DamageFlag,EntityType,ModCallbacks,0,{}A(T,M.MC_POST_NEW_ROOM,function()N=0 end)A(T,M.MC_ENTITY_TAKE_DMG,function(_,e,a,f,s)e=e:ToPlayer()if e:GetPlayerType()==PlayerType.PLAYER_JACOB_B and s.Type==E.ENTITY_DARK_ESAU or 0<f&(D.DAMAGE_RED_HEARTS|D.DAMAGE_IV_BAG|D.DAMAGE_FAKE|D.DAMAGE_NO_PENALTIES)then return end N=N+1 end,E.ENTITY_PLAYER)A(T,M.MC_POST_UPDATE,function()if N>=Threshold*Game():GetNumPlayers()then for i=0,7 do local d=Game():GetRoom():GetDoor(i)if d then d:Open()end end end end)
+
+--[[
+作为模板: true
+模板id: restart-key-bind
+说明: |-
+  移动键&攻击键&鼠标左键绑定重开键
+  原版控制台存在BUG，运行此代码需要忏悔龙
+]]
+l local A,C,H,I,B=ButtonAction,Isaac,InputHook,Input,{'LEFT','RIGHT','UP','DOWN'}C.AddCallback({},ModCallbacks.MC_INPUT_ACTION,function(_,e,h,a)if a==A.ACTION_RESTART then for i=1,Game():GetNumPlayers()do local x,t=C.GetPlayer(i-1).ControllerIndex for k,v in pairs(A)do for p,q in ipairs(B)do if k:match(q)then if h==H.IS_ACTION_PRESSED and(I.IsActionPressed(v,x)or I.IsMouseBtnPressed(Mouse.MOUSE_BUTTON_LEFT))or h==H.IS_ACTION_TRIGGERED and I.IsActionTriggered(v,x)then return true elseif h==H.GET_ACTION_VALUE then t=I.GetActionValue(v,x)if t>0 then return t end end end end end end end end)
+
+--[[
+作为模板: true
+模板id: lost-soul-death-kill
+说明: 迷失游魂死亡时，杀死角色。
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)if f.State==4 then f.Player:Die()end end,FamiliarVariant.LOST_SOUL)
+
+--[[
+作为模板: true
+模板id: hail-rain
+说明: 冰雹雨：每隔Hail(默认{P1})秒，随机天降HailNum(默认{P2})个冰雹。
+参数定义:
+  P1: {类型: 数值, 默认: 0.1, 性质: 全局, 说明: "全局变量Hail，冰雹降落间隔秒数（默认0.1）"}
+  P2: {类型: 数值, 默认: 3, 性质: 全局, 说明: "全局变量HailNum，每次天降冰雹的数量（默认3）"}
+]]
+l Hail,HailNum=P1,P2;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()if Game():GetFrameCount()%(30*Hail)<1 then for i=1,HailNum do local p=I.Spawn(EntityType.ENTITY_TEAR,TearVariant.ICE,0,I.GetRandomPosition(),Vector.Zero,nil):ToTear()p.FallingAcceleration,p.Height,p.Scale=10,-1e3,.5+math.random()p:AddTearFlags(TearFlags.TEAR_ICE)end end end)
+
+--[[
+作为模板: true
+模板id: distance-damage-falloff
+说明: 抵近攻击：敌人距离玩家超过Dist(默认{P1})格远时，受到的伤害按距离衰减。
+参数定义:
+  P1: {类型: 数值, 默认: 3, 性质: 局部, 说明: "局部变量Dist，伤害开始衰减的距离格数（默认3）"}
+]]
+l local Dist=P1;local H,G,P,T=GetPtrHash,40,'Position',{}Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,...)local h,p,q=H(e),Game():GetRandomPlayer(Vector.Zero,0)if not T[h]and e:IsEnemy()then q=(p[P]-e[P]):Length()-G*Dist if q>0 then T[h]=true e:TakeDamage(G*a/(G+q),...)T[h]=nil return false end end end)
+
+--[[
+作为模板: true
+模板id: dr-fetus-golden-bomb
+说明: |-
+  胎儿博士的炸弹被替换为金色即爆炸弹，兼容特效、伤害和爆炸范围。
+  灵感来源:bilibili@妖狐みれい,uid:3493076226017574
+]]
+l local I,V,a,c=Isaac,BombVariant.BOMB_GOLDENTROLL,'ExplosionDamage','RadiusMultiplier'I.AddCallback({},ModCallbacks.MC_POST_BOMB_UPDATE,function(f,b,d,r)if b.IsFetus then f=b.Flags d=b[a]r=b[c]if b.Variant~=V then b:Remove()b=I.Spawn(b.Type,V,b.SubType,b.Position,b.Velocity,b.SpawnerEntity):ToBomb()b:AddTearFlags(f)b[a],b[c]=d,r end end end)
+
+--[[
+作为模板: true
+模板id: my-shadow-follow-cursor
+说明: |-
+  实体“我的影子”追随准星。
+  灵感来源:bilibili@妖狐みれい,uid:3493076226017574
+]]
+l local b,c,a=Isaac,GetPtrHash,'Position'b.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)for k,v in pairs(b.FindByType(1e3))do if(v.Variant==30 or v.Variant==153)and c(v.SpawnerEntity)==c(f.Player)then f:FollowPosition(v[a])f:AddVelocity(v[a]-f[a])end end end,131)
+
+--[[
+作为模板: true
+模板id: random-key-swap
+说明: |-
+  每进入一个新房间，移动键随机互换、攻击键随机互换、功能键随机互换。
+  灵感来源:bilibili@月半之大_0813,uid:400635734
+]]
+l local A,B,C,D,E,F,Z=Input,Isaac,ModCallbacks,{},{},{'A','D','W','S','<','>','^','v','E','Space','Q','Ctrl'}Z=B.AddCallback for k=0,11 do D[k]=k end Z(E,C.MC_POST_NEW_ROOM,function(a)for i=0,8,4 do for j=i+3,i+1,-1 do a=math.random(i,j)D[j],D[a]=D[a],D[j]end end end)Z(E,C.MC_INPUT_ACTION,function(a,e,h,b)a,e=InputHook,e and e:ToPlayer()b=D[b]if e and b then if h==a.IS_ACTION_PRESSED then h=A.IsActionPressed elseif h==a.IS_ACTION_TRIGGERED then h=A.IsActionTriggered else h=A.GetActionValue end return h(b,e.ControllerIndex)end end)Z(E,C.MC_POST_RENDER,function(a,b,c,p)c=Vector p=c(B.GetScreenWidth()/3,.9*B.GetScreenHeight())a=function(z,y,x,...)B.RenderScaledText(z,y.X-x*B.GetTextWidth(z)/2,y.Y,x,x,...)end for k,v in ipairs{-180,0,-90,90}do b=8*c.FromAngle(v)a(F[D[k-1]+1],p+b,.8,0,1,0,1)a(F[D[k+3]+1],p+2*b,1,1,0,0,1)end p.X=2*p.X for k,v in pairs{Bomb=-12,Active=-4,Card=4,Drop=12}do a(k..': '..F[D[(v+12)//8+8]+1],p+c(0,v),.8,1,1,0,1)end end)
+
+--[[
+作为模板: true
+模板id: blinking-coin-punish
+说明: |-
+  没捡到闪烁的硬币时，所有角色受伤一次，不忽略无敌帧。
+  灵感来源:bilibili@AAA笑脸批发商,uid:379358804
+]]
+l local A,B,C,E,F,G=Isaac.AddCallback,ModCallbacks,PickupVariant.PICKUP_COIN,GetPtrHash,{},{}A(G,B.MC_POST_PICKUP_UPDATE,function(h,p)h=E(p)if p.Timeout>=0 and not F[h]then F[h]=1 end end,C)A(G,B.MC_PRE_PICKUP_COLLISION,function(h,p,c)h=E(p)if c:ToPlayer()and F[h]then F[h]=2 end end,C)A(G,B.MC_PRE_PLAYER_COLLISION,function(h,p,c)h=E(c)if c:ToPickup()and F[h]then F[h]=3 end end)A(G,B.MC_POST_ENTITY_REMOVE,function(h,e)h=E(e)if 1==F[h]then for i=1,Game():GetNumPlayers()do Isaac.GetPlayer(i-1):TakeDamage(1,0,EntityRef(e),60)end end if F[h]then h,F[h]={}for k,v in pairs(F)do if v then h[k]=v end end F=h e:Remove()end end,EntityType.ENTITY_PICKUP)
+
+--[[
+作为模板: true
+模板id: random-lag-remove
+说明: |-
+  游戏随机卡顿、删除角色眼泪、删除掉落物。
+  灵感来源:bilibili@AAA笑脸批发商,uid:379358804
+]]
+l local c,d,A,B,Z=Random,pairs,Isaac,EntityType Z=A.FindByType A.AddCallback({},ModCallbacks.MC_POST_UPDATE,function(a,b)a=c()%1e3 if a<8 then for _=1,1e5 do A.GetRoomEntities()end b={}for _,v in d{'HEART','COIN','KEY','BOMB','POOP','GRAB_BAG','PILL','LIL_BATTERY','TAROTCARD','TRINKET'}do a=Z(B.ENTITY_PICKUP,PickupVariant['PICKUP_'..v])table.move(a,1,#a,#b+1,b)end elseif a<24 then b=Z(B.ENTITY_TEAR)end for _,v in d(b or{})do if c()%100<20 then v:Remove()end end end)
+
+--[[
+作为模板: true
+模板id: nearby-projectile-freeze
+说明: |-
+  角色半径1格内的投射物会被冻结，效果类似道具“爸爸的戒指”。
+  灵感来源:bilibili@月半之大_0813,uid:400635734
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PROJECTILE_UPDATE,function(p,t,s)s='Position'p=Game():GetNearestPlayer(t[s])if 40+t.Size/2>=t[s]:Distance(p[s])then t:AddFreeze(EntityRef(p),1)end end)
+
+--[[
+作为模板: true
+模板id: collectible-fixed-set
+说明: |-
+  生成的道具被替换为道具17、18、32、190、628中的一个，其中出现628的概率为0.5%，且道具628的贴图会被替换为17、18、32、190中的一个。
+  灵感来源:bilibili@赫腊梅,uid:646846635
+]]
+l local b,t=Isaac.AddCallback,{17,18,32,190,628}b({},63,function(_,_,_,_,d)return t[d%1e5//24875+1]end)b({},34,function(s,p)if p.SubType==t[5]then s=p:GetSprite()s:ReplaceSpritesheet(1,Isaac.GetItemConfig():GetCollectible(t[(p.InitSeed%1e5+1)//25e3+1]).GfxFileName)s:LoadGraphics()end end,100)
+
+--[[
+作为模板: true
+模板id: tears-hurt-player
+说明: |-
+  眼泪可以伤害角色。
+  灵感来源:bilibili@AAA笑脸批发商,uid:379358804
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)for _,t in pairs(Isaac.FindByType(EntityType.ENTITY_TEAR))do if t.Size+p.Size>=2*t.Position:Distance(p.Position)then return p:TakeDamage(1,0,EntityRef(t),30)end end end,0)
+
+--[[
+作为模板: true
+模板id: sparse-room-grudge
+说明: |-
+  当房间内(除去墙和门)障碍物的面积占房间面积的比例小于30%时，在房间四个角各生成一个窥眼刺块。
+  灵感来源:bilibili@Aguid_Einzebern,uid:398102143
+]]
+l local a=GridEntityType Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_ROOM,function(r,s,c,w,h,p,q,g,d)r=Game():GetRoom()c=0 s=r:GetGridSize()c=0 w=r:GetGridWidth()h=s/w s=0 g={}for i=1,h do for j=1,w do p=j+w*(i-1)q=r:GetGridPosition(p)d=r:GetGridEntity(p)d=d and d:GetType()if r:IsPositionInRoom(q,0)and not(d and(d==a.GRID_WALL or d==a.GRID_DOOR))then s=s+1 if d then c=c+1 else for k,v in ipairs{{1,1},{w,1},{1,h},{w,h}}do d=(v[1]-j)^2+(v[2]-i)^2 if not g[k]or g[k].d>d then g[k]={d=d,p=q}end end end end end end if c/s<.3 then for _,v in pairs(g)do if v then Isaac.Spawn(EntityType.ENTITY_GRUDGE,0,0,v.p,Vector.Zero,nil)end end end end)
+
+--[[
+作为模板: true
+模板id: tear-reroll-enemy
+说明: 玩家的攻击可以给怪物降级。
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(_,p)p.TearFlags=p.TearFlags|TearFlags.TEAR_REROLL_ENEMY end,CacheFlag.CACHE_TEARFLAG)
+
+--[[
+作为模板: true
+模板id: invincible-stone-eye
+说明: |-
+  在房间中心生成一个永远激活的石眼(Stone Eye)
+  灵感来源:bilibili@莉雅liyar,uid:158295392
+]]
+l local a,c,g,b,h,i=Isaac,ModCallbacks,EntityType.ENTITY_STONE_EYE,'GetGridPosition'h,i=a.AddCallback,a.FindByType h({},c.MC_POST_UPDATE,function(r)r=Game():GetRoom()if 1>#i(g)then a.Spawn(g,0,0,a.GetFreeNearPosition((r[b](r,r:GetGridSize()-1)+r[b](r,0))/2,0),Vector.Zero,nil)end end)h({},c.MC_NPC_UPDATE,function(_,e)if i(g)[1].InitSeed==e.InitSeed then e.State=4 end end,g)

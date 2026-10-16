@@ -23,8 +23,8 @@ _Avoid_: 代码段、条目、section
 _Avoid_: 作品文件、关卡文件
 
 **工具文件**:
-`lua/utils/` 下的代码文件，自由格式（无骨架约束），是模板代码的唯一宿主目录。合辑（`0.`）偏实用共享模板，灵感（`1.`）偏技巧性/类模板，模板定义集中在 `utilN.` 文件里。
-_Avoid_: 库文件、模板文件
+`lua/utils/` 下的代码文件，自由格式（无骨架约束），是模板代码的唯一宿主目录。文件名一律 `<数字>.<中文标题>.lua`，编号在 utils 内连续唯一（框架文件 `TMPL.挑战代码框架.lua` 保留原名）：`0.灵感.lua` 收技巧性/实验性模板，其余按**功能面**细分——一个功能面一个文件（如 `1.安全包装`、`2.回调清理`、`9.随机道具池`、`19.编解码与绘图`、`23.音效音量`），不再有"合辑"式大杂烩文件。同一系统或互相引用的模板进同一文件（safe-wrap 两版、随机池与其 D4 使用方、回调清理模板与其引用块）。**灵感文件只放未被引用的模板**：一旦某模板被挑战引用，就把它内联进引用方（转成带 `参数定义` 的自定义参数块，默认值 = 引用处指定的值；说明保留引用方覆盖值，否则用模板说明渲染结果）并从灵感文件移除——灵感文件是创意池，不是共享模板库。新增模板按所属功能面并入既有文件；确实自成一类时，从当前最大编号往后新建。
+_Avoid_: 库文件、模板文件、合辑
 
 **文件头（元信息）**:
 挑战文件开头、首个代码块之前的连续普通注释块，原样直通输出。多数 1 行、少数多行，无字段约束。
@@ -133,7 +133,7 @@ G6. 压缩器门禁 = v2 套件（`compressor/tests2/`）：`node tests2/run.js`
 G7. v2 重写（透镜架构，`compressor/src2/` + `compressor/tests2/`）：`node tests2/run.js` 全绿（当前 14124 pass）。唯一权威设计依据 = `compressor/docs/v2-architecture-plan.md`（含 M6/M7 实施状态附录）。当前进度：**M1–M7 已完成**（IR/透镜基座、别名/改写/编码/SSA 透镜族、块包装、双向 beam 搜索、bulk 差分收口、页面 UI 接入 v2）。M7 验收：804 段搜索总量仍 ≤ v1 搜索（−503）；search_inverse 6 个 inv 真实触发、幂等 50 例固定点。户主硬性规则（`SNAPSHOT_FULL=1`，964 条）：(a) 每条 v2 压缩成功 ✓、(c) bulk 总和严格小于（v1 461157 → v2 456142，−5015；总字节 844113 → 837471，−6642；更短 242 / 持平 722 / 更长 0）✓、(b) 每条 ≤ 快照：**全部通过，无白名单**——此前 7 条局部劣化（multi_callback/parser/config/defs/helpers/empty_blocks/unbalanced_assignments）已全部修复，parser/config 还反超 v1（−54/−103）。压缩器页面已换装 v2 引擎（`compressor/index.html` 挂 `LuaMin2`，搜索级数 → beamWidth，无元表勾选 → `opts.noMetatable`，阶段卡片 → v2 trace，异步 `compressAsync`）。**已知边界**：>12KB 整文件走尺寸分级（关搜索/fixpoint 1 轮，分钟级耗时；贪心全局门禁所有尺寸全开——远程大文件收敛的必要条件）；增量 IR 重建属 M7 之后的进一步优化。**v1 退役（2026-10-15）**：v1 管线（`compressor/src/`）与 v1 测试（`compressor/tests/`）已删除；v2 依赖的共享实现迁移为 `src2/shared/`（analyze/canonical/encode/purecopy 四个安装器模块）+ `src2/base.js` 门面（`deps.base` 注入，`ir._base` 取用），`core.js` 仅余词法基础库；v1 历史基线保留为 `tests2/_snapshot.json`（snapshot_compare 与 corpus/diff 的无劣化参照物，永不以 v2 数据覆盖）。
 
 ## 构建与发布（2026-09-18）
-B1. 只发布构建产物目录：`python scripts/build_site.py` 组装 `_site/`（已 gitignore），其中只含构建产物（index.html / kb.json / kb/ 详情分片）与运行时资源（assets/、favicon.svg、jszip.min.js、compressor/ 页面与 v2 引擎源码 src2/）。源码（lua/、GenerateHtml.py 等）、测试、文档、依赖一律留在仓库、不进发布目录。三处部署共用同一条构建命令：GitHub Actions（工作流）、EdgeOne Pages（`edgeone.json`）、ESA Pages（`esa.jsonc`，项目名 isaaclua；该文件存在时 ESA 以其为唯一配置来源，控制台设置被忽略）。
+B1. 只发布构建产物目录：`python scripts/build_site.py` 组装 `_site/`（已 gitignore），其中只含构建产物（index.html / kb.json / kb/ 详情分片）与运行时资源（assets/、favicon.svg、jszip.min.js、compressor/ 页面与 v2 引擎源码 src2/）。源码（lua/、GenerateHtml.py 等）、测试、文档、依赖一律留在仓库、不进发布目录。三处部署共用同一条构建命令：GitHub Actions（工作流）、EdgeOne Pages（`edgeone.json`）、ESA Pages（`esa.jsonc`，项目名 isaaclua；该文件存在时 ESA 以其为唯一配置来源，控制台设置被忽略）。**压缩器测试按需执行**：GitHub 工作流先探测本次 push 是否改动 `compressor/`（`git diff --name-only <before> <sha> -- compressor`），只有改动时才 `npm ci` + 导出语料 + `npm test`；纯站点改动（lua/、page.js、style.css 等）跳过压缩器测试直接构建部署。
 B2. 资源清单自动推导：发布脚本从构建产物（index.html / page.js / style.css / compressor 页面与脚本）中提取 `assets/...` 引用，逐个校验存在性，缺一即失败；仓库 assets/ 里未被引用的资源会被点名。禁止再手写资源拷贝清单——曾漏拷 `content-divider.webp` / `challenge-divider.webp` 导致线上「行间分隔线」消失。
 B3. 构建自足：GenerateHtml.py 零第三方依赖（块头自解析，2026-09 起移除 pyyaml）；build_site.py 缺压缩器 node_modules 时自动 `npm ci`，使静态托管平台只配一条构建命令即可。
 B4. 入库原则：第三方库能由构建期取得的就不入库——`compressor/luaparse.js`、`compressor/fengari-web.js` 改由 build_site.py 从 node_modules 拷贝；`jszip.min.js` 不在 npm 清单中（加入需重生成 package-lock）暂留入库，下载 zip 时本地优先、cdnjs 回退。压缩器测试基线（`_snapshot.json` 等）为回归输入，属必要文件，保留入库。

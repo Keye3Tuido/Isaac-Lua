@@ -1,3 +1,5 @@
+--逐帧操作：按帧序列操作实体。
+
 --[[
 作为模板: true
 模板id: frame-operation
@@ -20,7 +22,6 @@
   - ‘;’ : 掉落
 ]]
 l local b,k,d,l,a=Game,GetPtrHash,'adwsjlike q;',ModCallbacks.MC_INPUT_ACTION,{}for i=1,#d do a[d:byte(i)]=i-1 end function FrameOp(d,f,g,j,i)if d and f and not b():IsPaused()then g,d,j=b():GetFrameCount()+1,k(d),{}for i=1,#f do j[a[f:byte(i)]]=true end i=function(t,e,h,a)if h==InputHook.GET_ACTION_VALUE then t,h=1,0 else t,h=true,false end f=g-b():GetFrameCount()if f<0 then Isaac.RemoveCallback(j,l,i)elseif f==0 and e and d==k(e)then return j[a]and t or h end end Isaac.AddCallback(j,l,i)end end
-
 
 --[=[ 源代码
 

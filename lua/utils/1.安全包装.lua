@@ -1,3 +1,5 @@
+--安全包装：回调报错隔离的两个版本。
+
 --安全包装：防止因回调函数报错导致回调崩溃。共两个版本——v1 使用 debug 调试库，v2 参考 steam 工坊模组 Mod Error Containers（MEC 版）。
 
 --[[
@@ -16,6 +18,7 @@ l Wrap=print Unwrap=Wrap;if not(REPENTOGON or _CBH)then local D,E,F,I,J,O,P,Y,W,
 l MEC=print DEMEC=MEC;local a,b,g,d,e,h,c=Isaac,pairs,ModCallbacks,'AddPriorityCallback','RemoveCallback','GetCallbacks','Function'if not(REPENTOGON or _MEC)then _MEC=true local m,s,j,i,o=false,function(f,l)return function(...)local k=table.pack(pcall(f,...))if k[1]then return table.unpack(k,2,k.n)end a.ConsoleOutput(string.format('Error:%s@%s\n',l and l.Name or'Anonymous',k[2]))end end,{},{}o=function(f,l)local k=j[f]or s(f,l)j[k]=f j[f]=k i[f]=(i[f]or 0)+1 return k end local p,n,t=a[d],a[e]t=function(f,k,l,q,r)p(f,k,l,o(q,f),r)end local function u(q,r,f)if i[f]then n(q,r,j[f])i[f]=i[f]-1 if 1>i[f]then local l={}for k,v in b(i)do if k~=f then l[k]=v end end i=l l={}for k,v in b(j)do if k~=f and v~=f then l[k]=v end end j=l end else n(q,r,f)end end function MEC()if not m then a[d]=t a[e]=u for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=o(f[c],f.Mod)end end m=true end end function DEMEC()if m then a[d]=p a[e]=n for _,k in b(g)do _=a[h](k)for _,f in b(_)do f[c]=j[f[c]]or f[c]end end j={}i={}m=false end end end
 
 --以下为 v2（safe-wrap-mec）的可读多行源代码，已注释化，仅保留作参考。
+
 --[[ 可读源代码（非 YAML 头）
 if not(REPENTOGON or _MEC)then
     _MEC = true

@@ -3,8 +3,9 @@
 --禁止贪婪模式、禁止回溯路线
 
 --[[
-模板: open-map-red-rooms
+说明: 进入新房间时，自动开启地图全部房间和红房间，并移除所有房间的红色标签。
 ]]
+l Isaac.AddCallback({},19,function()local l,r,s,t,f,g,x,e,o,n,a,m=Game():GetLevel(),{},'SafeGridIndex','Data','Flags','GetRooms','GetRoomByIdx'l:SetCanSeeEverything(true)e,o=function(c,k,d)c[f],d,k=~(1<<10)&c[f],c[t]and c[t].Doors,c[s]if k<0 then return end for j=0,7 do if not d or d&1>0 then l:MakeRedRoomDoor(k,j)l:UncoverHiddenDoor(k,j)end d=d and d>>1 end r[k]=1 end,l[g](l)n=#o e(l[x](l,l:GetCurrentRoomDesc()[s]))while a~=n do a=n for j=1,n do m=l[x](l,o:Get(j-1)[s])if not r[m[s]]then e(m)end end o=l[g](l)n=#o end end)
 
 --[[
 说明: "每进入新的一层，传送角色至随机房间。"

@@ -1,3 +1,5 @@
+--小夜灯光锥方向：按角色朝向计算光锥方向。
+
 --小夜灯光锥方向模拟：模拟道具"小夜灯"锥形光柱的中线朝向（API 无法直接读取，只能按规则模拟）。
 --规则：
 --1. 进入新房间时不重置方向：光柱角度与转向侧跨房间保留，全由按键决定（因此刚进入房间时方向可能错误）。
@@ -22,6 +24,7 @@
 l local b,c,g,h,i,l,j,m,k,o,n=ButtonAction,math,'ACTION_RIGHT','ACTION_LEFT','ACTION_DOWN',function(a)return(a%360+360)%360 end,'ACTION_UP'm=function(d)d=l(d)if d>180 then d=d-360 end return d end k=function(p,a)return Input.IsActionPressed(a,p.ControllerIndex)end o=function(p)local x,y=(k(p,b[g])and 1 or 0)-(k(p,b[h])and 1 or 0),(k(p,b[i])and 1 or 0)-(k(p,b[j])and 1 or 0)if x~=0 or y~=0 then return l(c.deg(c.atan(y,x)))end x=p.GetAimDirection y=x and x(p)if y and(y.X~=0 or y.Y~=0)then return l(c.deg(c.atan(y.Y,y.X)))end return nil end n=function(p)local d=p:GetData()if not d.NL then d.NL={a=0,s=1,t=nil}end return d.NL end function GetNightLightDirection(p)return Vector(1,0):Rotated(n(p).a)end Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local d,f,a=n(p),k(p,b[h])or k(p,b[g])or k(p,b[j])or k(p,b[i]),o(p)if a and f then if d.t==nil or.01<=c.abs(m(d.t-a))then local x=m(a-d.a)if x>=180 then d.s=-d.s d.a=l(d.a+d.s*.01)end if x~=0 then d.t=a end end end if d.t and f then local x,e=m(d.t-d.a)e=x*.325 if e>45 then e=45 elseif e<-45 then e=-45 end d.a=l(d.a+e)if x>.5 then d.s=1 elseif x<-.5 then d.s=-1 end if.5>c.abs(m(d.t-d.a))then d.a=d.t d.t=nil end end end,0)
 
 --以下为可读多行源代码，已注释化，仅保留作参考。
+
 --[[ 可读源代码（非 YAML 头）
 local function norm360(a)
     return (a % 360 + 360) % 360
