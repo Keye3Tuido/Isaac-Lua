@@ -6,7 +6,11 @@
 //       本仓库手工压缩代码（repo-seg/unit/remote）只需无劣化。
 //   (b)/(c) 仅对输入与基线一致的条目生效——基线录制后输入已变的条目（lua/ 增长/
 //       模板迭代）长度对比无意义，只断言 (a) 并计数（与 snapshot_v2 --check 的 SOURCE 口径一致）。
+//   (d) 基线键在当前语料枚举中找不到时：`repo-seg:` 键按【失效键】计数报告（lua/ 改名/拆分
+//       属正常内容迭代，且 v1 管线已退役、无法重锚），不再判失败；unit/remote/bulk 三类键
+//       的枚举是固定的（硬编码用例 / 固定缓存目录 / 固定第三方库），其缺失仍是硬失败。
 // 快照基线 = tests2/_snapshot.json（v1 管线退役前录制；永不以 v2 数据覆盖）。
+// env SNAPSHOT_FILE 可指向替代基线（自检用；默认 tests2/_snapshot.json）。
 // 输入枚举沿用原 v1 snapshot.js 口径（unit 用例 + repo 段 + .remote-cache + _bulk_test_repos）。
 //
 // 运行模式（全量重建 IR 的 v2 在大整文件上是分钟级，设计风险 §9.1 备案）：
@@ -27,7 +31,7 @@ const { loadRepoSegments } = require('../repo-lua-files');
 const TESTS2 = path.join(__dirname, '..');
 const REMOTE = path.join(TESTS2, '.remote-cache');
 const BULK = path.join(TESTS2, '_bulk_test_repos');
-const SNAP = path.join(TESTS2, '_snapshot.json');
+const SNAP = process.env.SNAPSHOT_FILE || path.join(TESTS2, '_snapshot.json');
 const FULL = !!process.env.SNAPSHOT_FULL;
 
 // v2 劣化白名单：户主规则要求空名单，任何 v2 比 v1 长的条目都必须立即修复。
@@ -115,6 +119,7 @@ function run(){
   let total = 0, win = 0, tie = 0, loss = 0, threw = 0, missing = 0, skipped = 0, srcChanged = 0;
   let bulkV1 = 0, bulkV2 = 0, bulkN = 0;
   let allV1 = 0, allV2 = 0;
+  const obsoleteFiles = {};   // 失效 repo-seg 键的来源文件（报告用，去重）
   const t0 = Date.now();
 
   for(const k of Object.keys(base)){
@@ -124,7 +129,14 @@ function run(){
     if(remoteAbsent && k.startsWith('remote:')){ skipped++; continue; }
     total++;
     const input = inputs[k];
-    if(input === undefined){ missing++; ok(false, k, '快照条目在当前语料枚举中缺失'); continue; }
+    if(input === undefined){
+      // (d) 基线录制后 lua/ 改名/拆分会让 repo-seg 键失去对应语料段——该键再也无法做任何
+      // 对比（v1 管线已退役，无法重锚），计入失效键并从明细里排除；其余三类键的枚举固定，
+      // 缺失仍判失败（配置漂移）。
+      if(k.startsWith('repo-seg:')){ missing++; obsoleteFiles[k.slice('repo-seg:'.length).replace(/#\d+$/, '')] = true; continue; }
+      ok(false, k, '快照条目在当前语料枚举中缺失');
+      continue;
+    }
     if(!b.ok){ continue; }   // 快照本身失败的条目不参与对比（当前 964 条全 ok）
     let r = null, err = null;
     try{ r = L2.compress(input); }catch(e){ err = e; }
@@ -154,8 +166,13 @@ function run(){
   }
 
   console.log('[snapshot_compare] 模式:', FULL ? '全量' : '门禁（bulk ' + skipped + ' 条跳过，SNAPSHOT_FULL=1 强制执行）',
-              '| 条目', total, '| v2 失败', threw, '| 缺失', missing, '| 输入已变(跳过)', srcChanged,
+              '| 条目', total, '| v2 失败', threw, '| 失效键(repo-seg 布局变更)', missing, '| 输入已变(跳过)', srcChanged,
               '| 更短', win, '持平', tie, '更长', loss, '| 用时', ((Date.now() - t0) / 1000).toFixed(1) + 's');
+  if(missing){
+    const fl = Object.keys(obsoleteFiles).sort();
+    console.log('[snapshot_compare] 失效键来源（前 8 个，共 ' + fl.length + ' 个文件）：' + fl.slice(0, 8).join('、')
+                + (fl.length > 8 ? ' …' : '') + '（lua/ 改名/拆分所致，不影响无劣化判定）');
+  }
   console.log('[snapshot_compare] 全量字节: v1', allV1, 'v2', allV2, '差', allV2 - allV1,
               FULL ? ('| bulk(' + bulkN + '): v1 ' + bulkV1 + ' v2 ' + bulkV2 + ' 差 ' + (bulkV2 - bulkV1)) : '');
   if(bad.length){
