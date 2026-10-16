@@ -17,6 +17,8 @@
       分类编号（challenges c<编号> / utils u<编号>，两类目录可同号） /
       发布目录组装（build_site.py：必要资源一个不少、非必要文件一个不多） /
       名称继承（定义默认名/引用覆盖名/依赖按有效名称解析/同名引用不警告）/
+      忽略开关（块头 注释: true：整块被丢弃、编号连续、模板不注册、依赖与骨架按忽略后
+      序列判定、非布尔报错、拼错键不静默忽略、只输出提示不产生警告）/
       page.js mock 渲染（mock_render.js：依赖标记、块内参数面板、罗马锚点路由、
       显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀、块级搜索）。
 """
@@ -843,6 +845,128 @@ class TestTemplateNameInheritance(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             self._build(challenge_text=challenge)
         self.assertIn("不存在", str(cm.exception))
+
+
+class TestIgnoredBlocks(unittest.TestCase):
+    """块头 注释 字段（布尔，可缺省，默认 false）：true = 构建期忽略整个代码块。
+
+    被忽略的块等同不存在：不占编号、不参与模板注册与依赖校验、不进 clean-globals
+    扫描，也不出现在 index.html 元数据 / kb/<key>.json / kb.json 与组装文本里。"""
+
+    CHALLENGE = "challenges/1.忽略演示.lua"
+    UTILS = "utils/U1.忽略开关.lua"
+
+    @classmethod
+    def setUpClass(cls):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cls.entries, cls.registry = build_fixture("ignore")
+        cls.out = buf.getvalue()
+        cls.ch = next(e for e in cls.entries if e["isChallenge"])
+
+    def _variant(self, rel, old, new):
+        """夹具副本 + 单处文本替换，返回其 lua 目录（供报错路径测试用）。"""
+        tmp = tempfile.mkdtemp(prefix="ignore-")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        shutil.copytree(os.path.join(FIX, "ignore", "lua"), os.path.join(tmp, "lua"))
+        path = os.path.join(tmp, "lua", rel)
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn(old, text)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text.replace(old, new, 1))
+        return os.path.join(tmp, "lua")
+
+    def test_ignored_block_dropped_and_renumbered(self):
+        # 第 2 个正文块 注释: true → 整块丢弃：编号连续（不占号），说明/代码都不留
+        self.assertEqual([b["num"] for b in self.ch["blocks"]],
+                         ["0", "I", "1", "2", "3", "4", "II", "III", "IV"])
+        self.assertEqual([b["comment"] for b in self.ch["blocks"] if b.get("region") == "body"],
+                         ["第一块。", "基础安全包装。", "显式 false 照常编译。", "依赖演示。"])
+        self.assertFalse(any("被忽略" in str(b["comment"]) for b in self.ch["blocks"]))
+        self.assertFalse(any("DEADGLOBAL" in str(b["final_code"]) for b in self.ch["blocks"]))
+
+    def test_ignored_template_not_registered(self):
+        # 被忽略的模板定义块不注册，即使它声明了 作为模板/模板id
+        self.assertNotIn("tpl-dead", self.registry)
+        self.assertEqual(set(self.registry),
+                         {"tpl-basic", "clean-globals", "restart-game", "random-string-output"})
+
+    def test_incomplete_ignored_block_needs_no_spec_or_code(self):
+        # 被忽略的块不做任何校验：tpl-dead 既无 说明 也无代码行，仍不报错、不进任何文件
+        self.assertNotIn("tpl-dead", self.registry)
+        all_files = G.build_all_files(self.entries)
+        codes = [str(b.get("code")) for f in all_files.values() for b in f["blocks"]]
+        self.assertFalse(any("DEADTEMPLATE" in c for c in codes))
+
+    def test_ignored_block_excluded_from_clean_globals(self):
+        # clean-globals 只登记活块的全局变量：DEADGLOBAL 被忽略，LIVEGLOBAL 才登记
+        cg = next(b for b in self.ch["blocks"] if b["meta"].get("模板") == "clean-globals")
+        self.assertEqual(cg["values"]["P1"], "'LIVEGLOBAL'")
+        self.assertEqual(cg["deps"], ["活全局"])
+
+    def test_ignored_block_absent_from_outputs(self):
+        all_files = G.build_all_files(self.entries)
+        meta = G.build_all_files_meta(self.entries)
+        kb = G.build_kb_entries(self.entries, self.registry)
+        for blocks in (all_files["c1"]["blocks"], meta["c1"]["blocks"]):
+            self.assertEqual(len(blocks), 9)
+            self.assertFalse(any("被忽略" in str(b["comment"]) for b in blocks))
+        kb_ch = next(e for e in kb if e["key"] == "c1")
+        self.assertEqual(len(kb_ch["blocks"]), 9)
+        raw = G._assemble_raw(self.ch)
+        self.assertNotIn("DEADGLOBAL", raw)
+        self.assertNotIn("被忽略的块", raw)
+
+    def test_false_and_absent_compile_normally(self):
+        # 显式 false 与缺省都照常编译：仅 true 忽略
+        b = self.ch["blocks"][4]
+        self.assertEqual(b["comment"], "显式 false 照常编译。")
+        self.assertEqual(b["final_code"], "LIVEGLOBAL=1")
+        self.assertEqual(self.ch["blocks"][2]["final_code"], "print(1)")
+
+    def test_notice_is_hint_not_warning(self):
+        # 忽略是用户意图：只输出 提示（不破坏「零警告」门禁）；被忽略块里的未知键
+        # （夹具里的 草稿:）不再报警告——整块不参与构建诊断
+        self.assertEqual(self.out.count("提示："), 2)
+        self.assertNotIn("警告", self.out)
+
+    def test_misspelled_ignore_key_still_warns_and_compiles(self):
+        # 键拼成 注釋 就不是 注释：块照常编译，未知键警告照发（不会静默忽略）
+        lua = self._variant(self.CHALLENGE, "注释: true", "注釋: true")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            entries, _registry = G.build(lua)
+        ch = next(e for e in entries if e["isChallenge"])
+        self.assertIn("警告", buf.getvalue())
+        self.assertTrue(any("DEADGLOBAL" in str(b["final_code"]) for b in ch["blocks"]))
+
+    def test_non_boolean_value_rejected(self):
+        lua = self._variant(self.UTILS, "注释: true", "注释: 是")
+        with self.assertRaises(SystemExit) as cm:
+            G.build(lua)
+        self.assertIn("必须是 true", str(cm.exception))
+
+    def test_reference_to_ignored_template_errors(self):
+        lua = self._variant(self.CHALLENGE, "模板: tpl-basic", "模板: tpl-dead")
+        with self.assertRaises(SystemExit) as cm:
+            G.build(lua)
+        self.assertIn("未定义的模板", str(cm.exception))
+
+    def test_dependency_on_ignored_block_errors(self):
+        lua = self._variant(self.CHALLENGE, "依赖: 活全局", "依赖: 被注释掉的块")
+        with self.assertRaises(SystemExit) as cm:
+            G.build(lua)
+        self.assertIn("不存在", str(cm.exception))
+
+    def test_ignored_restart_block_breaks_skeleton(self):
+        # 重开块被忽略 → 忽略后的序列没有重开块，挑战骨架照样报错
+        lua = self._variant(self.CHALLENGE,
+                            "--[[\n模板: restart-game\n]]",
+                            "--[[\n注释: true\n模板: restart-game\n]]")
+        with self.assertRaises(SystemExit) as cm:
+            G.build(lua)
+        self.assertIn("缺少后置代码块", str(cm.exception))
 
 
 if __name__ == "__main__":

@@ -34,7 +34,9 @@ RANDOM_STRING_TPL = "random-string-output"
 RESTART_TPLS = {"restart-game", "restart-as-character"}
 
 # 块头允许出现的键（未知键仅警告，便于发现笔误）
-KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "内嵌脚本"}
+# 注释：可选布尔开关（缺省 false）；true = 构建期忽略该代码块，见 _ignored_by_comment
+KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "内嵌脚本",
+                   "注释"}
 
 # 参数占位符名：P1、P2 … Pn
 PARAM_NAME_RE = re.compile(r"^P\d+$")
@@ -407,10 +409,29 @@ def _read_head(lines, i, fname, line_offset=0):
     return meta, j + 1
 
 
+def _ignored_by_comment(meta, fname, ln):
+    """块头 注释 字段（布尔，可缺省，默认 false）：true = 构建期忽略该代码块。
+
+    忽略发生在扫描期，被忽略的块等同不存在：不占编号、不参与依赖校验与模板注册、
+    不进 clean-globals 扫描，也不进入 index.html / kb/<key>.json / kb.json 与压缩器语料；
+    挑战骨架（正文块、重开块）因此也按忽略后的块序列判定。
+    值非布尔时直接报错——静默按 false 处理会把「已注释掉的块」照常编译，方向不安全。"""
+    v = meta.get("注释")
+    if v is None or v is False:
+        return False
+    if v is not True:
+        raise SystemExit(
+            f"错误：{fname} 第 {ln} 行的块头 注释 必须是 true / false（缺省 false = 不忽略）。"
+        )
+    print(f"提示：{fname} 第 {ln} 行的代码块声明 注释: true，构建时已忽略。")
+    return True
+
+
 def _scan_blocks(lines, fname, strict, line_offset=0):
     """扫描一段行，返回代码块列表 [{num, meta, code, line}]（line 为全文件 1 起始行号）。
     strict=True（挑战骨架区）：除空行与代码块外不允许任何内容。
-    strict=False（工具文件）：普通注释忽略，裸代码行警告并忽略。"""
+    strict=False（工具文件）：普通注释忽略，裸代码行警告并忽略。
+    声明 `注释: true` 的块在扫描期被丢弃（不进返回列表）。"""
     blocks = []
     i = 0
     while i < len(lines):
@@ -430,9 +451,13 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
                     )
                 i = nxt
                 continue
-            unknown = [k for k in meta if k not in KNOWN_HEAD_KEYS]
-            if unknown:
-                print(f"警告：{fname} 第 {ln} 行的块头含未知键 {unknown}，将被忽略。")
+            # 先判 注释 开关：被忽略的块不进构建，其块头内容也不参与诊断（键笔误只在
+            # 没写对 注释 时才会漏掉警告——注释 本身拼错就不是这个键，照样警告）
+            ignored = _ignored_by_comment(meta, fname, ln)
+            if not ignored:
+                unknown = [k for k in meta if k not in KNOWN_HEAD_KEYS]
+                if unknown:
+                    print(f"警告：{fname} 第 {ln} 行的块头含未知键 {unknown}，将被忽略。")
             # 代码行：紧邻 ']]' 起的连续 'l ' 前缀行（可多行，模板可绑定多行代码）；
             # 首行兼容无 'l ' 前缀的裸代码行（旧格式），此后的续行必须带 'l ' 前缀。
             code_lines = []
@@ -447,6 +472,11 @@ def _scan_blocks(lines, fname, strict, line_offset=0):
                     code_lines.append(nl)
                     k += 1
                 break
+            if ignored:
+                # 注释: true：丢弃该块（不校验、不展开、不进产物）。代码行仍要吃掉，
+                # 否则严格骨架区会把紧随的 'l ' 行当作游离代码报错。
+                i = k
+                continue
             code = "\n".join(code_lines) if code_lines else None
             blocks.append({"num": len(blocks), "meta": meta, "code": code, "line": ln})
             i = k
