@@ -5,7 +5,7 @@
 模板id: champion-force
 说明: |-
   按权重表强制非精英敌人变为指定类型精英怪（26 个权重值对应精英怪类型 id 0..25，0=排除该类型）。{P26}
-参数定义:
+参数:
   P0: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型0精英怪权重（0=排除，可替换为非负整数）"}
   P1: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型1精英怪权重（0=排除，可替换为非负整数）"}
   P2: {类型: "整数", 默认: "0", 性质: "局部", 说明: "类型2精英怪权重（0=排除，可替换为非负整数）"}
@@ -41,7 +41,7 @@ l local A,I,C={[0]=P0,[1]=P1,[2]=P2,[3]=P3,[4]=P4,[5]=P5,[6]=P6,[7]=P7,[8]=P8,[9
 模板id: seed-fixed
 说明: |-
   固定开启指定彩蛋种子。
-参数定义:
+参数:
   P1: {类型: "彩蛋种子列表", 默认: "SeedEffect.SEED_G_FUEL", 性质: "局部", 说明: "SeedEffect枚举列表"}
 ]]
 l local S={P1}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local D,f=Game():GetSeeds()for _,d in pairs(S)do if D:CanAddSeedEffect(d)then D:AddSeedEffect(d)f=true end end if f then Isaac.ExecuteCommand'restart'end end)

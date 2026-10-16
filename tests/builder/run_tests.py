@@ -432,17 +432,17 @@ class TestHeadParse(unittest.TestCase):
 
     def test_flow_map_unquoted_commas(self):
         # 行内映射免引号值可含半角逗号（无冒号片段并回上一个值）
-        h = G.parse_head(["参数定义:",
+        h = G.parse_head(["参数:",
                           "  P1: {类型: 道具id列表, 默认: 87,229,233, 性质: 局部, 说明: 候选id列表}"])
-        self.assertEqual(h["参数定义"]["P1"],
+        self.assertEqual(h["参数"]["P1"],
                          {"类型": "道具id列表", "默认": "87,229,233", "性质": "局部", "说明": "候选id列表"})
 
     def test_flow_map_quoted_compat(self):
         # 引号写法保持不变；双引号内 \n 解转义、单引号内 '' 解转义
-        h = G.parse_head(['参数定义:',
+        h = G.parse_head(['参数:',
                           '  P1: {类型: "描述", 默认: "如：a\\nb", 说明: \'it\'\'s\'}'])
-        self.assertEqual(h["参数定义"]["P1"]["默认"], "如：a\nb")
-        self.assertEqual(h["参数定义"]["P1"]["说明"], "it's")
+        self.assertEqual(h["参数"]["P1"]["默认"], "如：a\nb")
+        self.assertEqual(h["参数"]["P1"]["说明"], "it's")
 
     def test_scalar_coercion(self):
         h = G.parse_head(["参数:", "  P1: 85", "  P2: 1.5", "  P3: 1e3", "  P4: false", "  P5: '85'"])
@@ -454,13 +454,13 @@ class TestHeadParse(unittest.TestCase):
         self.assertEqual(G.parse_head(["依赖: 甲、乙"]), {"依赖": "甲、乙"})
 
     def test_block_scalar(self):
-        h = G.parse_head(["说明: |-", "  第一行", "", "  第二行：含全角冒号", "参数定义:", "  P1: 5"])
+        h = G.parse_head(["说明: |-", "  第一行", "", "  第二行：含全角冒号", "参数:", "  P1: 5"])
         self.assertEqual(h["说明"], "第一行\n\n第二行：含全角冒号")
-        self.assertEqual(h["参数定义"], {"P1": 5})
+        self.assertEqual(h["参数"], {"P1": 5})
 
     def test_nested_map(self):
-        h = G.parse_head(["参数定义:", "  P1:", "    类型: 布尔", "    默认: false"])
-        self.assertEqual(h["参数定义"], {"P1": {"类型": "布尔", "默认": False}})
+        h = G.parse_head(["参数:", "  P1:", "    类型: 布尔", "    默认: false"])
+        self.assertEqual(h["参数"], {"P1": {"类型": "布尔", "默认": False}})
 
     def test_inline_comment(self):
         # 「 #」起至行尾为注释；引号内与紧邻文本的 # 不受影响
@@ -745,7 +745,7 @@ class TestTemplateNameInheritance(unittest.TestCase):
         "--工具\n\n"
         "--[[\n作为模板: true\n模板id: tpl-named\n名称: 甲模板\n"
         "说明: 甲做某事，参数{P1}。\n"
-        "参数定义:\n  P1: {类型: 数量, 默认: 7, 性质: 局部}\n]]\n"
+        "参数:\n  P1: {类型: 数量, 默认: 7, 性质: 局部}\n]]\n"
         "l local R=P1 print(R)\n\n"
         "--[[\n作为模板: true\n模板id: tpl-noname\n说明: 无名模板。\n]]\nl local B=true print(B)\n"
     )

@@ -22,7 +22,7 @@ l Isaac.AddCallback({},31,function(s,p,g,c,f)f=1 s='Challenge'g=Game()c=g[s]if p
 名称: 锁定玩家类型
 说明: |-
   强制角色为指定PlayerType。
-参数定义:
+参数:
   P1: {类型: "角色枚举", 默认: "PlayerType.PLAYER_THELOST", 性质: "局部", 说明: "PlayerType枚举值"}
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P1 if t~=p:GetPlayerType()then p:ChangePlayerType(t)end end,0)
@@ -32,7 +32,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local t=P
 模板id: stat-cap
 说明: |-
   角色的下列属性不会超出限定的值（nil表示不做限制）。
-参数定义:
+参数:
   P1: {类型: "属性限值表", 默认: "['MoveSpeed']={min=nil,max=2.00,F='SPEED'},['MaxFireDelay']={min=nil,max=nil,F='FIREDELAY'},['Damage']={min=nil,max=nil,F='DAMAGE'},['TearRange']={min=nil,max=nil,F='RANGE'},['ShotSpeed']={min=nil,max=3.00,F='SHOTSPEED'},['Luck']={min=nil,max=nil,F='LUCK'},['SpriteScale']={min=nil,max=nil,F='SIZE'}", 性质: "局部", 说明: "7个属性键的min/max限值表，nil=不限"}
 ]]
 l local A,M,V,T,E=Isaac.AddCallback,ModCallbacks,{P1},{}E=function(p,k,v)local l,r=v.min,v.max if l and l>p[k]then p[k]=l end if r and r<p[k]then p[k]=r end end A(T,M.MC_EVALUATE_CACHE,function(_,p,f)for k,v in pairs(V)do if f==CacheFlag['CACHE_'..v.F]then return E(p,k,v)end end end)A(T,M.MC_POST_PEFFECT_UPDATE,function(_,p)for k,v in pairs(V)do E(p,k,v)end end)
@@ -49,7 +49,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_EVALUATE_CACHE,function(e,p)if not p:HasC
 作为模板: true
 模板id: gain-eden-tokens
 说明: 在不锁定成就的游戏中输入这串代码，可获得{P2}个伊甸代币。
-参数定义:
+参数:
   P1: {类型: "数值", 默认: "1e3", 性质: "局部", 说明: "触发房间清空的次数（即获得的伊甸代币数量），1000=1e3"}
   P2: {类型: "描述", 默认: "1000", 性质: "局部", 说明: "说明文本中的伊甸代币数量显示值（1000=1e3）"}
 ]]
@@ -67,7 +67,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(a,p,b)a=Colle
 模板id: angel-devil-convert
 说明: |-
   所有天使/恶魔房都转化为指定类型房间。P1=true、P2=false转化为天使房；P1=false、P2=true转化为恶魔房。
-参数定义:
+参数:
   P1: {类型: "布尔", 默认: "true", 性质: "局部", 说明: "InitializeDevilAngelRoom第1参"}
   P2: {类型: "布尔", 默认: "false", 性质: "局部", 说明: "InitializeDevilAngelRoom第2参"}
 ]]
@@ -81,7 +81,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,function()Game():GetLevel(
   角色的面板属性发生轮换：
   控制台输入lua STATS_SWITCH='123456'可以指定轮换次序，输入lua STATS_SWITCH=nil 可以取消轮换次序
   {P2}
-参数定义:
+参数:
   P1: {类型: "排列串", 默认: "'341265'", 性质: "全局", 说明: "行首全局变量STATS_SWITCH，6位排列串，nil=取消轮换"}
   P2: {类型: "描述", 默认: "如：STATS_SWITCH='341265' 表示将属性面板从上到下，依次替换为第3、4、1、2、6、5个属性，即：\n移速(1) <-> 攻击(3)\n射程(4) <-> 射速(2)\n弹速(5) <-> 幸运(6)", 性质: "局部", 说明: "说明文本中的排列串示例与含义描述，与P1排列串联动"}
 ]]

@@ -6,7 +6,7 @@
   屏幕上方会显示当前房间的风力大小，风力大小和楼层数、房间难度和风力系数有关。
   风会从进入房间的门吹向其他门，实体会被风吹动。
 名称: 房间风
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 25, 性质: 全局, 说明: "全局变量Windy，风力系数（默认25）"}
 ]]
 l Windy=P1 local C,I,M,V,T,A=0,Isaac,ModCallbacks,Vector,{}A=I.AddCallback A(T,M.MC_POST_UPDATE,function()for _,v in pairs(I.GetRoomEntities())do if not v:ToEffect()then local O,Z,R=0,V.Zero,Game():GetRoom()for i=0,7 do if R:GetDoor(i)then O,L=O+1,v.Position-R:GetDoorSlotPosition(i)Z=Z+C/v.Mass*(i==Game():GetLevel().EnterDoor and 1 or-1)*L:Normalized()/(L:Length()+40)end end v:AddVelocity((O==1 and-1 or 1)*Z/math.max(1,O))end end end)A(T,M.MC_POST_NEW_ROOM,function()local L=Game():GetLevel()C=Windy*L:GetCurrentRoomDesc().Data.Difficulty*(L:GetStage()/10+1)end)A(T,M.MC_POST_RENDER,function()local t=string.format('%.2f',C/100)I.RenderText(t,(I.GetScreenWidth()-I.GetTextWidth(t))/2,I.GetScreenHeight()/16,0,1,0,1)end)
@@ -16,7 +16,7 @@ l Windy=P1 local C,I,M,V,T,A=0,Isaac,ModCallbacks,Vector,{}A=I.AddCallback A(T,M
   实体的加速度变小，可在控制台输入lua Inertia = 数值 来调整系数(默认30)。
   加速度变动为原先的Inertia%，Inertia取值范围0~100。
 名称: 惯性
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 30, 性质: 全局, 说明: "全局变量Inertia，加速度百分比系数（默认30）"}
 ]]
 l Inertia=P1;local H,I,M,T,X,U,V,A=GetPtrHash,Isaac,ModCallbacks,{},math,'Velocity',{}A=I.AddCallback A(T,M.MC_POST_UPDATE,function()for _,v in pairs(I.GetRoomEntities())do if not v:ToEffect()then local p,h=X.min(100,X.max(0,Inertia))/100,H(v)if V[h]then v[U]=v[U]*p+V[h]*(1-p)end V[h]=v[U]end end end)A(T,M.MC_POST_NEW_ROOM,function()V={}end)
@@ -25,7 +25,7 @@ l Inertia=P1;local H,I,M,T,X,U,V,A=GetPtrHash,Isaac,ModCallbacks,{},math,'Veloci
 说明: |-
   屏幕变黑，周期性被照明，可在控制台输入lua Thunder = 数值 来调整照明时间(默认2秒)。
 名称: 雷闪
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 2, 性质: 全局, 说明: "全局变量Thunder，闪电强度系数（默认2）"}
 ]]
 l Thunder=P1;local I,V,B=Isaac,Vector,Sprite()B:Load('gfx/ui/loading.anm2',true)B:Play('1',true)B.Scale=V.One*9 I.AddCallback({},ModCallbacks.MC_POST_RENDER,function()local p,t=Thunder t=Game():GetFrameCount()/30%(3*p)B.Color=Color(1,1,1,math.max(1-8*t,1-(t/p-3)^2/4))B:RenderLayer(0,V.Zero)end)

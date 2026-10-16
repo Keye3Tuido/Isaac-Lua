@@ -12,7 +12,7 @@ l local S,D,G,E,L,R,T,C,P,O,m,x='SafeGridIndex','Data','GetRoomByIdx','GetRooms'
 模板id: del-room-types
 说明: |-
   删除每层的指定类型房间：{P2}。
-参数定义:
+参数:
   P1: {类型: "房间类型列表", 默认: "4,24", 性质: "局部", 说明: "RoomType枚举值列表"}
   P2: {类型: "描述", 默认: "宝箱房(类型为4)、星象房(类型为24)", 性质: "局部", 说明: "说明文本中的被删除房间类型描述"}
 ]]

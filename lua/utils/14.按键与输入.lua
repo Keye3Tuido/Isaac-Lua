@@ -17,7 +17,7 @@ l local A,B,M,T,O,P=Isaac.AddCallback,ButtonAction,ModCallbacks,{},Options,'Paus
   可在控制台输入lua BrokenKeys = 数值 来调整失灵按键数量。
   可在控制台输入lua WaitFrames = 数值 来调整失灵按键刷新间隔的帧数。
   GetBrokenKeys()可获取顺序表格，包含当前失灵的按键名称字符串。
-参数定义:
+参数:
   P1: {类型: "整数", 默认: "3", 性质: "全局", 说明: "行首全局变量BrokenKeys，失灵按键数量(最多12)"}
   P2: {类型: "整数", 默认: "90", 性质: "全局", 说明: "行首全局变量WaitFrames，失灵刷新间隔帧数"}
 ]]
@@ -29,7 +29,7 @@ l BrokenKeys=P1;WaitFrames=P2;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCou
 名称: 输入延迟
 说明: |-
   将玩家的输入延迟{P1}帧（约{P2}），可在控制台输入lua Lag = 数值 来调整延迟帧数。
-参数定义:
+参数:
   P1: {类型: "整数", 默认: "15", 性质: "全局", 说明: "行首全局变量Lag，延迟帧数"}
   P2: {类型: "描述", 默认: "0.5秒", 性质: "局部", 说明: "说明文本中的延迟秒数显示值（15帧÷30fps=0.5秒）"}
 ]]
@@ -40,7 +40,7 @@ l Lag=P1 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCa
 模板id: pause-on-focus-lost
 说明: |-
   {P2}失焦暂停功能
-参数定义:
+参数:
   P1: {类型: "布尔", 默认: "false", 性质: 局部, 说明: "false表示关闭失焦暂停，true表示打开"}
   P2: {类型: "描述", 默认: "关闭", 性质: 局部, 说明: "说明文本中开启/关闭的描述"}
 ]]

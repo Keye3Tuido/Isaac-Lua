@@ -47,7 +47,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)if not(40
 --[[
 说明: |-
   强制玩家变为{P3}，给予副手道具{P4}，移动速度变为金钱数量*0.003
-参数定义:
+参数:
   P1: {类型: 角色枚举, 默认: "PlayerType.PLAYER_KEEPER_B", 性质: 局部, 说明: "强制变更的角色（PlayerType枚举，堕化店主=PLAYER_KEEPER_B）"}
   P2: {类型: 道具枚举, 默认: "CollectibleType.COLLECTIBLE_GOLDEN_RAZOR", 性质: 局部, 说明: "给予的副手道具（CollectibleType枚举，金剃刀片=COLLECTIBLE_GOLDEN_RAZOR）"}
   P3: {类型: 描述, 默认: "堕化店主", 性质: 局部, 说明: "说明文本中的角色描述（对应P1）"}
@@ -82,7 +82,7 @@ l local A,M,T=Isaac.AddCallback,ModCallbacks,{T={}}A(T,M.MC_USE_ITEM,function(_,
 --[[
 说明: |-
   非主角色透明度降低为{P1}
-参数定义:
+参数:
   P1: {类型: 数值, 默认: "0.3", 性质: 局部, 说明: "非主角色的透明度（0~1）"}
 ]]
 l Isaac.AddCallback({},ModCallbacks.MC_POST_PLAYER_RENDER,function(_,p)if p.Parent then local c=p.Color p.Color=Color(c.R,c.G,c.B,P1,c.RO,c.GO,c.BO)end end,0)

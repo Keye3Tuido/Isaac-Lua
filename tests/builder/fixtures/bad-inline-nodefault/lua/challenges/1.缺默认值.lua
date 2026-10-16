@@ -2,7 +2,7 @@
 
 --[[
 说明: 参数没有默认值。
-参数定义:
+参数:
   P1: {性质: 局部, 说明: 道具编号}
 ]]
 l Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,nil)

@@ -97,7 +97,7 @@ l local M,A=ModCallbacks,function(...)Isaac.AddCallback({},...)end;A(M.XXX,func,
 模板id: clean-globals
 说明: 清理代码时释放全局变量：{P1}
 依赖: 清理代码
-参数定义:
+参数:
   P1: {类型: "全局名列表", 默认: "", 性质: 局部, 说明: "形如 'a', 'b' 的 Lua 字符串字面量序列"}
 ]]
 l _CodeEnding={P1}

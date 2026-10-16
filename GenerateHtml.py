@@ -34,7 +34,7 @@ RANDOM_STRING_TPL = "random-string-output"
 RESTART_TPLS = {"restart-game", "restart-as-character"}
 
 # 块头允许出现的键（未知键仅警告，便于发现笔误）
-KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "参数定义", "内嵌脚本"}
+KNOWN_HEAD_KEYS = {"模板", "说明", "参数", "作为模板", "名称", "依赖", "模板id", "内嵌脚本"}
 
 # 参数占位符名：P1、P2 … Pn
 PARAM_NAME_RE = re.compile(r"^P\d+$")
@@ -672,9 +672,9 @@ def collect_lua_entries(lua_dir=LUA_DIR):
 
 # ========== 模板注册表 ==========
 def _validate_params_def(params_def, where):
-    """参数定义 校验：必须是映射（Pn → 映射），参数名必须是 P1、P2 … Pn 形式。"""
+    """参数（定义语义）校验：必须是映射（Pn → 映射），参数名必须是 P1、P2 … Pn 形式。"""
     if not isinstance(params_def, dict):
-        raise SystemExit(f"错误：{where} 的 参数定义 必须是映射（Pn → 定义）。")
+        raise SystemExit(f"错误：{where} 的 参数 必须是映射（Pn → 定义）。")
     for pn, pd in params_def.items():
         if not PARAM_NAME_RE.match(str(pn)):
             raise SystemExit(f"错误：{where} 的参数名 {pn!r} 不合法，必须是 P1、P2 … Pn 形式。")
@@ -728,7 +728,7 @@ def _register_templates(lua_entries):
                 raise SystemExit(f"错误：{where} 是模板定义块，必须带一条代码行作为模板体。")
             if "说明" not in m:
                 raise SystemExit(f"错误：{where} 是模板定义块，必须填写 说明（供引用方复用插值）。")
-            params_def = m.get("参数定义") or {}
+            params_def = _normalize_params_def(m.get("参数"), where) or {}
             _validate_params_def(params_def, where)
             registry[tid] = {
                 "body": b["code"],
@@ -758,6 +758,28 @@ def _validate_template_dep_bases(registry, file_names):
 
 
 # ========== 展开与校验 ==========
+def _normalize_params_def(raw, where):
+    """参数键（定义语义）归一为 {Pn: 定义映射}。
+
+    2026-10-16 起只有一个参数键 `参数`，含义按块头字段判定：
+      - 有 模板 字段 → 赋值（由模板引用分支处理，不走这里）；
+      - 有 作为模板: true + 模板id → 定义；
+      - 无 模板 字段但写了 参数 → 也是定义（块内参数块）。
+    定义里每个参数可以写：标量（视作 默认）或行内映射 {默认/说明/性质/类型}。
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SystemExit(f"错误：{where} 的 参数 必须是映射（Pn → 值或定义）。")
+    out = {}
+    for pn, pv in raw.items():
+        if isinstance(pv, dict):
+            out[pn] = pv
+        else:
+            out[pn] = {"默认": pv}
+    return out or None
+
+
 def _expand_block(e, b, registry):
     """生成块的最终 comment/final_code；模板引用块补充 tpl/values 与有效名称。"""
     m = b["meta"]
@@ -770,11 +792,10 @@ def _expand_block(e, b, registry):
             raise SystemExit(f"错误：{where} 是自定义代码块，缺少代码行。")
         if "说明" not in m:
             raise SystemExit(f"错误：{where} 是自定义代码块，说明 必填。")
-        if "参数" in m:
-            print(f"警告：{where} 未使用模板却声明了 参数，已忽略。")
-        params_def = m.get("参数定义")
-        if params_def is None:
-            # 普通自定义块与无参模板定义块原样直通
+        # 参数键语义（2026-10-16）：无 模板 字段 → 参数 即定义（标量值视作 默认）
+        params_def = _normalize_params_def(m.get("参数"), where)
+        if not params_def:
+            # 普通自定义块原样直通
             b["comment"] = str(m["说明"])
             b["final_code"] = b["code"]
             return
@@ -859,7 +880,7 @@ def _expand_block(e, b, registry):
         raise SystemExit(f"错误：{where} 的 参数 必须是映射（Pn → 值）。")
     for pn in given:
         if pn not in t["params"]:
-            raise SystemExit(f"错误：{where} 的参数 {pn!r} 未在模板 {tid!r} 中定义。")
+            raise SystemExit(f"错误：{where} 的 参数 {pn!r} 未在模板 {tid!r} 中定义。")
 
     # 合并：引用方指定值优先，未指定取模板默认值（默认值变更会作用于所有未显式指定的引用方）
     values = {}

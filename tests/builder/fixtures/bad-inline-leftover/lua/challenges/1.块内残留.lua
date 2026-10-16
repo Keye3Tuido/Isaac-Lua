@@ -2,7 +2,7 @@
 
 --[[
 说明: 引用了未定义的 P2。
-参数定义:
+参数:
   P1: {默认: 653, 性质: 局部, 说明: 道具编号}
 ]]
 l Isaac.Spawn(5,100,P1,Vector.Zero,Vector.Zero,P2)

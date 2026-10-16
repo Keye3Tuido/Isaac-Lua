@@ -24,7 +24,7 @@
   可通过指令 lua BulletTime = 数值 来调整子弹时间的持续时间(默认{P1}秒)。
 名称: 子弹时间
 依赖: [时间倍率]
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量BulletTime，子弹时间持续秒数（默认5）"}
   P2: {类型: 数值, 默认: '1.5', 性质: 全局, 说明: "全局变量TimeScale，默认游戏速率倍率（默认1.5）"}
 ]]
@@ -47,7 +47,7 @@ l local function Action(p,a,f,s,c)for k,v in pairs(Isaac.FindByType(EntityType.E
 --[[
 说明: |-
   泪弹尺寸固定为{P1}。投射物更加危险。
-参数定义:
+参数:
   P1: {类型: 数值, 默认: "1", 性质: 局部, 说明: "泪弹尺寸缩放（t.Scale）"}
 ]]
 l local A,C,D,E,F,G,M,T=Isaac.AddCallback,ProjectileFlags,{'CHANGE_FLAGS_AFTER_TIMEOUT','CHANGE_VELOCITY_AFTER_TIMEOUT'},table,{},'InitSeed',ModCallbacks,{}for k,v in pairs(C)do E.insert(F,v)for i,j in pairs(D)do if k==j then E.remove(F,#F)end end end A(T,M.MC_POST_FIRE_TEAR,function(_,t)t.Scale=P1 end)A(T,M.MC_POST_PROJECTILE_INIT,function(_,p)for i=1,2 do p:AddProjectileFlags(F[p[G]*i%#F+1])end end)

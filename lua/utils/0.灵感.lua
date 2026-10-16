@@ -4,7 +4,7 @@
 作为模板: true
 模板id: burst-fireball
 说明: 爆裂天火：每Burst(默认{P1})秒随机天降一颗爆裂火球。
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量Burst，天降爆裂火球的间隔秒数（默认5）"}
 ]]
 l Burst=P1;local I,P=Isaac,ProjectileFlags I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()if Game():GetFrameCount()%(30*Burst)<1 then local p=I.Spawn(EntityType.ENTITY_PROJECTILE,ProjectileVariant.PROJECTILE_FIRE,0,I.GetRandomPosition(),Vector.Zero,nil):ToProjectile()p:AddHeight(-30)p:AddProjectileFlags(P.EXPLODE|P.FIRE_WAVE|P.FIRE_WAVE_X|P.FIRE_SPAWN)p:AddEntityFlags(EntityFlag.FLAG_PERSISTENT)end end)
@@ -13,7 +13,7 @@ l Burst=P1;local I,P=Isaac,ProjectileFlags I.AddCallback({},ModCallbacks.MC_POST
 作为模板: true
 模板id: poison-aura
 说明: 毒性光晕：屏幕内随机出现PoisonNum(默认{P1})个悬浮毒性光晕。
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量PoisonNum，悬浮毒性光晕的数量（默认5）"}
 ]]
 l PoisonNum=P1;local E,F,I,P=EntityType.ENTITY_PROJECTILE,ProjectileFlags,Isaac,'ToProjectile'F=F.GODHEAD|F.CANT_HIT_PLAYER I.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local c,e=0 for k,v in pairs(I.FindByType(E))do e=v[P](v)if e:HasProjectileFlags(F)then c,e.FallingSpeed,e.FallingAccel=c+1,0,-.1 end end while c<PoisonNum do e=I.Spawn(E,0,0,I.GetRandomPosition(),Vector.Zero,nil)c,e=c+1,e[P](e)e:AddProjectileFlags(F)end end)
@@ -22,7 +22,7 @@ l PoisonNum=P1;local E,F,I,P=EntityType.ENTITY_PROJECTILE,ProjectileFlags,Isaac,
 作为模板: true
 模板id: punish-damage-open-doors
 说明: 玩家在当前房间受到惩罚伤害的总次数人均达到Threshold(默认{P1}次)后，打开当前房间所有门。
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 5, 性质: 全局, 说明: "全局变量Threshold，人均惩罚伤害次数阈值（默认5次）"}
 ]]
 l Threshold=P1;local A,D,E,M,N,T=Isaac.AddCallback,DamageFlag,EntityType,ModCallbacks,0,{}A(T,M.MC_POST_NEW_ROOM,function()N=0 end)A(T,M.MC_ENTITY_TAKE_DMG,function(_,e,a,f,s)e=e:ToPlayer()if e:GetPlayerType()==PlayerType.PLAYER_JACOB_B and s.Type==E.ENTITY_DARK_ESAU or 0<f&(D.DAMAGE_RED_HEARTS|D.DAMAGE_IV_BAG|D.DAMAGE_FAKE|D.DAMAGE_NO_PENALTIES)then return end N=N+1 end,E.ENTITY_PLAYER)A(T,M.MC_POST_UPDATE,function()if N>=Threshold*Game():GetNumPlayers()then for i=0,7 do local d=Game():GetRoom():GetDoor(i)if d then d:Open()end end end end)
@@ -47,7 +47,7 @@ l Isaac.AddCallback({},ModCallbacks.MC_FAMILIAR_UPDATE,function(_,f)if f.State==
 作为模板: true
 模板id: hail-rain
 说明: 冰雹雨：每隔Hail(默认{P1})秒，随机天降HailNum(默认{P2})个冰雹。
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 0.1, 性质: 全局, 说明: "全局变量Hail，冰雹降落间隔秒数（默认0.1）"}
   P2: {类型: 数值, 默认: 3, 性质: 全局, 说明: "全局变量HailNum，每次天降冰雹的数量（默认3）"}
 ]]
@@ -57,7 +57,7 @@ l Hail,HailNum=P1,P2;local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_UPDATE,
 作为模板: true
 模板id: distance-damage-falloff
 说明: 抵近攻击：敌人距离玩家超过Dist(默认{P1})格远时，受到的伤害按距离衰减。
-参数定义:
+参数:
   P1: {类型: 数值, 默认: 3, 性质: 局部, 说明: "局部变量Dist，伤害开始衰减的距离格数（默认3）"}
 ]]
 l local Dist=P1;local H,G,P,T=GetPtrHash,40,'Position',{}Isaac.AddCallback({},ModCallbacks.MC_ENTITY_TAKE_DMG,function(_,e,a,...)local h,p,q=H(e),Game():GetRandomPlayer(Vector.Zero,0)if not T[h]and e:IsEnemy()then q=(p[P]-e[P]):Length()-G*Dist if q>0 then T[h]=true e:TakeDamage(G*a/(G+q),...)T[h]=nil return false end end end)

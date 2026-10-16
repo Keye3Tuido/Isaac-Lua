@@ -4,7 +4,7 @@
 作为模板: true
 模板id: on-question-init
 说明: 提供全局接口OnQuestionInit(entityPickup)，将底座问号道具{P2}。
-参数定义: 
+参数: 
   P1: 
     类型: 函数体
     默认: local s=p:GetSprite()s:ReplaceSpritesheet(1,Isaac.GetItemConfig():GetCollectible(p.SubType).GfxFileName)s:LoadGraphics()
@@ -23,7 +23,7 @@ l function OnQuestionInit(p)P1 end;local a,S=Vector,Sprite()S:Load'gfx/005.100_c
 模板id: multi-choice-spawn
 说明: |-
   每开启新游戏时，在初始房间根据玩家人数n，生成n组多选一道具{P2}
-参数定义:
+参数:
   P1: {类型: "道具id列表", 默认: "87,229,233", 性质: "局部", 说明: "每组多选一的候选道具id列表"}
   P2: {类型: "描述", 默认: "(87-洛基的角,229-萌死戳的肺,233-小小星球)", 性质: "局部", 说明: "说明文本中的候选道具描述"}
 ]]
@@ -35,7 +35,7 @@ l local V,g,N=Vector,{P1}Isaac.AddCallback({},15,function(_,c)local n,x,y=Game()
 说明: |-
   每层在初始房间生成{P2}。
   离开房间后道具消失。
-参数定义:
+参数:
   P1: {类型: "道具列表", 默认: "247,{612,2}", 性质: "局部", 说明: "道具id或{id,数量}的列表"}
   P2: {类型: "描述", 默认: "1*道具247-好朋友一辈子!、2*道具612-迷失游魂", 性质: "局部", 说明: "说明文本中的生成道具描述"}
 ]]
@@ -46,7 +46,7 @@ l local Items={P1}local I=Isaac I.AddCallback({},ModCallbacks.MC_POST_NEW_LEVEL,
 模板id: per-floor-give-collectibles
 说明: |-
   每层给予所有玩家{P2}。
-参数定义:
+参数:
   P1: {类型: "道具列表", 默认: "247,{612,2}", 性质: "局部", 说明: "道具id或{id,数量}的列表"}
   P2: {类型: "描述", 默认: "1*道具247-好朋友一辈子!、2*道具612-迷失游魂", 性质: "局部", 说明: "说明文本中的给予道具描述"}
 ]]
