@@ -656,80 +656,198 @@
     };
   }
 
-  // parensRemovable(node, src)：括号合法性谓词（v1 靠 canCommit 整批兜底，v2 逐候选须显式）。
-  // 语义原因：表构造器/函数表达式【不能裸作后缀基座】——`({})[1]` 去括号成 `{}[1]`
-  // 是语法错误（Lua 规定表/函数表达式作 base 必须加括号）；其余主表达式裸后缀合法。
-  function parensRemovable(node, src){
-    if(node.type !== 'TableConstructorExpression' && node.type !== 'FunctionDeclaration') return true;
-    var afterClose = (node.range[1]+1 < src.length) ? src[node.range[1]+1] : '';
-    return '([{.:\'\"'.indexOf(afterClose) < 0;
+  /* ---------- 括号消除的三道闸门 ----------
+   * 判定口径 = 「删掉这对括号后重新解析得到的 AST 与原 AST 相同」。luaparse 不记录括号，
+   * 括号的语义因此只体现在三处，各设一道闸门：
+   *  (1) 位置语法闸门（parensNeeded kind:'base'）：后缀基座必须是 prefixexp——表构造器 /
+   *      函数表达式 / 字面量作基座时括号是语法（`({})[1]`、`("a"):rep(2)`、`(function()end)()`）。
+   *  (2) 优先级/结合性闸门（parensNeeded kind:'binop'|'unary'）：按 Lua 5.3 优先级表判定
+   *      括号是否承载分组语义；结合性一致（左结合看左操作数、右结合看右操作数）才可删。
+   *  (3) 多值截断闸门（parensNeeded 调用方看 ctx.truncates）：括号把调用 / vararg 截断成
+   *      单值——两侧 AST 完全相同而语义不同，luaparse 与 canonical 都发现不了，必须显式排除
+   *      （return 与调用的末位实参、表构造器末位裸值字段、目标数多于本位的赋值/局部声明末位 RHS）。
+   * 粘连（`and(x)` → `andx`、`-(-a)` → `--a`）不靠保留括号兜底：删除位改为插入空格，
+   * 编码层随后按最小间隔还原——压缩率不损，中间文本却保持可解析。
+   * 载荷分号 `x=1;(h)(x)` 保护沿用 v1 口径（前置字符为 ';' 时保留）。
+   * 本实现把 v1 foldParens 的「主表达式整包」口径推广到任意表达式（含二元/逻辑/一元/串接）；
+   * 漏判方向由默认 verify（canonicalKey 双解析比对）与全局门禁兜底否决。 */
+
+  // Lua 5.3 二元运算符优先级表（lparser.c priority[] 的 left/right 两栏）。
+  // 左 9/右 8（`..`）与左 14/右 13（`^`）即右结合，其余左右相等即左结合。
+  var BIN_PRIORITY = {
+    'or':[1,1], 'and':[2,2],
+    '<':[3,3], '>':[3,3], '<=':[3,3], '>=':[3,3], '==':[3,3], '~=':[3,3],
+    '|':[4,4], '~':[5,5], '&':[6,6],
+    '<<':[7,7], '>>':[7,7],
+    '..':[9,8],
+    '+':[10,10], '-':[10,10],
+    '*':[11,11], '/':[11,11], '//':[11,11], '%':[11,11],
+    '^':[14,13]
+  };
+  var UNARY_PRIORITY = 12;    // Lua: UNARY_PRIORITY
+  var PREC_SIMPLE = 99;       // 简单表达式（标识符/字面量/调用/表/函数）：不参与优先级竞争
+
+  // exprPriority(node)：节点顶层运算符的优先级；简单表达式取 PREC_SIMPLE（比任何二元都紧）。
+  function exprPriority(node){
+    if(node.type === 'BinaryExpression' || node.type === 'LogicalExpression'){
+      var p = BIN_PRIORITY[node.operator];
+      return p ? p[0] : PREC_SIMPLE;
+    }
+    if(node.type === 'UnaryExpression') return UNARY_PRIORITY;
+    return PREC_SIMPLE;
   }
 
-  // parensTruncationGuard(node, parent)：多值截断守卫。
-  // 语义原因：`return (f())` 的括号把多返回值截断为 1，删除变成 `return f()`（全返回），
-  // luaparse 不保留括号、canonical 无法发现此差异（v1 已知限制），故须在 match 侧排除。
-  // 口径：末位 return 实参（列表位置天然截断非末位，仅末位受影响）且节点为调用/变参。
-  function parensTruncationGuard(node, parent){
-    if(!parent || parent.type !== 'ReturnStatement') return false;
-    if(!parent.arguments || !parent.arguments.length) return false;
-    if(parent.arguments[parent.arguments.length-1] !== node) return false;
-    return node.type === 'CallExpression' || node.type === 'StringCallExpression'
-        || node.type === 'TableCallExpression' || node.type === 'VarargLiteral';
-  }
+  // isPrefixExpNode(node)：可作为后缀基座（prefixexp）的节点——`(x).f` / `(x)[1]` / `(x)()` 去括号的前提。
+  var PREFIX_EXP_NODES = { Identifier:1, MemberExpression:1, IndexExpression:1,
+                           CallExpression:1, StringCallExpression:1, TableCallExpression:1 };
+  function isPrefixExpNode(node){ return !!PREFIX_EXP_NODES[node.type]; }
 
-  // parensMergeGuard(node, src)：token 粘连守卫。
-  // 语义原因：`return(f())` 去括号成 `returnf()`——关键字与名字合并为重词法化错误。
-  // 保守方向：疑似粘连即保留（多留一对括号无害，编码层不收回括号）。
-  function parensMergeGuard(node, src){
-    var prevCh = (node.range[0] >= 2) ? src[node.range[0]-2] : '';
-    var firstCh = src[node.range[0]];
-    if(isNamePart(prevCh) && isNamePart(firstCh)) return true;
-    var lastCh = src[node.range[1]-1];
-    var nextCh = (node.range[1]+1 < src.length) ? src[node.range[1]+1] : '';
-    if(isNamePart(lastCh) && isNamePart(nextCh)) return true;
+  // isMultiValueNode(node)：可展开为多值的表达式——括号落在展开位上会截断它。
+  var MULTI_VALUE_NODES = { CallExpression:1, StringCallExpression:1, TableCallExpression:1, VarargLiteral:1 };
+  function isMultiValueNode(node){ return !!MULTI_VALUE_NODES[node.type]; }
+
+  // mergeAt(a, b)：删除括号后 a 与 b 相邻是否会粘成另一个词法单元（保守：可疑即插空格）。
+  function mergeAt(a, b){
+    if(!a || !b) return false;
+    if(isNamePart(a) && isNamePart(b)) return true;          // `and(x)`→`andx`；`1 and(x)` 数字粘字母（malformed number）
+    if(a === '-' && b === '-') return true;                  // `-(-a)` → `--a` 注释吞行
+    if(a === '.' && b === '.') return true;                  // `a..(…)` / `(…)..b` → `...` 变参
+    if(a === '[' && (b === '[' || b === '=')) return true;    // 长括号 `[[` / `[=`
+    if(a === ':' && b === ':') return true;                  // 标签 `::`
+    if(a === '.' && b >= '0' && b <= '9') return true;       // `.5` 小数
+    if(a >= '0' && a <= '9' && b === '.') return true;       // `5.` 小数
     return false;
   }
 
-  /* ---------- norm.parens：冗余括号消除 ----------
-   * 逐字移植 foldParens（主表达式括号；调用实参括号绝不删；载荷分号 ;( 保护）。
-   * luaparse 不保留括号，canonical 天然等价。 */
+  // parensNeeded(node, ctx)：该位置的括号是否承载语义（true = 保留）。
+  // ctx.kind：'base'（后缀基座）| 'binop'（二元/逻辑操作数，带 parent+side）| 'unary'（一元操作数）
+  //           | 'expr'（其余位置：条件/表字段/实参/索引键/赋值右侧……括号纯分组）。
+  // ctx.truncates 由遍历方按展开位标注，本函数不看（闸门 3 在调用方）。
+  function parensNeeded(node, ctx){
+    var kind = (ctx && ctx.kind) || 'expr';
+    if(kind === 'base') return !isPrefixExpNode(node);
+    if(kind === 'binop'){
+      var pP = BIN_PRIORITY[ctx.parent.operator][0];
+      var pX = exprPriority(node);
+      if(pX > pP) return false;
+      if(pX < pP){
+        // `^` 右操作数直接接受一元：`a^-b` 合法且结合为 `a^(-b)`（Lua 该位从 subexpr(13) 起手 unop）
+        if(ctx.parent.operator === '^' && ctx.side === 'right' && node.type === 'UnaryExpression') return false;
+        return true;
+      }
+      // 同优先级：结合性一致才不改变分组
+      var rightAssoc = (ctx.parent.operator === '^' || ctx.parent.operator === '..');
+      return rightAssoc ? (ctx.side !== 'right') : (ctx.side !== 'left');
+    }
+    if(kind === 'unary'){
+      // 一元操作数按 subexpr(12) 解析：仅 `^`(14) 与一元自身可裸放进该位
+      if(node.type === 'UnaryExpression') return false;   // `not not a` / `- -a`（粘连由空格处理）
+      return exprPriority(node) <= UNARY_PRIORITY;
+    }
+    return false;
+  }
+
+  /* ---------- norm.parens：冗余括号消除（优先级 + 结合性 + 多值截断） ---------- */
   function createParensLens(deps){
-    var PRIMARY = { Identifier:1, NumericLiteral:1, StringLiteral:1, BooleanLiteral:1, NilLiteral:1, VarargLiteral:1,
-                    MemberExpression:1, IndexExpression:1, CallExpression:1, StringCallExpression:1, TableCallExpression:1,
-                    TableConstructorExpression:1, FunctionDeclaration:1 };
     return {
       name: 'norm.parens', kind: 'rewrite',
       requires: [], provides: [], consumes: [], conflicts: [],
       match: function(ir){
         var src = ir.src, out = [];
-        (function walk(n, inArgs, parent){
-          if(!n || typeof n !== 'object') return;
-          if(Array.isArray(n)){ for(var i=0;i<n.length;i++) walk(n[i], inArgs, parent); return; }
-          if(PRIMARY[n.type] && n.range && !inArgs){
-            var before = (n.range[0] > 0) ? src[n.range[0]-1] : '';
-            var after = (n.range[1] < src.length) ? src[n.range[1]] : '';
-            // 载荷分号保护：x;(h)(x) 的 (h) 去括号后 ; 会被误删（v1 注释语义）
-            var beforeParen = (n.range[0] >= 2) ? src[n.range[0]-2] : '';
-            if(before === '(' && after === ')' && beforeParen !== ';'
-               && parensRemovable(n, src)
-               && !parensTruncationGuard(n, parent)
-               && !parensMergeGuard(n, src)){
-              out.push({ id:'parens@'+n.range[0],
-                _edits:[{ start:n.range[0]-1, end:n.range[0], text:'' },
-                        { start:n.range[1], end:n.range[1]+1, text:'' }] });
-            }
+        var EXPR = { kind:'expr', truncates:false };
+        var TRUNC = { kind:'expr', truncates:true };
+        // push(node, ctx)：紧邻包裹的括号对是否为可删分组括号（见文件内三闸门说明）
+        function push(node, ctx){
+          if(!node.range) return;
+          var s = node.range[0], e = node.range[1];
+          if(s <= 0 || e >= src.length) return;
+          if(src[s-1] !== '(' || src[e] !== ')') return;
+          if(s >= 2 && src[s-2] === ';') return;                  // 载荷分号保护
+          if(ctx.argOpen === s - 1) return;                       // 实参表括号（语法括号，非分组）
+          // 双包 `((X))`：外层括号已独立承载分组语义，删内层不改变解析（`((a+b))*c` 的内层
+          // 就是这种「邻接但被外层接管」的冗余括号）。唯一例外：外层括号是**实参表括号**——
+          // 它不是分组括号、不截断多值，删掉内层会让 `f((g()))` 变成 `f(g())`（多值展开）。
+          var outerIsArgList = !!(ctx.callArg && ctx.argOpen === s - 2);
+          var doubleWrap = (s >= 2 && src[s-2] === '(' && e+1 < src.length && src[e+1] === ')')
+                           && !(outerIsArgList && isMultiValueNode(node));
+          if(!doubleWrap){
+            if(ctx.truncates && isMultiValueNode(node)) return;   // 多值截断闸门
+            if(parensNeeded(node, ctx)) return;                   // 位置/优先级/结合性闸门
           }
-          for(var k in n){
+          var openMerge = mergeAt(s >= 2 ? src[s-2] : '', src[s]);
+          var closeMerge = mergeAt(src[e-1], (e+1 < src.length) ? src[e+1] : '');
+          out.push({ id:'parens@'+s, _edits:[
+            { start:s-1, end:s, text: openMerge ? ' ' : '' },
+            { start:e, end:e+1, text: closeMerge ? ' ' : '' }
+          ]});
+        }
+        function visit(node, ctx){
+          if(!node || typeof node !== 'object') return;
+          if(Array.isArray(node)){ for(var i=0;i<node.length;i++) visit(node[i], EXPR); return; }
+          if(node.type) push(node, ctx || EXPR);
+          var t = node.type;
+          for(var k in node){
             if(k === 'range' || k === 'loc') continue;
-            if(!Object.prototype.hasOwnProperty.call(n, k)) continue;
-            // 函数形参括号是声明语法的一部分（v1 靠整批拒绝掩盖此情形；v2 逐候选须显式排除）
-            if(n.type === 'FunctionDeclaration' && k === 'parameters') continue;
-            var ci = inArgs;
-            if(n.type === 'CallExpression' && k === 'arguments') ci = true;   // 实参括号
-            else if(n.type === 'CallExpression' && k === 'base') ci = false;  // 被调者括号可删
-            walk(n[k], ci, n);
+            if(!Object.prototype.hasOwnProperty.call(node, k)) continue;
+            // 函数形参括号是声明语法的一部分（`function(a)`），绝非可删的分组括号
+            if(t === 'FunctionDeclaration' && k === 'parameters') continue;
+            var child = node[k];
+            if(child === null || child === undefined) continue;
+            // 展开位：末位实参 / 末位裸值字段 / 多目标末位 RHS——括号在此截断多值
+            if(Array.isArray(child) && k === 'arguments'
+               && (t === 'ReturnStatement' || t === 'CallExpression')){
+              // 实参表自身的括号是语法（`f(x)` 的 `(x)`）而非分组括号：定位其左括号位置，
+              // 供 push 排除「把实参表括号误当冗余分组括号」的假候选（`for k,v in b(i)do` 形态）。
+              var argOpen = -1;
+              if(t === 'CallExpression' && node.base && node.base.range){
+                for(var q = node.base.range[1]; q < node.range[1]; q++){
+                  if(src[q] === '('){ argOpen = q; break; }
+                }
+              }
+              for(var ai=0; ai<child.length; ai++)
+                visit(child[ai], { kind:'expr', truncates:(ai === child.length-1),
+                                   callArg:(t === 'CallExpression'), argOpen:argOpen });
+              continue;
+            }
+            if(Array.isArray(child) && k === 'init'
+               && (t === 'AssignmentStatement' || t === 'LocalStatement')){
+              var nv = (node.variables && node.variables.length) || 0;
+              for(var ii=0; ii<child.length; ii++)
+                visit(child[ii], (ii === child.length-1 && nv > ii+1) ? TRUNC : EXPR);
+              continue;
+            }
+            // 泛型 for 的迭代器表也是 explist（末位可展开）：`for k,v in (it())do` 的括号
+            // 让 it() 只提供迭代函数（state/control 为 nil），删掉会变成 it() 展开三个值。
+            if(Array.isArray(child) && k === 'iterators' && t === 'ForGenericStatement'){
+              for(var xi=0; xi<child.length; xi++)
+                visit(child[xi], (xi === child.length-1) ? TRUNC : EXPR);
+              continue;
+            }
+            if(Array.isArray(child) && k === 'fields' && t === 'TableConstructorExpression'){
+              for(var fi=0; fi<child.length; fi++){
+                var f = child[fi], last = (fi === child.length-1);
+                if(f && f.type === 'TableValue') visit(f.value, { kind:'expr', truncates:last });
+                else if(f && (f.type === 'TableKey' || f.type === 'TableKeyString')){ visit(f.key, EXPR); visit(f.value, EXPR); }
+                else visit(f, EXPR);
+              }
+              continue;
+            }
+            // 位置语境（上层语境不下传：子节点的括号是否可删只由它自己的位置决定）
+            var cctx = EXPR;
+            if(t === 'BinaryExpression' || t === 'LogicalExpression'){
+              if(k === 'left') cctx = { kind:'binop', parent:node, side:'left', truncates:false };
+              else if(k === 'right') cctx = { kind:'binop', parent:node, side:'right', truncates:false };
+            }else if(t === 'UnaryExpression' && k === 'argument'){
+              cctx = { kind:'unary', parent:node, truncates:false };
+            }else if(k === 'base' && (t === 'MemberExpression' || t === 'IndexExpression' || t === 'CallExpression'
+                     || t === 'StringCallExpression' || t === 'TableCallExpression')){
+              cctx = { kind:'base', parent:node, truncates:false };
+            }
+            if(Array.isArray(child)){ for(var ci=0; ci<child.length; ci++) visit(child[ci], EXPR); }
+            else visit(child, cctx);
           }
-        })(ir.ast.body, false, null);
+        }
+        visit(ir.ast.body, EXPR);
         return out;
       },
       cost: function(ir, cand){ return { delta: preview(ir, cand._edits, deps), confidence: 'exact' }; },
@@ -990,11 +1108,18 @@
           }
         });
 
+        // 别名表按【名字】索引，而同名遮蔽会产生多个绑定（`local b='x' local b=({1})`）：
+        // 名字级取到的别名值属于另一个绑定，代入本绑定的读点会写错值，而且 canonical 的
+        // 别名还原按名字做、看不见这种差异（闸门系统性失明）。故名字在本文件出现多次时
+        // 一律不走名字级别名代入；binding 级路径（声明/赋值句）不受影响。
+        var nameCount = Object.create(null);
+        info.bindings.forEach(function(b){ nameCount[b.name] = (nameCount[b.name] || 0) + 1; });
+
         var out = [];
         info.bindings.forEach(function(b){
           if(b.decls.length !== 1) return;
           if(aliasB.has(b.name) && aliasLitVal(b.name) === null) return;
-          var aliasVal = aliasLitVal(b.name);
+          var aliasVal = (nameCount[b.name] === 1) ? aliasLitVal(b.name) : null;
           var asg = assignedStmts.get(b);
           var asgTarget = null, asgIdx = -1, asgStmt = null;
           if(asg){
@@ -1092,6 +1217,17 @@
             if(!byStmt.has(d.stmt)) byStmt.set(d.stmt, new Set());
             byStmt.get(d.stmt).add(d.idx);
           });
+          // 槽位删除的多值展开守卫：末位 init 可展开（调用/变参）且目标数多于 init 数时，末位 init
+          // 之后的槽位由它供给（`local a,b,c=f()` 的 b、c）——删这种槽位会把后面的返回值前移
+          // （删 b → `local a,c=f()`，c 拿到 f() 的第 2 个值）；两侧 AST 相同，canonical 看不见。
+          // 口径：删的槽位下标 ≥ 末位 init 下标即拒判（更早的槽位各有独立 init，删除不移动映射）。
+          var dropUnsafe = false;
+          byStmt.forEach(function(dropIdx, stmt){
+            var vv0 = stmt.variables, ii0 = stmt.init || [];
+            if(!(ii0.length && isMultiValueNode(ii0[ii0.length-1]) && vv0.length > ii0.length)) return;
+            dropIdx.forEach(function(dd){ if(dd >= ii0.length - 1) dropUnsafe = true; });
+          });
+          if(dropUnsafe) return;
           byStmt.forEach(function(dropIdx, stmt){
             var vv = stmt.variables, ii = stmt.init || [];
             if(dropIdx.size >= vv.length){

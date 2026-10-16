@@ -344,12 +344,24 @@
     env.dropLeading = ir.aliases.dropLeading;
     for(var tk in ir.aliases.transparent)
       if(Object.prototype.hasOwnProperty.call(ir.aliases.transparent, tk)) env.transparent[tk] = ir.aliases.transparent[tk];
+    // 顶层同名绑定计数（名字歧义守卫用）：证据按【名字】索引，同名遮蔽时按名字判存活会把
+    // 一个绑定的别名证据挂到另一个绑定上（见 lens.js applyCandidate 同款守卫）。
+    function topNamed(irObj, nm){
+      var n = 0;
+      for(var bi2=0; bi2<irObj.info.bindings.length; bi2++){
+        var bb2 = irObj.info.bindings[bi2];
+        if(bb2.name === nm && bb2.decls.length >= 1 && bb2.scope === irObj.info.topScope) n++;
+      }
+      return n;
+    }
     ir.aliases.entries.forEach(function(entry, name){
       if(entry.declRange === null && entry.injected){
         // 注入条目无文本区间（复合声明合批）：随 AST 重建存活，不做区间平移。
         // 但条目与声明同生共死——编辑可能已删除其声明（如 inlinePure 代入源内
         // 字符串别名并删槽位）：顶层单声明不存在时条目必须随声明消亡，
         // 否则悬空证据违反 INV-1（AST 校验通道「注入条目无对应顶层声明」）。
+        // 名字歧义守卫：新旧两侧该名字都必须唯一，否则同名遮蔽会跨绑定误挂证据。
+        if(topNamed(ir, name) !== 1 || topNamed(nir, name) !== 1) return;
         var alive = false;
         for(var bi=0; bi<nir.info.bindings.length; bi++){
           var bb = nir.info.bindings[bi];

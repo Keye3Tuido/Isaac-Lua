@@ -444,6 +444,18 @@
     return { text: out, changed: true };
   }
 
+  // isNilPlaceholderSlot(st, vi)：local 语句的第 vi 个槽位是否确为 nil 占位（下沉前置条件）。
+  // 显式 `nil` 初值算占位；init 表之后的槽位【未必】是占位——末位 init 可展开时由它供给
+  // （`local a,b,c=f()` 的 b、c 分别是 f() 的第 2、3 个返回值）。把这种槽位当占位下沉会把
+  // 后面的返回值冲掉：`local a,b,c=f() b='x'` 被下沉成 `local a,b,c=f(),'x'`（c 变 nil），
+  // 两侧值的来源全在 AST 之外的「末位展开」语义里，canonical 看不见。
+  function isNilPlaceholderSlot(st, vi){
+    var inits = st.init || [];
+    if(vi < inits.length) return !!(inits[vi] && inits[vi].type === 'NilLiteral');
+    if(!inits.length) return true;
+    return !isMultiValueExpr(inits[inits.length-1]);
+  }
+
   function createFwdNilLens(deps){
     return {
       name: 'hoist.fwdNil', kind: 'rewrite',
@@ -480,8 +492,7 @@
               for(var vi2=0; vi2<st.variables.length; vi2++)
                 if(info.varOf.get(st.variables[vi2]) === tb){ tvi = vi2; break; }
               if(tvi < 0 || seenVi.has(tvi)){ okMulti = false; break; }
-              var tie = st.init[tvi] || null;
-              if(tie && tie.type !== 'NilLiteral'){ okMulti = false; break; }        // 非 nil 占位
+              if(!isNilPlaceholderSlot(st, tvi)){ okMulti = false; break; }   // 非 nil 占位（含末位展开供给的槽位）
               if(readBetween(tb, localEnd, s2.range[0])){ okMulti = false; break; }  // 赋值前被读/写
               // RHS 引用同 local 变量（不打架由这条涌现）：常量别名按名代值后放行
               if(refsBinding(s2.init[ti], info, bindingSet)){
@@ -506,8 +517,7 @@
             if(valueOf.has(vi3)) continue;
             var vn = st.variables[vi3];
             if(vn.type !== 'Identifier') continue;
-            var ie2 = (st.init && st.init[vi3]) || null;
-            if(ie2 && ie2.type !== 'NilLiteral') continue;
+            if(!isNilPlaceholderSlot(st, vi3)) continue;
             var b = info.varOf.get(vn);
             if(!b || b.decls.length !== 1) continue;
             var asgIdx = -1;
@@ -567,6 +577,33 @@
   }
 
   /* ---------- hoist.localsMerge：相邻 local 合并（foldLocals 移植） ---------- */
+
+  // 多值表达式（调用/变参）：括号落在「末位展开位」上是截断语义的载体。
+  var MULTI_VALUE_TYPES = { CallExpression:1, StringCallExpression:1, TableCallExpression:1, VarargLiteral:1 };
+  function isMultiValueExpr(node){ return !!(node && MULTI_VALUE_TYPES[node.type]); }
+
+  // initSourceText(src, node, keepParens)：取 init 表达式文本（合并语句重建用）。
+  // 默认取 AST 区间（luaparse 区间不含整包括号，天然是最短形态）；keepParens 时把紧邻的
+  // 分组括号一并吃回来（括号与表达式之间允许空白 `( f() )`）。必要性：合并把一个 init 留在
+  // 【末位且其后仍有目标】这一位上时，括号是「截断为单值」的语义载体——
+  // `local s=f() local a,b=(f())` 合成 `local s,a,b=f(),(f())` 的括号丢了，末位 f() 就会
+  // 展开填满 a,b（a 拿到第二个返回值）；两侧 AST 完全相同，canonical 终审看不见，只能靠文本保真。
+  // init 位置上紧邻的 '(' 必然是分组括号（explist 自身没有语法括号），故可安全内收。
+  function initSourceText(src, node, keepParens){
+    var s = node.range[0], e = node.range[1];
+    if(keepParens && isMultiValueExpr(node)){
+      for(;;){
+        var a = s - 1;
+        while(a >= 0 && /\s/.test(src[a])) a--;
+        var b = e;
+        while(b < src.length && /\s/.test(src[b])) b++;
+        if(a >= 0 && src[a] === '(' && b < src.length && src[b] === ')' && !(a >= 1 && src[a-1] === ';')){
+          s = a; e = b + 1;
+        }else break;
+      }
+    }
+    return src.slice(s, e);
+  }
 
   function createLocalsMergeLens(deps){
     function isMergeableLocal(st){
@@ -645,10 +682,15 @@
         for(var q=p+1; q<slots.length; q++)
           if(!slots[q].demote && slots[q].hasCall) return null;
       }
-      var keepVars = [], keepInits = [], demoteVars = [], demoteAssigns = [];
+      // 保留槽位在合并声明里仍处末位；其后再接降级变量（占位目标）时，末位括号承载
+      // 截断语义（`local s,a,b=f(),(f()) b=s`——括号丢了 f() 会展开填满 a、b）。
+      var keepVars = [], keepSlots = [], demoteVars = [], demoteAssigns = [];
       slots.forEach(function(s){
         if(s.demote){ demoteVars.push(s.name); demoteAssigns.push(s); }
-        else{ keepVars.push(s.name); keepInits.push(s.initText); }
+        else{ keepVars.push(s.name); keepSlots.push(s); }
+      });
+      var keepInits = keepSlots.map(function(s, si){
+        return initSourceText(src, s.initNode, si === keepSlots.length - 1 && demoteVars.length > 0);
       });
       // 降级赋值形态：任一降级 init 引用其他降级变量时必须逐条独立赋值（RHS 先求值
       // 语义）；无交叉引用则并为一条多目标赋值（与 v1 mixed 路径同形态、更短）。
@@ -738,9 +780,19 @@
             groupStartIdx.forEach(function(ix){ plainStarts[ix] = true; });
             groups.forEach(function(group, gi){
               var allNames = [], allExprs = [];
+              var totalVars = 0, totalInits = 0;
+              group.forEach(function(st2){
+                totalVars += st2.variables.length;
+                totalInits += (st2.init || []).length;
+              });
+              var seenInits = 0;
               group.forEach(function(st2){
                 st2.variables.forEach(function(v){ allNames.push(src.slice(v.range[0], v.range[1])); });
-                (st2.init || []).forEach(function(e){ allExprs.push(src.slice(e.range[0], e.range[1])); });
+                (st2.init || []).forEach(function(e){
+                  // 合并后仍处末位、且其后还有目标 → 括号承载截断语义，随文本保留
+                  allExprs.push(initSourceText(src, e, seenInits === totalInits - 1 && totalVars > totalInits));
+                  seenInits++;
+                });
               });
               var merged = 'local ' + allNames.join(',') + (allExprs.length ? '=' + allExprs.join(',') : '');
               out.push({ id:'localsMerge@' + bi + ':' + gi,

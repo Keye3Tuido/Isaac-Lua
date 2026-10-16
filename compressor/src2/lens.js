@@ -194,8 +194,25 @@
     // 并入头部或合批，文本 declRange 被摧毁——但名字的顶层单声明仍在、值未变。
     // 此类条目自动转为 injected 形态保留（证据不丢，canonical2 终审仍可再生还原）；
     // residue.removedAliases 显式消亡的除外（透镜声明了"值关系已断"）。
+    // 名字歧义守卫：证据按【名字】索引，同名遮蔽（顶层多个同名绑定）时按名字复活会把已删除
+    // 绑定的证据挂到另一个绑定上（`local b='x' local b=({1})`：删前者后其 string 别名复活到
+    // 后者，后续按名字取值就把 'x' 代入后者的读点）。仅新旧两侧该名字都唯一才复活。
+    var topNameCounts = null;
+    function countTopNames(irObj){
+      var m = Object.create(null);
+      for(var bi2=0; bi2<irObj.info.bindings.length; bi2++){
+        var bb2 = irObj.info.bindings[bi2];
+        if(bb2.decls.length >= 1 && bb2.scope === irObj.info.topScope) m[bb2.name] = (m[bb2.name] || 0) + 1;
+      }
+      return m;
+    }
+    function topBindingsNamed(irObj, name){
+      if(!topNameCounts) topNameCounts = { old: countTopNames(ir), neo: countTopNames(nir) };
+      return topNameCounts[irObj === ir ? 'old' : 'neo'][name] || 0;
+    }
     ir.aliases.entries.forEach(function(oldEntry, name){
       if(nir.aliases.entries.has(name) || removedSet.has(name)) return;
+      if(topBindingsNamed(ir, name) !== 1 || topBindingsNamed(nir, name) !== 1) return;
       var alive = false;
       for(var bi=0; bi<nir.info.bindings.length; bi++){
         var b = nir.info.bindings[bi];
