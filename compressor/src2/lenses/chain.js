@@ -296,10 +296,20 @@
         if(total2 > 0 && total2 <= cand.sites.length) removedAliases.push(cand.indexAlias);
       }
 
-      // 删除被消耗别名的声明项（复用 alias.js 的区间合并删除）
+      // 删除被消耗别名的声明项（复用 alias.js 的区间合并删除）。
+      // 注意：rootAlias 与 indexAlias 可能来自同一条 local 声明，必须按语句合并下标后
+      // 一次性删除，否则独立删除的区间会重叠（frame-operation 等多别名合并声明场景）。
+      var deleteByStmt = new Map();
       removedAliases.forEach(function(name){
         var found = findDeclStmt(ir, name);
-        if(found) edits = edits.concat(aliasMod.declItemDeleteEdits(found.st, [found.vi]));
+        if(found){
+          if(!deleteByStmt.has(found.st)) deleteByStmt.set(found.st, new Set());
+          deleteByStmt.get(found.st).add(found.vi);
+        }
+      });
+      deleteByStmt.forEach(function(viSet, st){
+        var vis = Array.from(viSet).sort(function(a,b){ return a-b; });
+        edits = edits.concat(aliasMod.declItemDeleteEdits(st, vis));
       });
 
       // 插入声明（统一前置空格断开标识符粘连，v1 同规则）
