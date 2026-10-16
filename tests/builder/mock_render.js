@@ -94,7 +94,9 @@ const documentStub = {
 };
 
 // ---------- 载入真实 page.js（注入 mock 数据） ----------
-// 键 = 文件键：挑战 c1、工具 u1（与挑战同号，验证两类目录独立编号）
+// 键 = 文件键：挑战 c1、工具 u1（与挑战同号，验证两类目录独立编号）。
+// 另有 u0/u2/u10/u22/uTMPL 仅用于列表排序断言（⑨：数值升序、非数字编号排末尾），
+// 其标题与说明取与其它断言无关的占位文字。
 const ALL_FILES = {
     'c1': {
         id: '1', key: 'c1', title: '样例挑战', fname: '1.样例.lua', isChallenge: true,
@@ -119,6 +121,26 @@ const ALL_FILES = {
             { num: 0, comment: '通用工具片段。', code: 'Tool(1)' },
             { num: 1, comment: '工具第二段。', code: 'Tool(2)' },
         ],
+    },
+    'u0': {
+        id: '0', key: 'u0', title: '占位零号', fname: '0.占位零号.lua', isChallenge: false,
+        header: [], blocks: [{ num: 0, comment: '占位说明零。', code: 'Z0()' }],
+    },
+    'u2': {
+        id: '2', key: 'u2', title: '占位二号', fname: '2.占位二号.lua', isChallenge: false,
+        header: [], blocks: [{ num: 0, comment: '占位说明二。', code: 'Z2()' }],
+    },
+    'u10': {
+        id: '10', key: 'u10', title: '占位十号', fname: '10.占位十号.lua', isChallenge: false,
+        header: [], blocks: [{ num: 0, comment: '占位说明十。', code: 'Z10()' }],
+    },
+    'u22': {
+        id: '22', key: 'u22', title: '占位廿二号', fname: '22.占位廿二号.lua', isChallenge: false,
+        header: [], blocks: [{ num: 0, comment: '占位说明廿二。', code: 'Z22()' }],
+    },
+    'uTMPL': {
+        id: 'TMPL', key: 'uTMPL', title: '占位框架', fname: 'TMPL.占位框架.lua', isChallenge: false,
+        header: [], blocks: [{ num: 0, comment: '占位说明框架。', code: 'ZFW()' }],
     },
 };
 const TEMPLATES = {
@@ -275,6 +297,15 @@ vm.runInContext('buildListUI()', sandbox);
 const searchHtml = () => named.searchList.innerHTML;
 check('工具文件行链接为 #u1', named.otherList.innerHTML.indexOf('href="#u1"') !== -1);
 check('挑战文件行链接为 #c1', named.challengeList.innerHTML.indexOf('href="#c1"') !== -1);
+
+// ⑨ 分区排序：键为 u<编号>，直接字符串排会把 u10 排到 u2 之前（回归）；
+// 非数字编号 uTMPL 排在同分区末尾，与构建期 collect_lua_entries 的条目顺序一致
+const listKeys = el => (el.innerHTML.match(/href="#[^"]+"/g) || []).map(s => s.slice(7, -1));
+check('库分区按编号数值升序（u0,u1,u2,u10,u22,uTMPL）',
+    listKeys(named.otherList).join(',') === 'u0,u1,u2,u10,u22,uTMPL');
+check('库分区 u2 在 u10 之前（字符串序回归）',
+    listKeys(named.otherList).indexOf('u2') < listKeys(named.otherList).indexOf('u10'));
+check('挑战分区按编号数值升序', listKeys(named.challengeList).join(',') === 'c1');
 
 named.searchInput.value = 'tpl-x';
 vm.runInContext('handleSearch()', sandbox);

@@ -130,6 +130,23 @@ check('真实元数据含 name 字段的块（>0）', namedBlocks > 0);
 check('元数据块不含 code 字段（详情走 kb/ 分片懒加载）', codeBlocks === 0);
 console.log('      （共 ' + totalBlocks + ' 块，其中 ' + namedBlocks + ' 块带 name）');
 
+// 列表分区排序（回归：工具分区曾按文件键字符串排，u10 被排到 u2 之前）：
+// 数值编号升序；非数字编号（TMPL 框架文件）排在同分区末尾
+vm.runInContext('buildListUI()', sandbox);
+const listKeys = el => (el.innerHTML.match(/href="#[^"]+"/g) || []).map(s => s.slice(7, -1));
+const numOf = k => (/^\d+$/.test(String(ALL_FILES[k].id)) ? Number(ALL_FILES[k].id) : Infinity);
+const utilKeys = listKeys(named.otherList);
+const challengeKeys = listKeys(named.challengeList);
+check('库分区行数 = 工具文件数', utilKeys.length === Object.keys(ALL_FILES).filter(k => !ALL_FILES[k].isChallenge).length);
+check('库分区按编号数值升序（非数字编号排末尾）',
+    utilKeys.every((k, i) => i === 0 || numOf(utilKeys[i - 1]) <= numOf(k)) &&
+    utilKeys.slice(0, -1).every(k => Number.isFinite(numOf(k))) &&
+    !Number.isFinite(numOf(utilKeys[utilKeys.length - 1])));
+check('库分区 u2 在 u10 之前（字符串序回归）',
+    utilKeys.indexOf('u2') !== -1 && utilKeys.indexOf('u2') < utilKeys.indexOf('u10'));
+check('挑战分区按编号数值升序',
+    challengeKeys.every((k, i) => i === 0 || numOf(challengeKeys[i - 1]) <= numOf(k)));
+
 // 挑一个带 名称 的挑战页渲染：12.永远迷失（前置块 名称: 安全包装/清理回调）
 vm.runInContext("showDetailView('c12')", sandbox);
 check('分片加载期间显示 loading 态', named.codeArea.innerHTML.indexOf('加载中') !== -1);

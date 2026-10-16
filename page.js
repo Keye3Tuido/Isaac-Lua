@@ -213,14 +213,28 @@ window.addEventListener('DOMContentLoaded', function() {
 });
 
 // ========== 列表视图 ==========
+// 分区排序键 = 文件名编号的数值（id 形如 "3"；框架文件 TMPL 无数字编号）。
+// 非数字编号视作无穷大 → 排在同分区末尾，与 GenerateHtml.py 的条目顺序一致。
+function fileKeyOrder(key) {
+    const id = String(ALL_FILES[key].id);
+    return /^\d+$/.test(id) ? Number(id) : Infinity;
+}
+function compareFileKeys(a, b) {
+    const diff = fileKeyOrder(a) - fileKeyOrder(b);   // 两个非数字项相减为 NaN
+    if (diff === 0 || Number.isNaN(diff)) return a < b ? -1 : (a > b ? 1 : 0);
+    return diff;
+}
+
 function buildListUI() {
     const challengeIds = [], otherIds = [];
     for (const id in ALL_FILES) {
         (ALL_FILES[id].isChallenge ? challengeIds : otherIds).push(id);
     }
-    // 挑战按编号数值排（非数字编号如 TMPL 视作 0，排在最前）；工具按文件键排
-    challengeIds.sort((a, b) => (ALL_FILES[a].id | 0) - (ALL_FILES[b].id | 0));
-    otherIds.sort();
+    // 两类分区内一律按文件名编号数值升序，非数字编号（TMPL 框架文件）排在同分区末尾，
+    // 即与构建期 collect_lua_entries / kb.json 的条目顺序一致；数字同号时按键名兜底。
+    // 注意不能直接按文件键字符串排：键形如 c1/u1，字符串序会把 u10 排到 u2 前面。
+    challengeIds.sort(compareFileKeys);
+    otherIds.sort(compareFileKeys);
 
     document.getElementById('challengeCount').textContent = challengeIds.length;
     document.getElementById('otherCount').textContent = otherIds.length;
