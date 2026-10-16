@@ -75,6 +75,23 @@ function run(){
     if(b) ok('call-sugar-table/output', b.output === 'l f{1,2,3}', b.output);
   })();
 
+  /* ---- 死代码消尽（readonlyInline 多变量扩展 + canonical dead-pure 少值隐式 nil 归一） ---- */
+  (function(){
+    // 应消尽为空（l ）：纯 init + 全部变量无使用
+    ['l local a,b,c=1', 'l local a,b,c', 'l local a,b,c=1,2', 'l local a=1', 'l local a=1 local b=2'].forEach(function(src){
+      const r = tryCompress('deadcode-elim ' + src, src);
+      if(r) ok('deadcode-elim/output ' + src, r.output === 'l ', r.output);
+    });
+    // 副作用 init（f() 调用）必须保留执行：整条不删（b,c 隐式 nil 的死删属增量优化，保守整条保留）
+    const r1 = tryCompress('deadcode-keep-call', 'l local a,b,c=f()');
+    if(r1) ok('deadcode-keep-call/output', r1.output !== 'l ' && r1.output.indexOf('f()') >= 0, r1.output);
+    // 有使用的变量保留
+    const r2 = tryCompress('deadcode-keep-used', 'l local a,b,c=1 print(a)');
+    if(r2) ok('deadcode-keep-used/output', r2.output !== 'l ', r2.output);
+    const r3 = tryCompress('deadcode-keep-used-b', 'l local a,b,c=1 print(b)');
+    if(r3) ok('deadcode-keep-used-b/output', r3.output !== 'l ', r3.output);
+  })();
+
   /* ---- 相邻 local 合并（M4 起由 hoist.localsMerge 承担，硬断言） ---- */
   (function(){
     const r = tryCompress('local-merge-call', 'local a=f()\nlocal b=g()\nreturn a,b');

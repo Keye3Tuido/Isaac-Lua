@@ -475,13 +475,16 @@
         (function walk(stmts){
           for(var si=0;si<stmts.length;si++){
             var st=stmts[si];
-            if(st.type==='LocalStatement'&&st.variables&&st.init){
+            if(st.type==='LocalStatement'&&st.variables){
               for(var vi=0;vi<st.variables.length;vi++){
-                var v=st.variables[vi], ie=st.init[vi];
-                if(!v||v.type!=='Identifier'||!ie)continue;
+                var v=st.variables[vi], ie=st.init&&st.init[vi];
+                if(!v||v.type!=='Identifier')continue;
                 var b=varOf.get(v);
                 if(!b||b.decls.length!==1||b.uses.length!==0)continue;
-                if(isPureExpr(ie)) deadPureBindings.add(b);
+                // 缺失 init（少值声明）= 隐式 nil 初始化，NilLiteral 属纯——
+                // local a,b,c=1 的 b,c 与 a 同可消（实证：此前按位取 init 致 b,c 漏判，
+                // local a,b,c=1 ≡ 空 的等价不成立，死代码消尽被 canonical 否决）。
+                if(!ie || isPureExpr(ie)) deadPureBindings.add(b);
               }
             }
           }

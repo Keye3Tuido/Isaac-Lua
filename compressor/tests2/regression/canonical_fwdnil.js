@@ -26,7 +26,10 @@ function run(){
   neg('read between', "local x,y=1 f(y) y=2 g(y)", "local x=1 f(y) local y=2 g(y)");
   neg('captured before', "local x,y=1 local fn=function() return y end y=2 fn()", "local x=1 local fn=function() return y end local y=2 fn()");
   neg('self in rhs', "local x,y=1 y=(y or 5) g(y)", "local x=1 local y=(y or 5) g(y)");
-  neg('no assignment', "local x,y=1 g(x)", "local x=1 g(x) local y=2");
+  // dead-pure 归一扩展（隐式 nil 少值声明可消）后：左 y（隐式 nil、无使用）与右 y=2
+  // （无使用纯值）均被消解，两侧判等价——语义安全（y 为局部且无任何使用点，无可观察差异；
+  // 若有使用则 dead-pure 不含 y，NEG 仍成立）。fwd-nil 归一本身并未误动 y（找不到首次赋值）。
+  pos('no assignment (dead-pure 消解后等价)', "local x,y=1 g(x)", "local x=1 g(x) local y=2");
   neg('different value', "local x,y=1 f(x) y=2 g(y)", "local x=1 f(x) local y=3 g(y)");
   neg('read in nested if', "local x,y=1 if cond then h(y) end y=2 g(y)", "local x=1 if cond then h(y) end local y=2 g(y)");
   neg('multi read between', "local a,x,y=1 f(x) x,y=2,3 g(x,y)", "local a=1 f(x) local x,y=2,3 g(x,y)");

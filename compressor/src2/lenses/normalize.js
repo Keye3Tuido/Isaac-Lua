@@ -121,7 +121,34 @@
         var src = ir.src, info = ir.info, out = [];
         for(var si=0; si<ir.ast.body.length; si++){
           var st = ir.ast.body[si];
-          if(st.type !== 'LocalStatement' || !st.variables || !st.init) continue;
+          if(st.type !== 'LocalStatement' || !st.variables) continue;
+          // 多变量全无使用的纯声明删除（uses===0 死代码消除）：local a,b,c=1 → ''
+          // 条件：全部变量无使用/未捕获/SSA 单版本；全部显式 init 为纯表达式（无副作用，
+          // f() 等调用 init 不删）；隐式 nil（少值/无 init 声明）天然纯。
+          // 实证：local a,b,c=1 与 local a=1（原单变量路径已消）应同口径为空。
+          var initLen = st.init ? st.init.length : 0;
+          if(st.variables.length > 1 || initLen !== 1){
+            var deadOk = true;
+            for(var vi=0; vi<st.variables.length; vi++){
+              var dv = st.variables[vi];
+              if(dv.type !== 'Identifier'){ deadOk = false; break; }
+              var db = info.varOf.get(dv);
+              if(!db || db.decls.length !== 1 || db.captured || db.uses.length !== 0){ deadOk = false; break; }
+              var dEntry = ir.ssa.byBinding.get(db);
+              if(!dEntry || dEntry.versions.length !== 1){ deadOk = false; break; }
+            }
+            if(deadOk && st.init){
+              for(var di=0; di<st.init.length; di++){
+                if(!isPureExpr(st.init[di])){ deadOk = false; break; }
+              }
+            }
+            if(deadOk){
+              out.push({ id: 'roInline:deadDecl@' + st.range[0],
+                _edits: [{ start: st.range[0], end: st.range[1], text: '' }] });
+              continue;
+            }
+          }
+          if(!st.init) continue;
           if(st.variables.length !== 1 || st.init.length !== 1) continue;
           var v = st.variables[0], ie = st.init[0];
           if(v.type !== 'Identifier' || !ie || !ie.range) continue;

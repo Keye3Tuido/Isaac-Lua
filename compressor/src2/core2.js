@@ -201,7 +201,8 @@
         if(prev !== null && r.bodyLength >= prev){ break; }   // 无改善：同上
         acc = r;   // 仅在实际改善时替换（aliasMap/trace 始终与 acc.body 同源）
         prev = r.bodyLength;
-        cur = r.output;
+        if(r.bodyLength === 0){ break; }   // 产物已为空（死代码消尽）：最简形态，不再迭代
+        cur = r.output;                  // （避免下一轮 compressOnce 对空输入抛「输入为空」）
       }
       // 报告 aliasMap = 最终 IR 的全量还原映射（证据随 IR 跨轮传递，introducedBy
       // 出处保留；等价判定层 equivalent() 负责差量，此处全量携带供 harness 使用）
@@ -406,7 +407,8 @@
           if(prev !== null && r.bodyLength >= prev) return done();   // 无改善
           acc = r;
           prev = r.bodyLength;
-          cur = r.output;
+          if(r.bodyLength === 0) return done();   // 产物已为空（死代码消尽）：最简形态，不再迭代
+          cur = r.output;                          // （避免下一轮 compressOnceAsync 对空输入抛错）
           // 迭代收敛 UI：每轮实际改善后回调当前最优输出（输入栏不动，输出栏逐轮覆盖；
           // 仅在 acc 被替换时回调——无改善/不动点轮不产生更长中间态，避免输出栏来回闪烁）
           if(opts.onIteration) opts.onIteration({ output: r.output, bodyLength: r.bodyLength, round: round });
