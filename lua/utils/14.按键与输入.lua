@@ -28,12 +28,12 @@ l BrokenKeys=P1;WaitFrames=P2;local A,C,D,M,N,T=Isaac.AddCallback,0,'GetFrameCou
 模板id: input-lag
 名称: 输入延迟
 说明: |-
-  将玩家的输入延迟{P1}帧（约{P2}），可在控制台输入lua Lag = 数值 来调整延迟帧数。
+  将玩家的输入延迟{P1}帧（约{P2}秒）
 参数:
-  P1: {类型: "整数", 默认: "15", 性质: "全局", 说明: "行首全局变量Lag，延迟帧数"}
-  P2: {类型: "描述", 默认: "0.5秒", 性质: "局部", 说明: "说明文本中的延迟秒数显示值（15帧÷30fps=0.5秒）"}
+  P1: {类型: "整数", 默认: "15", 性质: "局部", 说明: "延迟帧数"}
+  P2: {类型: "描述", 默认: "0.25", 性质: "局部", 说明: "说明文本中的延迟秒数显示值（15帧÷60fps=0.25秒）"}
 ]]
-l Lag=P1 local B,C,H,I,M,N,O,T,A,G=table,'ControllerIndex',InputHook,Isaac,ModCallbacks,Input,{},{}A,G=I.AddCallback,I.GetFrameCount A(T,M.MC_POST_PLAYER_RENDER,function(_,p)local t={i=p[C],t=G(),o={}}for k,v in pairs(ButtonAction)do t.o[v]={a=N.IsActionTriggered(v,t.i),p=N.IsActionPressed(v,t.i),v=N.GetActionValue(v,t.i)}end B.insert(O,t)end,0)A(T,M.MC_INPUT_ACTION,function(_,e,h,a)e=e and e:ToPlayer()local t,r,v=G()for k=#O,1,-1 do v=O[k]r=t-v.t-Lag if r>0 then B.remove(O,k)elseif e and v.i==e[C]and r==0 then if h==H.GET_ACTION_VALUE then return v.o[a].v elseif h==H.IS_ACTION_PRESSED then return v.o[a].p elseif h==H.IS_ACTION_TRIGGERED then return v.o[a].a end end end end)
+l local b,c,j,l,m,n,A,B,r,g=InputHook,ModCallbacks,Input,table,pairs,'ControllerIndex',{},{},Isaac.AddCallback,Isaac.GetFrameCount r(B,c.MC_POST_PLAYER_RENDER,function(d,p,f)f=g()for i=#A,1,-1 do if A[i].f<f then l.remove(A,i)end end d=p[n]l.insert(A,1,{f=f+P1,d=d,k={}})for _,v in m(ButtonAction)do A[1].k[v]={[b.IS_ACTION_PRESSED]=j.IsActionPressed(v,d),[b.IS_ACTION_TRIGGERED]=j.IsActionTriggered(v,d),[b.GET_ACTION_VALUE]=j.GetActionValue(v,d)}end end,0)r(B,c.MC_INPUT_ACTION,function(f,e,h,a)e=e and e:ToPlayer()if e then f=g()for _,O in m(A)do if O.f==f and O.d==e[n]then return O.k[a][h]end end end end)
 
 --[[
 作为模板: true
