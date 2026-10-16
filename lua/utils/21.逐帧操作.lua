@@ -21,7 +21,7 @@
   - ‘q’ : 卡牌
   - ‘;’ : 掉落
 ]]
-l local c,d,f,e,n,a=GetPtrHash,Game,Isaac,'adwsjlike q;',ModCallbacks.MC_INPUT_ACTION,{}for i=1,#e do a[e:byte(i)]=i-1 end function FrameOp(i,k,j,l,m)if i and k and not d():IsPaused()then j=j or 1+d():GetFrameCount()i,l=c(i),{}for i=1,#k do l[a[k:byte(i)]]=true end m=function(t,e,h,a)if h==InputHook.GET_ACTION_VALUE then t,h=1,0 else t,h=true,false end k=j-d():GetFrameCount()if k<0 then f.RemoveCallback(l,n,m)elseif k==0 and e and i==c(e)then return l[a]and t or h end end f.AddCallback(l,n,m)end end
+l local c,d,f,e,n,a=GetPtrHash,Game,Isaac,'adwsjlike q;',ModCallbacks.MC_INPUT_ACTION,{}for i=1,#e do a[e:byte(i)]=i-1 end function FrameOp(i,e,j,k,l,h)if i and e and not d():IsPaused()then j=j or 1+d():GetFrameCount()i,k=c(i),{}for i=1,#e do h=a[e:byte(i)]if h then k[h]=true end end if next(k)then l=function(m,e,h,a)m=j-d():GetFrameCount()if m<0 then f.RemoveCallback(k,n,l)elseif m==0 and e and i==c(e)and k[a]then return h~=InputHook.GET_ACTION_VALUE or 1 end end f.AddCallback(k,n,l)end end end
 
 --[=[ 源代码
 
@@ -30,27 +30,27 @@ local KeyMap={}
 for i=1,#Keys do
     KeyMap[Keys:byte(i)]=i-1
 end
-function FrameOp(player, ops, frame, tab, cb)
+function FrameOp(player, ops, frame, tab, cb, key)
     if player and ops and not Game():IsPaused()then
         frame = frame or 1+Game():GetFrameCount()
         player,tab=GetPtrHash(player),{}
         for i=1,#ops do
-            tab[KeyMap[ops:byte(i)]]=true
-        end
-        cb = function(t,e,h,a)
-            if h==InputHook.GET_ACTION_VALUE then
-                t,h=1,0
-            else
-                t,h=true,false
-            end
-            ops=frame-Game():GetFrameCount()
-            if ops<0 then
-                Isaac.RemoveCallback(tab,ModCallbacks.MC_INPUT_ACTION,cb)
-            elseif ops==0 and e and GetPtrHash(e)==player then
-                return tab[a]and t or h
+            key=KeyMap[ops:byte(i)]
+            if key then
+                tab[key]=true
             end
         end
-        Isaac.AddCallback(tab,ModCallbacks.MC_INPUT_ACTION,cb)
+        if next(tab)then
+            cb = function(m,e,h,a)
+                m=frame-Game():GetFrameCount()
+                if m<0 then
+                    Isaac.RemoveCallback(tab,ModCallbacks.MC_INPUT_ACTION,cb)
+                elseif m==0 and e and GetPtrHash(e)==player and tab[a]then
+                    return h~=InputHook.GET_ACTION_VALUE or 1
+                end
+            end
+            Isaac.AddCallback(tab,ModCallbacks.MC_INPUT_ACTION,cb)
+        end
     end
 end
 
