@@ -21,7 +21,7 @@
   - ‘q’ : 卡牌
   - ‘;’ : 掉落
 ]]
-l local c,d,f,e,n,a=GetPtrHash,Game,Isaac,'adwsjlike q;',ModCallbacks.MC_INPUT_ACTION,{}for i=1,#e do a[e:byte(i)]=i-1 end function FrameOp(i,e,j,k,l,h)if i and e and not d():IsPaused()then j=j or 1+d():GetFrameCount()i,k=c(i),{}for i=1,#e do h=a[e:byte(i)]if h then k[h]=true end end if next(k)then l=function(m,e,h,a)m=j-d():GetFrameCount()if m<0 then f.RemoveCallback(k,n,l)elseif m==0 and e and i==c(e)and k[a]then return h~=InputHook.GET_ACTION_VALUE or 1 end end f.AddCallback(k,n,l)end end end
+l local c,d,e,n,a,b=GetPtrHash,Isaac,'adwsjlike q;',ModCallbacks.MC_INPUT_ACTION,{}b=d.GetFrameCount for i=1,#e do a[e:byte(i)]=i-1 end function FrameOp(i,e,j,k,l,h)if i and e and not Game():IsPaused()then j=j or 1+b()i,k=c(i),{}for i=1,#e do h=a[e:byte(i)]if h then k[h]=true end end if next(k)then l=function(m,e,h,a)m=j-b()if m<0 then d.RemoveCallback(k,n,l)elseif m==0 and e and i==c(e)and k[a]then return h~=InputHook.GET_ACTION_VALUE or 1 end end d.AddCallback(k,n,l)end end end
 
 --[=[ 源代码
 
@@ -32,7 +32,7 @@ for i=1,#Keys do
 end
 function FrameOp(player, ops, frame, tab, cb, key)
     if player and ops and not Game():IsPaused()then
-        frame = frame or 1+Game():GetFrameCount()
+        frame = frame or 1+Isaac.GetFrameCount()
         player,tab=GetPtrHash(player),{}
         for i=1,#ops do
             key=KeyMap[ops:byte(i)]
@@ -42,7 +42,7 @@ function FrameOp(player, ops, frame, tab, cb, key)
         end
         if next(tab)then
             cb = function(m,e,h,a)
-                m=frame-Game():GetFrameCount()
+                m=frame-Isaac.GetFrameCount()
                 if m<0 then
                     Isaac.RemoveCallback(tab,ModCallbacks.MC_INPUT_ACTION,cb)
                 elseif m==0 and e and GetPtrHash(e)==player and tab[a]then
