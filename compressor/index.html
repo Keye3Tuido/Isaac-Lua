@@ -99,7 +99,7 @@ window.tjEvent = function(action, label){
 <!-- LuaMin 词法基础库 + v2 共享安装器模块（自注册到 window.__LuaMin2Modules），再加载 base 门面 -->
 <script src="core.js?v=3"></script>
 <script src="src2/shared/analyze.js?v=1"></script>
-<script src="src2/shared/canonical.js?v=1"></script>
+<script src="src2/shared/canonical.js?v=3"></script>
 <script src="src2/shared/encode.js?v=1"></script>
 <script src="src2/shared/purecopy.js?v=1"></script>
 <script src="src2/base.js?v=1"></script>
@@ -109,11 +109,11 @@ window.tjEvent = function(action, label){
 <script src="src2/lens.js?v=2"></script>
 <script src="src2/canonical2.js?v=2"></script>
 <script src="src2/lenses/alias.js?v=2"></script>
-<script src="src2/lenses/chain.js?v=2"></script>
+<script src="src2/lenses/chain.js?v=3"></script>
 <script src="src2/lenses/encode.js?v=2"></script>
 <script src="src2/lenses/factor.js?v=2"></script>
 <script src="src2/lenses/hoist.js?v=2"></script>
-<script src="src2/lenses/normalize.js?v=2"></script>
+<script src="src2/lenses/normalize.js?v=3"></script>
 <script src="src2/lenses/block.js?v=2"></script>
 <script src="src2/schedule.js?v=2"></script>
 <script src="src2/search2.js?v=1"></script>
@@ -141,7 +141,7 @@ window.tjEvent = function(action, label){
     'block.wrap':'块包装','hoist.fwdNil':'nil上提','hoist.localsMerge':'局部合并','hoist.funcMerge':'函数合并',
     'hoist.varReuse':'变量复用','hoist.inlineValueToHeader':'值内联到头部','hoist.placeholderHoist':'占位上提',
     'norm.bracketDot':'括号转点','norm.readonlyInline':'只读内联','norm.constFold':'常量折叠','norm.constCondition':'常量条件',
-    'norm.constLoop':'常量循环','norm.earlyReturn':'提前返回','norm.deMorgan':'德摩根','norm.tableFields':'表字段',
+    'norm.constLoop':'常量循环','norm.earlyReturn':'提前返回','norm.deMorgan':'德摩根','norm.notCompare':'not比较取反','norm.tableFields':'表字段',
     'norm.boolNil':'布尔nil','norm.numbers':'数字','norm.parens':'括号','norm.ifNot':'if-not',
     'norm.splitMultiAssign':'拆分多赋值','norm.inlinePure':'纯内联','norm.tailSymbol':'尾符号',
     'encode.semicolon':'分号消除','encode.compareReorder':'比较重排','encode.trailingSep':'尾分隔符',
@@ -151,6 +151,10 @@ window.tjEvent = function(action, label){
     if(!name) return '';
     var base=name.replace(/ ×\d+$/,'');
     var suffix=name.slice(base.length);
+    // inject:X 是搜索层的别名内联逆步（search2 invStep 命名），按前缀统一译为
+    // 纯动作名「内联别名」（不带别名随机字母，与透镜名映射表的参数化风格一致），
+    // 不依赖映射表逐项登记——避免新增透镜时漏配导致又出现难懂的原始名。
+    if(base.indexOf('inject:')===0) return '内联别名'+suffix;
     return (lensNameMap[base]||base)+suffix;
   }
 
