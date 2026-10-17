@@ -48,7 +48,7 @@
     }
 
     return {
-      name: 'chain.cse', kind: 'extract',
+      name: 'chain.cse', kind: 'extract', commitAtZero: true,
       requires: ['ssa', 'metatableFree'], provides: ['alias:chain'], consumes: [], conflicts: [],
       match: function(ir){
         var src = ir.src, info = ir.info, IR = needIR();
@@ -222,7 +222,7 @@
         var taken = ir._base._collectTakenNames(ir.ast);
         ir.aliases.entries.forEach(function(_, n){ taken.add(n); });
 
-        var out = [];
+        var out = [], priority = [];
         chainGroups.forEach(function(sites, text){
           if(sites.length < 2) return;
           if(!isPureChain(sites[0])) return;
@@ -231,6 +231,7 @@
           if(saving <= 0) return;
           var alias = ir._base._createNameAllocator(new Set(taken))();
           if(!alias) return;
+          taken.add(alias);   // 让后续链分配到不同名（共享根组候选会同时提交多条链，重名会冲突）
           var insertPos = insertPosOf(sites[0].root);
           out.push({
             id: 'chain:' + text + '@' + sites[0].range[0],
@@ -238,16 +239,87 @@
             rootAlias: sites[0].rootAlias, indexAlias: sites[0].indexAlias, fields: sites[0].fields
           });
         });
-        return out;
+        // 共享根联合提取（组候选）：rootAlias 被 ≥2 条链共享、且根的全部读点都被这些链的
+        // site 覆盖时，一次把同根的链全部按全局长名（root.target.fields）提取、删根。
+        // 逐链提取时先提的链的声明里仍在读根（a=m.X），导致后提的链永远吃不干净根、留下
+        // 冗余根声明（m=Isaac + a=m.AddCallback 的实证）；联合提取直接产出 Isaac.AddCallback
+        // 形态，根随删（Isaac.AddCallback 被拆成 Isaac+'AddCallback' 的修复）。
+        var byRoot = new Map();
+        out.forEach(function(c){
+          if(!c.rootAlias) return;
+          if(!byRoot.has(c.rootAlias)) byRoot.set(c.rootAlias, []);
+          byRoot.get(c.rootAlias).push(c);
+        });
+        byRoot.forEach(function(cands, rootName){
+          if(cands.length < 2) return;
+          // 根目标全局名：entries 里的 global 条目 或 源内透明别名（local x=Global）都登记在
+          // globalByAlias——源内别名（local m=Isaac）不在 aliases.entries，须从 globalByAlias 取。
+          var rootTarget = globalByAlias[rootName];
+          if(rootTarget === undefined) return;
+          var total = 0;
+          info.bindings.forEach(function(b){ if(b.name === rootName) total += b.uses.length; });
+          var covered = 0;
+          cands.forEach(function(c){ covered += c.sites.length; });
+          if(total === 0 || total !== covered) return;   // 根还有链外读点：不可删根
+          priority.push({
+            id: 'chaingroup:' + rootName + '@' + cands[0].sites[0].range[0],
+            _group: true, rootAlias: rootName, rootTarget: rootTarget, chains: cands,
+            insertPos: cands[0].insertPos
+          });
+        });
+        // 单链根改写：根别名 R 的全部读点都是同一条链 R.F 的 site（R 仅此一条链）时，
+        // 把 R 的声明初值直接改写为全链 R.target.F、site 全部还原为 R——比「根 + 新别名」
+        // 更省（省掉新别名声明的开销）。覆盖 local c=CallbackPriority + c.EARLY 场景。
+        chainGroups.forEach(function(sites, text){
+          var R = sites[0].rootAlias;
+          if(!R) return;
+          var rootTarget = globalByAlias[R];
+          if(rootTarget === undefined) return;
+          var chainCount = 0;
+          chainGroups.forEach(function(s2){ if(s2[0].rootAlias === R) chainCount++; });
+          if(chainCount !== 1) return;   // 多链场景交给上面的组提取
+          var total = 0;
+          info.bindings.forEach(function(b){ if(b.name === R) total += b.uses.length; });
+          if(total === 0 || total !== sites.length) return;   // R 还有链外读点
+          priority.push({
+            id: 'chainretarget:' + text + '@' + sites[0].range[0],
+            _retarget: true, rootAlias: R, rootTarget: rootTarget,
+            fields: sites[0].fields, sites: sites
+          });
+        });
+        // 组提取与单链根改写优先于逐链个体候选——盈亏平衡时也产出整链/改写形态（用户
+        // 明确期望 Isaac.AddCallback / CallbackPriority.EARLY 整链，且等长不花成本）。
+        return priority.concat(out);
       },
 
       cost: function(ir, cand){
-        var built = buildChainEdits(ir, cand);
+        var built = cand._group ? buildGroupEdits(ir, cand)
+                  : (cand._retarget ? buildRetargetEdits(ir, cand) : buildChainEdits(ir, cand));
         return { delta: lensMod.encodeDelta(ir.src, needIR().applyTextEdits(ir.src, built.edits), deps), confidence: 'exact' };
       },
 
       // extract：插入整链别名声明 + 使用点替换；完全消耗的全局/索引别名连带删声明
       extract: function(ir, cand){
+        if(cand._retarget){
+          var builtR = buildRetargetEdits(ir, cand);
+          // 根别名是【已存在】的声明（仅改初值），非透镜注入——declRange=null + injected，
+          // 走绑定级存活校验（INV-1 同 localsMerge 合批注入的口径）。
+          return { edits: builtR.edits, form: { aliasEntries: [{ name: cand.rootAlias, entry: {
+            kind: 'chain', target: builtR.fullText, declRange: null, injected: true,
+            introducedBy: 'chain.cse', roundtripKey: cand.id
+          }}] }, residue: {} };
+        }
+        if(cand._group){
+          var builtG = buildGroupEdits(ir, cand);
+          var aliasEntries = cand.chains.map(function(ch, i){
+            return { name: ch.alias, entry: {
+              kind: 'chain', target: builtG.fullTexts[i], declRange: null, injected: true,
+              introducedBy: 'chain.cse', roundtripKey: cand.id + '/' + ch.alias
+            } };
+          });
+          return { edits: builtG.edits, form: { aliasEntries: aliasEntries },
+                   residue: { removedAliases: builtG.removedAliases } };
+        }
         var built = buildChainEdits(ir, cand);
         var form = { aliasEntries: [{ name: cand.alias, entry: {
           kind: 'chain', target: built.chainText, declRange: built.declRange,
@@ -327,6 +399,69 @@
         headerEnd = ir.ast.body[drop-1].range[1];
       return { edits: edits, chainText: chainText, declRange: declRange,
                removedAliases: removedAliases, isLeading: cand.insertPos <= headerEnd };
+    }
+
+    // buildGroupEdits(ir, cand)：共享根联合提取的完整编辑组——同根的链全部按全局长名
+    // （rootTarget.fields）提取并插入声明，site 替换为各自别名，根与被消耗索引别名连带
+    // 删声明（按语句合并下标后一次性删除，防区间重叠）。
+    function buildGroupEdits(ir, cand){
+      var src = ir.src, info = ir.info;
+      var edits = [];
+      var fullTexts = [];
+      var removedAliases = [cand.rootAlias];
+
+      cand.chains.forEach(function(ch){
+        var fullText = cand.rootTarget + '.' + ch.fields.join('.');
+        fullTexts.push(fullText);
+        // 插入声明（统一前置空格断开标识符粘连，v1 同规则）
+        var sep = (ch.insertPos > 0) ? ' ' : '';
+        edits.push({ start: ch.insertPos, end: ch.insertPos, text: sep + 'local ' + ch.alias + '=' + fullText + ' ' });
+        ch.sites.forEach(function(s){
+          edits.push({ start: s.range[0], end: s.range[1], text: ch.alias });
+        });
+        // 索引别名完全消耗（f[h] 反转成 f.Field 后 h 的声明可删）
+        if(ch.indexAlias && ir.aliases.entries.has(ch.indexAlias)){
+          var total2 = 0;
+          info.bindings.forEach(function(b){ if(b.name === ch.indexAlias) total2 += b.uses.length; });
+          if(total2 > 0 && total2 <= ch.sites.length && removedAliases.indexOf(ch.indexAlias) < 0)
+            removedAliases.push(ch.indexAlias);
+        }
+      });
+
+      // 删除根 + 被消耗索引别名（按语句合并下标后一次性删除，防区间重叠）
+      var deleteByStmt = new Map();
+      removedAliases.forEach(function(name){
+        var found = findDeclStmt(ir, name);
+        if(found){
+          if(!deleteByStmt.has(found.st)) deleteByStmt.set(found.st, new Set());
+          deleteByStmt.get(found.st).add(found.vi);
+        }
+      });
+      deleteByStmt.forEach(function(viSet, st){
+        var vis = Array.from(viSet).sort(function(a,b){ return a-b; });
+        edits = edits.concat(aliasMod.declItemDeleteEdits(st, vis));
+      });
+
+      return { edits: edits, fullTexts: fullTexts, removedAliases: removedAliases };
+    }
+
+    // buildRetargetEdits(ir, cand)：单链根改写——把根别名声明的初值改写为全链
+    // （rootTarget.fields），site 全部还原为根别名。根别名仍保留（其 AliasEnv 条目经
+    // extract 的 form 登记为全链别名，canonical 归一按新初值还原）。
+    function buildRetargetEdits(ir, cand){
+      var edits = [];
+      var fullText = cand.rootTarget + '.' + cand.fields.join('.');
+      var initRange = null;
+      var found = findDeclStmt(ir, cand.rootAlias);
+      if(found && found.st.init && found.st.init[found.vi] && found.st.init[found.vi].range){
+        var ie = found.st.init[found.vi];
+        initRange = [ie.range[0], ie.range[0] + ('local '.length + cand.rootAlias.length + 1)];
+        edits.push({ start: ie.range[0], end: ie.range[1], text: fullText });
+      }
+      cand.sites.forEach(function(s){
+        edits.push({ start: s.range[0], end: s.range[1], text: cand.rootAlias });
+      });
+      return { edits: edits, fullText: fullText, initRange: initRange };
     }
 
     // findDeclStmt：按名定位顶层声明语句项（供被消耗别名的删除编辑）

@@ -113,8 +113,20 @@
     return cur;
   }
 
+  // findSingleUseInline(ir) -> edits|null：取首个有效候选（normSingleUseAdjacent 不动点用）。
   function findSingleUseInline(ir){
+    var r = collectSingleUseInlines(ir);
+    return r.length ? r[0].edits : null;
+  }
+
+  // collectSingleUseInlines(ir, filterFn?) -> [{key, edits}]：收集全部「单用邻接代入」候选。
+  // 与 findSingleUseInline 同一份判定逻辑（透镜 norm.inlineValue 复用，保证透镜产物
+  // 与 canonical 归一层的判定零分叉）；normSingleUseAdjacent 仍按首个候选逐轮代入。
+  // filterFn(rhsNode)：可选过滤器，返回 false 则跳过该候选（透镜侧用它排除函数声明 RHS——
+  // 单用局部函数不内联成 IIFE，交由函数类既有优化处理；归一层不传则保持原行为）。
+  function collectSingleUseInlines(ir, filterFn){
     var info = ir.info, src = ir.src;
+    var results = [];
     // 收集所有块语句列：stmt -> {list, idx}
     var locOf = new Map();
     function registerList(list){
@@ -246,6 +258,13 @@
           if(se.versions[1].useSites.length !== 1) continue;
           formB2 = true;
         }else{
+          // 「nil 填充槽」仅在末位 init 非多值时成立：末位 init 是调用/vararg 时，
+          // idx>=dinit 的槽位是被多值展开填充的（b=2,c=3），删槽会让后续槽位移位
+          // （declhoist 多值守卫：local a,b,c=f() 删 b 会把 c 从 3 移位成 2）。
+          var initList = declLoc.stmt.init || [];
+          var lastInit = initList.length ? initList[initList.length-1] : null;
+          if(lastInit && (lastInit.type==='CallExpression'||lastInit.type==='StringCallExpression'
+             ||lastInit.type==='TableCallExpression'||lastInit.type==='VarargLiteral')) continue;
           if(se.versions[0].useSites.length !== 0) continue;
           if(se.versions[1].useSites.length !== 1) continue;
         }
@@ -309,9 +328,10 @@
           }
         }
       }
-      return edits;
+      if(filterFn && !filterFn(rhsNode)) continue;
+      results.push({ key: 'inlineValue@' + defStmt.range[0], edits: edits });
     }
-    return null;
+    return results;
   }
 
 
@@ -477,7 +497,8 @@
     return _irMod;
   }
 
-  var api = { buildAliasMap: buildAliasMap, finalReview: finalReview, equivalent: equivalent, luaValidateOf: luaValidateOf };
+  var api = { buildAliasMap: buildAliasMap, finalReview: finalReview, equivalent: equivalent,
+              luaValidateOf: luaValidateOf, collectSingleUseInlines: collectSingleUseInlines };
   (root.__LuaMin2Parts = root.__LuaMin2Parts || []).push({
     name: 'canonical2',
     install: function(C){ for(var k in api) C[k] = api[k]; }

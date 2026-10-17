@@ -17,19 +17,21 @@ function run(){
 
   // 每个用例：{name, code, wantInv, wantShorterThanGreedy}
   const cases = [
-    // ① 输入自带别名，纯撤销更短（贪心保留别名，搜索 inv 内联掉）
+    // ① 输入自带别名，纯撤销更短。【norm.inlineValue 上线后】贪心阶段已直接单用内联，
+      //    搜索无需 inv（优化前移）；只查等价与不差。
     { name: 'inv:源内单用全局别名撤销',
       code: 'l local I=Isaac print(I)',
-      wantInv: true, wantShorterThanGreedy: true },
+      wantInv: false, wantShorterThanGreedy: false },
     // ② 撤销后重提取的对照形态：贪心透明消解（transparent:I 重定向到已折叠全局）
     //    已直达最优，搜索无需 inv 也不得变差（原 inv 用例，贪心进化后转为无退化门）
     { name: 'inv:撤销后重折叠',
       code: 'l local I=Isaac print(I) print(Isaac.GetPlayer) print(Isaac.GetPlayer) print(Isaac.GetPlayer)',
       wantInv: false, wantShorterThanGreedy: false },
-    // ③ 手写调用链别名撤销（init 含调用，readonlyInline 不动它；单用内联更短）
+    // ③ 手写调用链别名撤销（init 含调用，readonlyInline 不动它）。【norm.inlineValue 上线后】
+      //    贪心阶段已直接单用内联，搜索无需 inv（优化前移）；只查等价与不差。
     { name: 'inv:源内调用链别名撤销',
       code: 'l local D=Game():GetRoom() print(D)',
-      wantInv: true, wantShorterThanGreedy: true },
+      wantInv: false, wantShorterThanGreedy: false },
     // ④ 两条源内别名，其一值得撤销其一保留
     { name: 'inv:混合别名选择性撤销',
       code: "l local I=Isaac local G=Game print(I) print(G) print(G) print(G)",

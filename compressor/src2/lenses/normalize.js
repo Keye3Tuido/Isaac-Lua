@@ -387,6 +387,8 @@
           out.push({ id:'earlyRet@'+body[0].range[0],
             _edits:[{ start:body[0].range[0], end:rest[rest.length-1].range[1], text:text }] });
         }
+        // 主块顶部的 return 守卫同样可折叠（return 直接结束整个块）
+        processBody(ir.ast.body, 'return');
         walkAst(ir.ast.body, function(n){
           if(n.type === 'FunctionDeclaration'){ processBody(n.body, 'return'); return true; }
           if(n.type === 'WhileStatement' || n.type === 'RepeatStatement'
@@ -435,6 +437,73 @@
       cost: function(ir, cand){ return { delta: preview(ir, cand._edits, deps), confidence: 'exact' }; },
       extract: function(ir, cand){ return { edits: cand._edits, form: {}, residue: {} }; },
       inject: oneWayInject   // 单向：not 分配回双分支无压缩收益
+    };
+  }
+
+  /* ---------- norm.inlineValue：单用邻接代入（local B=E <紧邻语句单读 B> → 读点代入 (E)） ----------
+   * RHS 允许含调用/全局（求值时机不变：定义句与读点语句相邻、读点不穿函数边界）；
+   * 判定直接复用 canonical2.collectSingleUseInlines（与 canonical 归一层 normSingleUseAdjacent
+   * 同一份逻辑，零分叉），verify 走 equivalent——其兜底 normSingleUseAdjacent 正是本形态的
+   * 双侧归一，故 `local p=Var+func() print(p)` → `print((Var+func()))` 可被严格验证。 */
+  function createInlineValueLens(deps){
+    return {
+      name: 'norm.inlineValue', kind: 'rewrite',
+      requires: ['ssa'], provides: [], consumes: [], conflicts: [],
+      match: function(ir){
+        if(!canonMod || !canonMod.collectSingleUseInlines) return [];
+        // 排除函数声明 RHS：单用局部函数不内联成 IIFE（(function..end)()），交由函数类
+        // 既有优化（hoist.funcMerge 等）处理——本透镜聚焦「含调用/全局的值表达式」单用内联。
+        return canonMod.collectSingleUseInlines(ir, function(rhs){ return rhs.type !== 'FunctionDeclaration'; })
+          .map(function(c){ return { id: c.key, _edits: c.edits }; });
+      },
+      cost: function(ir, cand){ return { delta: preview(ir, cand._edits, deps), confidence: 'exact' }; },
+      extract: function(ir, cand){ return { edits: cand._edits, form: {}, residue: {} }; },
+      inject: oneWayInject,   // 单向：拆回声明形态不唯一
+      verify: function(ir, cand, result){
+        try{ return !!canonMod.equivalent(ir.src, result.ir.src, deps, ir, result.ir, {pureInline:true}); }
+        catch(e){ return false; }
+      }
+    };
+  }
+
+  /* ---------- norm.notCompare：not(X == Y) → X ~= Y（反向同） ----------
+   * 比较取反消 not：== ↔ ~=（Lua 语言层定义 ~= 为 not (a==b)，含 __eq 元方法亦严格等价）。
+   * 大小比较 < <= > >= 不纳入：__lt/__le 元方法可不一致，not(a<b) 与 a>=b 不严格等价。
+   * canonical not-比较归一覆盖等价。 */
+  function createNotCompareLens(deps){
+    var CMP_INV = { '==':'~=', '~=':'==' };
+    var CMP_PRIORITY = 3;   // BIN_PRIORITY 比较档位：操作数优先级 ≤3 时包括号防粘连/链式比较
+    function wrapOperand(node, src){
+      var t = src.slice(node.range[0], node.range[1]);
+      if(node.type === 'BinaryExpression' || node.type === 'LogicalExpression'){
+        if(exprPriority(node) <= CMP_PRIORITY || node.type === 'LogicalExpression') return '(' + t + ')';
+      }
+      return t;
+    }
+    return {
+      name: 'norm.notCompare', kind: 'rewrite',
+      requires: [], provides: [], consumes: [], conflicts: [],
+      match: function(ir){
+        var src = ir.src, out = [];
+        walkAst(ir.ast.body, function(n){
+          if(n.type === 'UnaryExpression' && n.operator === 'not' && n.range
+             && n.argument && n.argument.type === 'BinaryExpression'
+             && CMP_INV[n.argument.operator] && n.argument.left && n.argument.left.range
+             && n.argument.right && n.argument.right.range){
+            var a = n.argument;
+            var text = wrapOperand(a.left, src) + CMP_INV[a.operator] + wrapOperand(a.right, src);
+            if(text.length < n.range[1]-n.range[0]){
+              out.push({ id:'notCompare@'+n.range[0],
+                _edits:[{ start:n.range[0], end:n.range[1], text:text }] });
+              return false;
+            }
+          }
+        });
+        return out;
+      },
+      cost: function(ir, cand){ return { delta: preview(ir, cand._edits, deps), confidence: 'exact' }; },
+      extract: function(ir, cand){ return { edits: cand._edits, form: {}, residue: {} }; },
+      inject: oneWayInject   // 单向：加 not 回比较无压缩收益
     };
   }
 
@@ -1364,6 +1433,8 @@
       createConstLoopLens(deps),
       createEarlyReturnLens(deps),
       createDeMorganLens(deps),
+      createNotCompareLens(deps),
+      createInlineValueLens(deps),
       createTableFieldsLens(deps),
       createBoolNilLens(deps),
       createNumbersLens(deps),
