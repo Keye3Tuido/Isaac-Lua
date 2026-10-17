@@ -664,8 +664,13 @@
 
       function stringContent(node){
         if(node.type!=='StringLiteral') return null;
+        // constFold 等归一产物是 {type:'StringLiteral', content:X}（无 raw/value）——
+        // normExpr 不是幂等的（对已归一内容再跑一遍会撞上这种合成节点），此处必须兼容，
+        // 否则下游 litConst 会对 undefined 调 .indexOf 崩溃。
+        if(typeof node.content==='string') return node.content;
         var raw=node.raw;
-        if(typeof raw!=='string'||raw.length<2) return raw;
+        if(typeof raw!=='string') return (typeof node.value==='string')?node.value:null;
+        if(raw.length<2) return raw;
         // 长字符串 [[...]] 在 Lua 里不处理转义，与 '...' / "..." 内容含义不同，不归一化
         //（unquoteShort 只认短字符串引号，长字符串返回 null）。
         return unquoteShort(raw);
@@ -916,6 +921,17 @@
           var dmFlip = (node.operator==='or') ? 'and' : 'or';
           return {type:'UnaryExpression', operator:'not', argument:{type:'LogicalExpression', operator:dmFlip, left:normExpr(node.left.argument), right:normExpr(node.right.argument)}};
         }
+        // not-比较归一：not (X == Y) ≡ X ~= Y；not (X ~= Y) ≡ X == Y。
+        // Lua 语言层把 ~= 定义为 not (a==b)（__eq 只参与 ==），两侧一致施加严格等价。
+        // 大小比较 < <= > >= 不纳入：__lt/__le 元方法可不一致，not(a<b) 与 a>=b 不严格等价。
+        // 取反后的比较再过一遍 normExpr：让操作数走同一套比较重排（操作数字典序），
+        // 否则「守卫构造的 not(x==y)」与「手写 not(x==y)」会因重排时机不同而归一形态分叉。
+        if(node.type==='UnaryExpression' && node.operator==='not'
+           && node.argument && node.argument.type==='BinaryExpression'
+           && (node.argument.operator==='=='||node.argument.operator==='~=')){
+          var invEq=(node.argument.operator==='==')?'~=':'==';
+          return normExpr({type:'BinaryExpression', operator:invEq, left:node.argument.left, right:node.argument.right});
+        }
         // 比较运算归一：a OP b ≡ b FLIP(OP) a（操作数字典序），仅当至多一侧有副作用
         if(node.type==='BinaryExpression'){
           var op2=node.operator;
@@ -966,7 +982,16 @@
         var rest=normBlock(rawBody.slice(i));
         var orCond=conds[0];
         for(var c=1;c<conds.length;c++) orCond={type:'LogicalExpression', operator:'or', left:orCond, right:conds[c]};
-        var notCond={type:'UnaryExpression', operator:'not', argument:orCond};
+        // 仅当守卫条件恰为 ==/~= 比较时，not(cmp) 才需与「手写 if not(cmp) then」走同一
+        // not-比较归一（直接取反+操作数重排）；其余形态直接构造 not 即可——避免对非比较
+        // 条件做多余的双重归一（normExpr 非幂等，会影响后续透镜候选的验证收敛）。
+        var notCond;
+        if(conds.length===1 && orCond.type==='BinaryExpression'
+           && (orCond.operator==='=='||orCond.operator==='~=')){
+          notCond=normExpr({type:'UnaryExpression', operator:'not', argument:orCond});
+        }else{
+          notCond={type:'UnaryExpression', operator:'not', argument:orCond};
+        }
         return [{type:'If', clauses:[{type:'IfClause', cond:notCond, body:rest}]}];
       }
 
@@ -1393,7 +1418,9 @@
       }
 
       var body=ast.body;
-      var tree=normBlock(body);
+      // 主块按函数体同口径做守卫归一：主块开头的 `if c then return end` 守卫与
+      // 函数体守卫语义一致（return 直接结束整个主块），使 earlyReturn 在主块也可被验证。
+      var tree=normGuardedBody(body, 'return');
       // 逻辑 id 规范化（alpha-归一）：按最终树中首次出现顺序重新编号。
       // 原因：SSA id 原本按"遍历分配顺序"产生，而 local 合并把
       //   `local A=..  local B=f(p)..` 变成 `local A,B=..,f(p)..`，

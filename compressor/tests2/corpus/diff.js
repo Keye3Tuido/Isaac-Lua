@@ -69,11 +69,15 @@ function run(){
         return;
       }
 
-      // A2：幂等——v2 产物再过 v2，canonical 等价（双侧各用报告/推导还原映射）且长度不增
+      // A2：幂等——v2 产物再过 v2，canonical 等价（双侧各用报告/推导还原映射）且长度不增。
+      // pureInline 恒带：normPureCopyProp 是纯值单用内联的恒安全兜底归一（仅在前置口径
+      // 都对不上时才启用、只还原纯值单用内联，绝不会把不等价误判成等价）。inlinePure/
+      // inlineValue 在「纯单用」领域叠加时，缺它会假阳性（util5.编解码#2 实证：{} 不等价、
+      // {pureInline:true} 等价且双端实跑一致）。
       try{
         const r3 = L2.compress(r2.code);
         const eq = C2.equivalent(r2.body, r3.body, { luaparse, fengari, base: L1 },
-          L2._buildIR(r2.body), L2._buildIR(r3.body), {},
+          L2._buildIR(r2.body), L2._buildIR(r3.body), { pureInline: true },
           r2.report.aliasMap || undefined, r3.report.aliasMap || undefined);
         ok(eq, label, '幂等性：二次压缩 canonical 不等价');
         ok(r3.bodyLength <= r2.bodyLength, label,
