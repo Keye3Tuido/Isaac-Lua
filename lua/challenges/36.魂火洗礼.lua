@@ -37,6 +37,11 @@ l Isaac.AddCallback({},ModCallbacks.MC_POST_TEAR_INIT,function(_,t)Isaac.Spawn(E
 l Isaac.AddCallback({},ModCallbacks.MC_POST_ENTITY_REMOVE,function(p,e)p=e.Variant==EffectVariant.PURGATORY and e.SubType==1 and e.SpawnerEntity p=p and p:ToPlayer()if p then e=p:FireTear(e.Position,e.Velocity,false,true):ToTear()e:AddTearFlags(TearFlags.TEAR_EXPLOSIVE)e:Die()end end,EntityType.ENTITY_EFFECT)
 
 --[[
+说明: 炼狱恶鬼没有目标时，有概率选择玩家为目标。
+]]
+l Isaac.AddCallback({},ModCallbacks.MC_POST_EFFECT_UPDATE,function(t,e)t=e.Target if not(t and t:Exists())and .1/60>math.random()then e.Target=Game():GetNearestPlayer(e.Position)end end,EffectVariant.PURGATORY)
+
+--[[
 模板: sfx-volume-adjust
 说明: 音效182、477的音量调整至30%。
 参数: {P1: [182, 477], P2: '.3', P3: "30%"}
