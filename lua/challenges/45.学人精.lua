@@ -30,7 +30,7 @@ l local b,c,g,l,m,n,o,A,B,s,j,q=GetPtrHash,InputHook,ModCallbacks,Input,table,pa
     性质: "局部"
     说明: "延迟的时间，要与操作延迟时间相同"
 ]]
-l local c,b,g,j,l,m,n,r,s,t,u,v,w,A,x,q=CallbackPriority.EARLY,ButtonAction,InputHook,Input,ModCallbacks,Isaac,table,'ControllerIndex','IsActionTriggered','IsActionPressed','GetActionValue','GetFrameCount','AddPriorityCallback',{}x,q=b.ACTION_ITEM,b.ACTION_PILLCARD m[w]({},l.MC_POST_PLAYER_RENDER,c,function(f,p,d)f=m[v]()for i=#A,1,-1 do if A[i].f<f then n.remove(A,i)end end d=p[r]n.insert(A,1,{f=f+P1,d=d,k={[g.IS_ACTION_PRESSED]=j[t](x,d)or j[t](q,d)or nil,[g.IS_ACTION_TRIGGERED]=j[s](x,d)or j[s](q,d)or nil,[g.GET_ACTION_VALUE]=0<math.max(j[u](x,d),j[u](q,d))and 1 or nil}})end,0)m[w]({},l.MC_INPUT_ACTION,c,function(_,e,h,a)e=a==b.ACTION_DROP and e and e:ToPlayer()if e then a=m[v]()for _,O in pairs(A)do if O.f==a and O.d==e[r]then return O.k[h]end end end end)
+l local c,b,g,j,l,n,A,x,q=CallbackPriority.EARLY,ButtonAction,InputHook,Input,ModCallbacks,table,{}local o,y,m,t,s,r=Isaac.AddPriorityCallback,Isaac.GetFrameCount,j.IsActionPressed,j.IsActionTriggered,j.GetActionValue,'ControllerIndex'x,q=b.ACTION_ITEM,b.ACTION_PILLCARD o({},l.MC_POST_PLAYER_RENDER,c,function(f,p,d)f=y()for i=#A,1,-1 do if A[i].f<f then n.remove(A,i)end end d=p[r]n.insert(A,1,{f=f+15,d=d,k={[g.IS_ACTION_PRESSED]=m(x,d)or m(q,d)or nil,[g.IS_ACTION_TRIGGERED]=t(x,d)or t(q,d)or nil,[g.GET_ACTION_VALUE]=0<math.max(s(x,d),s(q,d))and 1 or nil}})end,0)o({},l.MC_INPUT_ACTION,c,function(_,e,h,a)e=a==b.ACTION_DROP and e and e:ToPlayer()if e then a=y()for _,O in pairs(A)do if O.f==a and O.d==e[r]then return O.k[h]end end end end)
 
 --[[
 模板: restart-as-character
