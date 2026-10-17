@@ -20,7 +20,8 @@
       忽略开关（块头 注释: true：整块被丢弃、编号连续、模板不注册、依赖与骨架按忽略后
       序列判定、非布尔报错、拼错键不静默忽略、只输出提示不产生警告）/
       page.js mock 渲染（mock_render.js：依赖标记、块内参数面板、罗马锚点路由、
-      显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀、块级搜索）。
+      显示无 -- 前缀、一律自动编号、名称标签、复制文本保持 --N. 前缀、块级搜索）/
+      统计口径（自动刷新 ?_r= 加载不产生 PV：页头在 hm.js 之前关闭自动 PV，page.js 静默初始上报）。
 """
 import contextlib
 import io
@@ -539,6 +540,32 @@ class TestMainEndToEnd(unittest.TestCase):
         html, kb, _shards = self._run_main("const ALL_FILES = __ALL_FILES__;\n")
         self.assertNotIn("__ALL_FILES__", html)
         self.assertEqual(len(kb), 4)
+
+    def test_main_stats_skip_auto_refresh(self):
+        """统计口径：自动刷新（?_r=）加载不算新的进入，页头须在 hm.js 之前关闭自动 PV。"""
+        with open(os.path.join(FIX, "site", "page.js"), encoding="utf-8") as f:
+            page_js = f.read()
+        html, _kb, _shards = self._run_main(page_js)
+        if "hm.baidu.com" not in html:
+            self.skipTest("未配置百度统计站点 ID")
+        head_script = html.split("</script>", 1)[0]   # 首个 <script> 即统计代码
+        self.assertIn("_hmt.push(['_setAutoPageview', false])", head_script)
+        self.assertLess(head_script.index("_setAutoPageview"), head_script.index("hm.src"),
+                        "关闭自动 PV 必须先于加载 hm.js")
+
+
+class TestStatsGuard(unittest.TestCase):
+    """page.js 侧统计口径回归：自动刷新加载静默、真实进入/用户操作照常。"""
+
+    def test_page_js_auto_refresh_guard(self):
+        with open(os.path.join(REPO_ROOT, "page.js"), encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("const AUTO_REFRESH_LOAD = /[?&]_r=/.test(location.search);", js)
+        self.assertIn("let tjSilentLoad = AUTO_REFRESH_LOAD;", js)
+        self.assertIn("if (!AUTO_REFRESH_LOAD) prewarmShortProbe();", js)
+        self.assertIn("tjSilentLoad = false;", js)
+        # 详情页直达的「补记带 hash 的 PV」已删：hm.js 自动 PV 已含 hash，保留会与真实进入双计
+        self.assertNotIn("if (location.hash) tjPage();", js)
 
 
 class TestVerifyEquivalence(unittest.TestCase):

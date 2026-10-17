@@ -99,10 +99,17 @@ function tplCommentSource(tplDef) {
 }
 
 // ========== 百度统计埋点（未配置统计时 window._hmt 不存在，全部为静默空操作） ==========
+// 自动刷新（URL 带 ?_r=<时间戳>）产生的整页重载不是一次「进入网站」：页头的统计脚本已在加载
+// hm.js 前关闭自动 PV（_setAutoPageview false），这里再让本次加载期间的手动上报全部静默，
+// DOMContentLoaded 的 route() 结束后恢复——刷新后用户主动操作（切换文件、复制、下载等）照常统计。
+const AUTO_REFRESH_LOAD = /[?&]_r=/.test(location.search);
+let tjSilentLoad = AUTO_REFRESH_LOAD;
 function tjPage() {
+    if (tjSilentLoad) return;
     if (window._hmt) window._hmt.push(['_trackPageview', location.pathname + location.hash]);
 }
 function tjEvent(action, label) {
+    if (tjSilentLoad) return;
     if (!window._hmt) return;
     window._hmt.push(['_trackEvent', 'challenge', action, label || '']);
     // 事件分析是付费功能：同步发虚拟 PV，让关键行为在免费版「受访页面」报表可见（/event/ 前缀便于区分）
@@ -167,7 +174,8 @@ function parseHash(body) {
 
 function route() {
     const hash = location.hash;
-    if (hash === '#kb') { downloadKb(); return; }   // #kb → 下载知识库 kb.json
+    // #kb → 下载知识库 kb.json；自动刷新重载该地址时不再重复下载（首次进入已下载过）
+    if (hash === '#kb') { if (AUTO_REFRESH_LOAD) showListView(); else downloadKb(); return; }
     if (hash === '#compressor') { location.replace('compressor/index.html'); return; }   // #compressor → 直达压缩器
     if (!hash || hash === '#') { showListView(); return; }
     let body = hash.slice(1);
@@ -208,8 +216,9 @@ window.addEventListener('DOMContentLoaded', function() {
     buildListUI();
     route();
     startRefreshHint();
-    prewarmShortProbe();
-    if (location.hash) tjPage();   // 从分享链接直达详情时，补记带 hash 的 PV
+    // 自动刷新加载：不预热短链（HEAD 也会在短链后台记一次访问），也不补报初始 PV
+    if (!AUTO_REFRESH_LOAD) prewarmShortProbe();
+    tjSilentLoad = false;          // 本次加载结束：之后的用户操作（切换文件/复制/下载）照常统计
 });
 
 // ========== 列表视图 ==========

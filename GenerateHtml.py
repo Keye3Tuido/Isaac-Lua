@@ -1418,6 +1418,9 @@ var _hmt = _hmt || [];
     if (location.protocol === 'file:' || /^(localhost|127\\.0\\.0\\.1)$/.test(location.hostname)) return;
     var tjId = """ + ids_json + """[location.hostname];
     if (!tjId) return;
+    // 自动刷新（?_r=时间戳）只是同一页面的整页重载，不是一次新的进入：在加载 hm.js 前关闭自动 PV，
+    // 本次加载不产生任何统计记录；真实进入仍由 hm.js 自动上报，刷新后的用户操作由 page.js 照常上报。
+    if (/[?&]_r=/.test(location.search)) _hmt.push(['_setAutoPageview', false]);
     var hm = document.createElement('script');
     hm.src = 'https://hm.baidu.com/hm.js?' + tjId;
     var s = document.getElementsByTagName('script')[0];
