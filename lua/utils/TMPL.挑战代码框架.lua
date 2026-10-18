@@ -55,10 +55,6 @@ l CLM()_CodeEnding={}local I,M,A,T,F,C=Isaac,ModCallbacks T=I.GetTime F=T()A=I.A
 ]]
 
 --[[
-模板: remove-empty-items
-]]
-
---[[
 说明: |-
   在第12层的初始房间右下角，生成一个传送至Delirium房间的传送门
   传送门贴图 by bilibili@迷鼠zas, uid:19166843
