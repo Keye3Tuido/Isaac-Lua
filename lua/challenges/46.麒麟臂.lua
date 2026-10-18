@@ -1,11 +1,11 @@
 --麒麟臂
---使用"掉落键"进行射击!
+--使用"掉落键"进行射击
 --你可以只用单手进行游戏
 
 --[[
-说明: 按住掉落键时，角色会向着移动的方向攻击
+说明: 按掉落键时，角色会向前方攻击
 ]]
-l local a,h,b,n,d,e=Input,{},GetPtrHash,Isaac.AddCallback,'ControllerIndex'e=a.IsActionPressed n(h,13,function(i,f,j,k,l,g,z)f=f and f:ToPlayer()if f then i=f:GetData()i[h]=i[h]or{}l=f[d]if j>1 then g=a.GetActionValue else g=j<1 and e or a.IsActionTriggered end if k==11 then for m=0,3 do z=g(m,l)if j>1 and z>0 or j<2 and z then return z end end elseif(i[h][b(f)]or 3)+4==k then return g(11,l)end end end)n(h,32,function(g,f,i)i=f[d]if not e(11,i)then g=f:GetData()g[h]=g[h]or{}for m=0,3 do if e(m,i)then g[h][b(f)]=m return end end end end,0)
+l Isaac.AddCallback({},13,function(b,e,h,a,c)e=e and e:ToPlayer()if e then c=e.ControllerIndex b=h>1 and Input.GetActionValue or h<1 and Input.IsActionPressed or Input.IsActionTriggered if a==11 then for m=0,3 do e=b(m,c)if h>1 and e>0 or h<2 and e then return h>1 and 0 end end else c=b(11,c)if a==({4,6,5,7})[e:GetHeadDirection()+1]and(h>1 and c>0 or h<2 and c)then return c end end end end)
 
 --[[
 模板: restart-game
