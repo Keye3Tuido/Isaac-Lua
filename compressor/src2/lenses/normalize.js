@@ -358,42 +358,52 @@
    * 逐字移植 foldEarlyReturn（函数体 return / 循环体 break 两靶）；
    * canonical normGuardedFunctionBody 归一覆盖等价。 */
   function createEarlyReturnLens(deps){
-    function isGuard(st, target){
+    function isGuard(st){
       if(!(st && st.type === 'IfStatement' && st.clauses && st.clauses.length === 1
          && st.clauses[0].type === 'IfClause'
          && st.clauses[0].body && st.clauses[0].body.length === 1
          && st.clauses[0].condition && st.clauses[0].condition.range)) return false;
       var inner = st.clauses[0].body[0];
-      if(target === 'return') return inner.type === 'ReturnStatement' && (!inner.arguments || inner.arguments.length === 0);
-      if(target === 'break') return inner.type === 'BreakStatement';
-      return false;
+      // 早返回守卫：return（无参）或 break。不再按「函数体/循环体开头」限制位置，
+      // 任意块内、任意下标开始的连续守卫都可折叠（保留其前置语句）。
+      return (inner.type === 'ReturnStatement' && (!inner.arguments || inner.arguments.length === 0))
+          || inner.type === 'BreakStatement';
     }
     return {
       name: 'norm.earlyReturn', kind: 'rewrite',
       requires: [], provides: [], consumes: [], conflicts: [],
       match: function(ir){
         var src = ir.src, out = [];
-        function processBody(body, target){
+        function processBody(body){
           if(!body || body.length < 2) return;
-          var i = 0;
-          while(i < body.length && isGuard(body[i], target)) i++;
-          if(i === 0) return;
-          var rest = body.slice(i);
-          if(!rest.length) return;   // 全是守卫无后续体：不比空更短，跳过
-          var conds = [];
-          for(var c=0;c<i;c++) conds.push(src.slice(body[c].clauses[0].condition.range[0], body[c].clauses[0].condition.range[1]));
-          var inner = src.slice(rest[0].range[0], rest[rest.length-1].range[1]);
-          var text = 'if not(' + conds.join(' or ') + ') then ' + inner + ' end';
-          out.push({ id:'earlyRet@'+body[0].range[0],
-            _edits:[{ start:body[0].range[0], end:rest[rest.length-1].range[1], text:text }] });
+          // 找块内第一段连续守卫（任意下标 k），折成 if not(c1 or …) then rest end。
+          // 前置语句 body[0..k-1] 原样保留；只提交第一段，后续段交给不动点下一轮。
+          for(var k=0; k<body.length; k++){
+            var i = 0;
+            while(k+i < body.length && isGuard(body[k+i])) i++;
+            if(i === 0) continue;
+            var rest = body.slice(k+i);
+            if(!rest.length) return;
+            var conds = [];
+            for(var c=0;c<i;c++) conds.push(src.slice(body[k+c].clauses[0].condition.range[0], body[k+c].clauses[0].condition.range[1]));
+            var inner = src.slice(rest[0].range[0], rest[rest.length-1].range[1]);
+            var text = 'if not(' + conds.join(' or ') + ') then ' + inner + ' end ';
+            out.push({ id:'earlyRet@'+body[k].range[0],
+              _edits:[{ start:body[k].range[0], end:rest[rest.length-1].range[1], text:text }] });
+            return;
+          }
         }
-        // 主块顶部的 return 守卫同样可折叠（return 直接结束整个块）
-        processBody(ir.ast.body, 'return');
+        // 主块、函数体、循环体、if 各分支体、do 块全部纳入遍历。
+        processBody(ir.ast.body);
         walkAst(ir.ast.body, function(n){
-          if(n.type === 'FunctionDeclaration'){ processBody(n.body, 'return'); return true; }
+          if(n.type === 'FunctionDeclaration' || n.type === 'DoStatement'){ processBody(n.body); return true; }
           if(n.type === 'WhileStatement' || n.type === 'RepeatStatement'
              || n.type === 'ForNumericStatement' || n.type === 'ForGenericStatement'){
-            processBody(n.body, 'break'); return true;
+            processBody(n.body); return true;
+          }
+          if(n.type === 'IfStatement' && n.clauses){
+            n.clauses.forEach(function(cl){ if(cl.body) processBody(cl.body); });
+            return true;
           }
         });
         return out;

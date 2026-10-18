@@ -825,7 +825,9 @@
         }
         if(node.type==='NumericLiteral'){
           var raw=node.raw||'';
-          var isInt=/^[+-]?\d+$/.test(raw)||/^0[xX][0-9a-fA-F]+$/.test(raw);
+          // 保留已归一节点的 isInt（其 raw 可能已丢失），防止二次归一化把整数误标为非整数；
+          // 无 isInt 时再从 raw 推断（整数/十六进制）。
+          var isInt=(node.isInt!==undefined)?node.isInt:(/^[+-]?\d+$/.test(raw)||/^0[xX][0-9a-fA-F]+$/.test(raw));
           return {type:'NumericLiteral', value:node.value, isInt:isInt};
         }
         if(node.type==='MemberExpression' && node.indexer==='.')
@@ -959,46 +961,53 @@
       // 函数体：进入新的"版本环境"（参数视为各自的 v0）。为简单与健全，函数内对外层局部的
       // 赋值/捕获较复杂——但我们的复用变换被限制在"未被闭包捕获"的变量上，且函数边界两侧
       // 版本独立推进。这里对函数体内部按相同规则递归 SSA 化。
-      // 守卫检测：if c then return end / if c then break end（单 clause、无 else、体为单条 return/break）
-      function isGuardStmt(st, target){
+      // 守卫检测：if c then return end / if c then break end（单 clause、无 else、体为单条 return/break）。
+      // 不再按「函数体/循环体开头」限制——任意块内、任意下标开始的连续守卫都识别（return 无参 / break）。
+      function isGuardStmt(st){
         if(!(st && st.type==='IfStatement' && st.clauses && st.clauses.length===1
            && st.clauses[0].type==='IfClause'
            && st.clauses[0].body && st.clauses[0].body.length===1)) return false;
         var inner=st.clauses[0].body[0];
-        if(target==='return') return inner.type==='ReturnStatement' && (!inner.arguments || inner.arguments.length===0);
-        if(target==='break') return inner.type==='BreakStatement';
-        return false;
+        return (inner.type==='ReturnStatement' && (!inner.arguments || inner.arguments.length===0))
+            || inner.type==='BreakStatement';
       }
-      // 块开头的连续守卫归一（target='return' 用于函数体；'break' 用于循环体）：
-      //   if c1 then <target> end if c2 then <target> end rest  ≡  if not(c1 or c2) then rest end
-      // 两侧一致施加，"反条件省 return/break"（含多重 early return/break）得以被验证。
-      function normGuardedBody(rawBody, target){
-        var i=0, conds=[];
-        while(i<rawBody.length && isGuardStmt(rawBody[i], target)){
-          conds.push(normExpr(rawBody[i].clauses[0].condition));
-          i++;
+      // 任意块、任意位置的连续守卫归一：
+      //   before + if c1 then <target> end if c2 then <target> end rest  ≡  before + if not(c1 or c2) then rest end
+      // before 原样保留（normBlock 各自归一）；只折第一段，后续段交给外层不动点。
+      function normGuardedBody(rawBody){
+        for(var k=0; k<rawBody.length; k++){
+          var i=0;
+          while(k+i<rawBody.length && isGuardStmt(rawBody[k+i])) i++;
+          if(i===0) continue;
+          var rest=rawBody.slice(k+i);
+          if(!rest.length) return normBlock(rawBody);
+          // before 先归一：其声明（如 local s=p.SubType）要先 bumpDef，守卫条件里的
+          // 同名变量才能拿到块内新版本——否则外层条件会用外层旧版本号，与内层声明分叉。
+          var before=normBlock(rawBody.slice(0,k));
+          var conds=[];
+          for(var c=0;c<i;c++) conds.push(normExpr(rawBody[k+c].clauses[0].condition));
+          var restNorm=normBlock(rest);
+          var orCond=conds[0];
+          for(var c=1;c<conds.length;c++) orCond={type:'LogicalExpression', operator:'or', left:orCond, right:conds[c]};
+          // 仅当守卫条件恰为 ==/~= 比较时，not(cmp) 才需与「手写 if not(cmp) then」走同一
+          // not-比较归一（直接取反+操作数重排）；其余形态直接构造 not 即可——避免对非比较
+          // 条件做多余的双重归一（normExpr 非幂等，会影响后续透镜候选的验证收敛）。
+          var notCond;
+          if(conds.length===1 && orCond.type==='BinaryExpression'
+             && (orCond.operator==='=='||orCond.operator==='~=')){
+            notCond=normExpr({type:'UnaryExpression', operator:'not', argument:orCond});
+          }else{
+            notCond={type:'UnaryExpression', operator:'not', argument:orCond};
+          }
+          return before.concat([{type:'If', clauses:[{type:'IfClause', cond:notCond, body:restNorm}]}]);
         }
-        if(!conds.length) return normBlock(rawBody);
-        var rest=normBlock(rawBody.slice(i));
-        var orCond=conds[0];
-        for(var c=1;c<conds.length;c++) orCond={type:'LogicalExpression', operator:'or', left:orCond, right:conds[c]};
-        // 仅当守卫条件恰为 ==/~= 比较时，not(cmp) 才需与「手写 if not(cmp) then」走同一
-        // not-比较归一（直接取反+操作数重排）；其余形态直接构造 not 即可——避免对非比较
-        // 条件做多余的双重归一（normExpr 非幂等，会影响后续透镜候选的验证收敛）。
-        var notCond;
-        if(conds.length===1 && orCond.type==='BinaryExpression'
-           && (orCond.operator==='=='||orCond.operator==='~=')){
-          notCond=normExpr({type:'UnaryExpression', operator:'not', argument:orCond});
-        }else{
-          notCond={type:'UnaryExpression', operator:'not', argument:orCond};
-        }
-        return [{type:'If', clauses:[{type:'IfClause', cond:notCond, body:rest}]}];
+        return normBlock(rawBody);
       }
 
       function normFunction(node){
         // 参数 binding 取 v0（声明即定义）
         (node.parameters||[]).forEach(function(p){ if(p.type==='Identifier' && varOf.has(p)){ var b=varOf.get(p); bumpDef(b); } });
-        var body=normGuardedBody(node.body||[], 'return');
+        var body=normGuardedBody(node.body||[]);
         return {type:'Function', params:(node.parameters||[]).map(function(p){
                   if(p.type==='Identifier' && varOf.has(p)){ var b=varOf.get(p); return {type:'Identifier',kind:'local',n:idFor(b,curVersion(b))}; }
                   return {type:'Vararg'};
@@ -1126,7 +1135,7 @@
             var clauses=ifClauses.map(function(cl){
               curVer=new Map(snapshot);
               var cond=cl.condition?normExpr(cl.condition):null;
-              var body=normBlock(cl.body||[]);
+              var body=normGuardedBody(cl.body||[]);
               curVer.forEach(function(ver,b){ if(snapshot.get(b)!==ver) touched.add(b); });
               return {type:'IfClause', cond:cond, body:body};
             });
@@ -1140,7 +1149,7 @@
             if(wt === false) return {type:'__DROP__'};
             var cond = (wt === true) ? {type:'BooleanLiteral', value:true, raw:'true'} : normExpr(st.condition);
             var snap=new Map(curVer);
-            var body=normGuardedBody(st.body||[], 'break');
+            var body=normGuardedBody(st.body||[]);
             // 循环体可能重定义 → 合并点提升
             var t=new Set(); curVer.forEach(function(ver,b){ if(snap.get(b)!==ver) t.add(b); });
             curVer=new Map(snap); t.forEach(function(b){bumpDef(b);});
@@ -1150,7 +1159,7 @@
             // 常量条件归一（真值语义）：repeat A until true/1 ≡ do A end；until false/nil ≡ while true do A end
             var rt = condTruthy(st.condition);
             var snap2=new Map(curVer);
-            var body2=normGuardedBody(st.body||[], 'break');
+            var body2=normGuardedBody(st.body||[]);
             var t2=new Set(); curVer.forEach(function(ver,b){ if(snap2.get(b)!==ver) t2.add(b); });
             curVer=new Map(snap2); t2.forEach(function(b){bumpDef(b);});
             if(rt !== null){
@@ -1160,13 +1169,13 @@
             var cond2=normExpr(st.condition);
             return {type:'Repeat', cond:cond2, body:body2};
           }
-          case 'DoStatement': return {type:'Do', body:normBlock(st.body||[])};
+          case 'DoStatement': return {type:'Do', body:normGuardedBody(st.body||[])};
           case 'ForNumericStatement': {
             var s1=normExpr(st.start), e1=normExpr(st.end), st1=st.step?normExpr(st.step):null;
             if(st.variable && varOf.has(st.variable)) bumpDef(varOf.get(st.variable));
             var v1=(st.variable&&varOf.has(st.variable))?{type:'Identifier',kind:'local',n:idFor(varOf.get(st.variable),curVersion(varOf.get(st.variable)))}:null;
             var snap3=new Map(curVer);
-            var body3=normGuardedBody(st.body||[], 'break');
+            var body3=normGuardedBody(st.body||[]);
             var t3=new Set(); curVer.forEach(function(ver,b){ if(snap3.get(b)!==ver) t3.add(b); });
             curVer=new Map(snap3); t3.forEach(function(b){bumpDef(b);});
             return {type:'ForNum', var:v1, start:s1, end:e1, step:st1, body:body3};
@@ -1176,7 +1185,7 @@
             (st.variables||[]).forEach(function(v){ if(v.type==='Identifier'&&varOf.has(v)) bumpDef(varOf.get(v)); });
             var vs=(st.variables||[]).map(function(v){ return (v.type==='Identifier'&&varOf.has(v))?{type:'Identifier',kind:'local',n:idFor(varOf.get(v),curVersion(varOf.get(v)))}:normExpr(v); });
             var snap4=new Map(curVer);
-            var body4=normGuardedBody(st.body||[], 'break');
+            var body4=normGuardedBody(st.body||[]);
             var t4=new Set(); curVer.forEach(function(ver,b){ if(snap4.get(b)!==ver) t4.add(b); });
             curVer=new Map(snap4); t4.forEach(function(b){bumpDef(b);});
             return {type:'ForGen', vars:vs, iters:its, body:body4};
@@ -1420,7 +1429,7 @@
       var body=ast.body;
       // 主块按函数体同口径做守卫归一：主块开头的 `if c then return end` 守卫与
       // 函数体守卫语义一致（return 直接结束整个主块），使 earlyReturn 在主块也可被验证。
-      var tree=normGuardedBody(body, 'return');
+      var tree=normGuardedBody(body);
       // 逻辑 id 规范化（alpha-归一）：按最终树中首次出现顺序重新编号。
       // 原因：SSA id 原本按"遍历分配顺序"产生，而 local 合并把
       //   `local A=..  local B=f(p)..` 变成 `local A,B=..,f(p)..`，
