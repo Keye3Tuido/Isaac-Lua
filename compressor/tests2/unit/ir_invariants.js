@@ -1,5 +1,5 @@
 // tests2/unit/ir_invariants.js — IR 不变式（INV-1/2/3）与 SSA 交叉校验
-// 语料：与 v1 tests/realtest.js 同口径加载 _repo_segments.json（逐段、去注释）。
+// 语料：tests2/fixtures 中受版本控制的固定语言形态（逐段、去注释）。
 // 对每段：
 //   INV-3 交叉：ssa 绑定数 / 赋值数 / 使用数 与 analyze.js 独立统计一致；
 //   INV-1：合成别名条目的 declRange 指向真实 local 声明项（含编辑后重映射复查）；
@@ -12,7 +12,7 @@ const L = require('../../src2/base.js').create({ luaparse, fengari });
 const IR = require('../../src2/ir.js');
 
 const { removeComments } = require('../_helpers');
-const { loadRepoSegments } = require('../repo-lua-files');
+const { loadFixtureSegments } = require('../fixtures/corpus');
 
 const deps = { luaparse, fengari, base: L };
 
@@ -59,7 +59,7 @@ function run(){
     else { fail++; if(bad.length < 20) bad.push(label + (detail ? ' | ' + detail : '')); }
   }
 
-  const segments = loadRepoSegments();
+  const segments = loadFixtureSegments();
   const files = Object.keys(segments).sort();
   let segTotal = 0, inv1Checked = 0;
 

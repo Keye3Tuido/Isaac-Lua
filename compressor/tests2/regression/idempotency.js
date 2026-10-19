@@ -2,10 +2,7 @@
 // 50 例幂等（严格固定点）+ canonical 等价。搜索层部分等 M6（记 pending）。
 // 块包装（blockWrapper）等 M5 透镜的形态收益不影响本套件断言（只查等价+幂等）。
 'use strict';
-const fs = require('fs');
-const path = require('path');
-const { runCases, L1 } = require('./_v2harness.js');
-const { loadRepoSegments } = require('../repo-lua-files');
+const { runCases } = require('./_v2harness.js');
 
 const cases = [
   { name: '局部函数(引用前变量)', code: 'local a=1 local function f()return a end' },
@@ -56,23 +53,9 @@ const cases = [
   { name: '尾值符号收尾(变量多于值)', code: "local A,B,C,D='hello',1 A()B()C()D()" },
   { name: '块包装(完全相同块无变化点)', code: 'Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)Isaac.AddCallback(a)' },
   { name: '方法名因子(复用成员别名后缀)', code: "Isaac.AddCallback(ModCallbacks.MC_POST_PLAYER_UPDATE,function(_,p)local d=p:GetData()if p:IsHoldingItem()then d.HoldingItem=30 else d.HoldingItem=(d.HoldingItem or 0)-1 end end)" },
+  { name: 'local降级右边界分隔', code: "local j,A,x,q={},{}local m,t,s,r=j.IsActionPressed,j.IsActionTriggered,j.GetActionValue,'ControllerIndex'x,q=1,2 print(A,m,t,s,r,x,q)" },
+  { name: '隐式nil跨回调捕获', code: "local F Isaac.AddCallback({},A,function()F=nil end)Isaac.AddCallback({},B,function()print(F)end)" },
 ];
-
-// 追加真实语料（v1 同款）
-try {
-  const corpusPath = path.join(__dirname, '../../../lua/utils/util1.安全包装.lua');
-  const lines = fs.readFileSync(corpusPath, 'utf8').split(/\r?\n/);
-  const open = lines.findIndex(function(l){ return l.indexOf('--[[ 可读源代码') === 0; });
-  if(open >= 0){
-    let end = open + 1;
-    while(end < lines.length && lines[end].trim() !== ']]') end++;
-    const src = lines.slice(open + 1, end).join('\n');
-    if(src.trim()) cases.push({ name: 'ver2 可读源码', code: src });
-  }
-  const segs = loadRepoSegments()['lua/utils/util1.安全包装.lua'] || [];
-  const mec = segs.find(function(code){ return code.indexOf('_MEC') >= 0; });
-  if(mec) cases.push({ name: '930 压缩版', code: 'l ' + mec });
-}catch(e){ /* 语料缺失不阻断 */ }
 
 function run(){
   // 每例：opts={}，硬断言 = 解析 + canonical 等价 + 严格幂等（runCases 内置）

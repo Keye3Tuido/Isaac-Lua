@@ -21,7 +21,7 @@ console.log(result.output);  // l <压缩后的单行代码>
 - ✓ 纯静态，`file://` 直接运行，无需服务器/构建/联网
 - ✓ 每个优化阶段后都做语法+语义等价校验，**不等价则拒绝输出**
 - ✓ 支持多段输入（每行可带 `l`/`lua` 前缀），自动合并为单段
-- ✓ 测试覆盖：基础 101 + 边界 40 + 幂等(逆向回代) 50 项；仓库 41 个 Lua 文件 / 352 个 `l` 段（逐条单独测试）；bulktest 已执行文件 152/152 通过
+- ✓ 测试语料全部位于 `compressor/tests2/`：固定语言形态、专项回归及可选 remote/bulk；不读取项目 `lua/` 业务目录
 
 ---
 
@@ -221,20 +221,19 @@ node tests2/regression/basics.js    # 基础回归：作用域/遮蔽/全局保�
 node tests2/regression/idempotency.js   # 幂等：压缩结果再压必须不变 + 等价
 node tests2/regression/declhoist.js     # 声明上提/前向 nil 回归
 node tests2/regression/method_inject.js # 方法/成员注入形态 + 安全负例
-node tests2/corpus/diff.js          # 全语料差分：成功性 + 幂等 + 对 v1 历史基线无劣化
-node tests2/corpus/search_compare.js    # v2 搜索总量 <= v1 搜索实测基线（总量门）
+node tests2/corpus/diff.js          # 固定语料：成功性 + canonical 等价 + 二次压缩不变长
+node tests2/corpus/search_compare.js    # 固定语料：搜索结果不得劣于纯规则结果
 node tests2/corpus/snapshot_compare.js  # v2 对 v1 历史快照逐条比对（SNAPSHOT_FULL=1 含 bulk）
 node tests2/corpus/perf.js          # 确定性性能探针：top-5 大段的输出/parse 对录制基线
 ```
 
 **基线与参照物**：
-- `tests2/_snapshot.json` — **v1 历史基线**（v1 管线退役前录制，964 条：unit + repo-seg + remote + bulk；snapshot_compare 与 corpus/diff 的无劣化参照物，永不以 v2 数据覆盖）
-- `tests2/_baseline_v2.json` — v2 自身基线（`snapshot_v2.js` 录制；`--check` 门：REGRESS/LOST-OK 即失败）
-- 语料变更（lua/ 增删改、模板迭代）后：输入已变的条目长度对比自动跳过（inputLen 守卫，与 `--check` 的 SOURCE 口径一致）；search_compare / perf 的 v1 录制常量须按注释重测重锚
+- `tests2/_snapshot.json` — **v1 历史基线**。unit/remote/bulk 项继续供 `snapshot_compare` 使用；既有 `repo-seg:` 项仅保留为历史数据，运行时永久忽略。
+- `tests2/_baseline_v2.json` — v2 自身基线。默认只检查 unit；设置 `SNAPSHOT_FULL=1` 时再检查 tests2 下的 remote/bulk；既有 `repo-seg:` 项永久忽略。
 
-**语料测试口径**：仓库真实代码按「每个代码块单独压缩」进行——语料取**构建期默认参数替换后的最终代码**（`python scripts/export_segments.py` 导出到 `tests2/_repo_segments.json`，与站点 / kb.json 同口径），不是仓库文件里的原始 `l` 行：模板引用块在源文件里没有代码行（代码由构建期从模板展开），模板定义块的裸 `Pn` 占位也不是合法 Lua 语句。既不把整个文件拼接成一段丢进压缩器，也不连带注释一起丢进去；测试前统一用词法器剥离注释后再压缩。逐块测试能精确覆盖单条控制台命令的真实形态，避免多段拼接触发的 Lua 200 局部上限这类非压缩器问题干扰结果。
+**语料测试口径**：压缩器测试只能读取 `compressor/tests2/` 内的输入。固定语言形态位于 `tests2/fixtures/corpus.js`，专项缺陷最小化后放入 `tests2/regression/`；可选 remote/bulk 数据也只能位于 `tests2/` 下。禁止扫描或读取项目根目录 `lua/`，禁止通过 `GenerateHtml.py` 或导出脚本把业务代码动态转成测试语料。这样业务内容增删、模板展开和文件改名都不会改变压缩器测试数量、耗时或基线。
 
-**注**：测试结果默认只输出到控制台；仓库仅保留快照基线这类回归所需数据（`.remote-cache/`、`_bulk_test_repos/`、`_repo_segments.json` 为本地缓存/导出，不入库）。
+**注**：测试结果默认只输出到控制台；`.remote-cache/` 与 `_bulk_test_repos/` 是 tests2 下的可选本地测试数据，不入库。
 
 ### 已知边界
 

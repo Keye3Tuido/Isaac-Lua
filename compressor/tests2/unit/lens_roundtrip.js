@@ -1,5 +1,5 @@
 // tests2/unit/lens_roundtrip.js — 透镜 property 测试框架（计划 §8 unit 层）
-// 对别名族四透镜 × 全语料 804 段：
+// 对全部透镜 × tests2 固定语料：
 //   性质 P1（roundtrip）：∀cand，extract 后 inject（或透镜私有 verify）须 canonical 等价于原 IR；
 //   性质 P2（cost 精确）：cost() 预测 === applyCandidate 实测 encodeDelta，逐字节相等；
 //   性质 P3（INV-1 保持）：extract 产物 IR 的 AliasEnv 仍通过机器检查。
@@ -18,7 +18,7 @@ const FACTOR = require('../../src2/lenses/factor.js');
 const BLK = require('../../src2/lenses/block.js');
 
 const { removeComments } = require('../_helpers');
-const { loadRepoSegments } = require('../repo-lua-files');
+const { loadFixtureSegments } = require('../fixtures/corpus');
 
 const deps = { luaparse, fengari, base: L };
 
@@ -39,7 +39,7 @@ function run(){
     .concat(ENC.createEncodeLenses(deps));
   lenses.forEach(function(l){ LENS.validateLens(l); });
 
-  const segments = loadRepoSegments();
+  const segments = loadFixtureSegments();
   const files = Object.keys(segments).sort();
   let segTotal = 0, candTotal = 0, segWithCand = 0, verified = 0, rejected = 0;
   const perLens = {};

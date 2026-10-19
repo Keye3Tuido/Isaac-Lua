@@ -742,8 +742,13 @@
       var merged = 'local ' + mergedVars.join(',')
                  + (keepInits.length ? '=' + keepInits.join(',') : '');
       var text = merged + (assignText ? ' ' + assignText : '');
+      var groupEnd = group[group.length-1].range[1];
+      // replacement 的尾 token 可能不同于原 group（如降级赋值以 Identifier 收尾）；
+      // 与未修改后缀重新做右边界分隔，防止 `GetActionValue` + `x,q=...` 粘成名字。
+      var nextCh = groupEnd < src.length ? src[groupEnd] : undefined;
+      if(text && ir._base._needsSepAfter(text[text.length-1], nextCh)) text += ' ';
       return { id:'localsMergeDemote@' + bi + ':' + group[0].range[0],
-        _edits: [{ start: group[0].range[0], end: group[group.length-1].range[1], text: text }] };
+        _edits: [{ start: group[0].range[0], end: groupEnd, text: text }] };
     }
     return {
       name: 'hoist.localsMerge', kind: 'rewrite',

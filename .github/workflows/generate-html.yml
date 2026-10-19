@@ -31,8 +31,7 @@ jobs:
         with:
           node-version: '20'
 
-      # 压缩器是否变化：只有 compressor/ 有改动时才安装依赖、导出语料并跑压缩测试；
-      # 纯站点改动（lua/、page.js、style.css 等）跳过压缩器测试直接部署。
+      # 压缩器测试只使用 compressor/tests2 内固定语料；lua/ 业务内容不参与测试。
       # push 事件按 base/head 比较；workflow_dispatch 无 push 载荷，按「需要跑」处理（保守）。
       - name: Detect compressor changes
         id: compressor_scope
@@ -57,11 +56,6 @@ jobs:
         if: steps.compressor_scope.outputs.changed == 'true'
         working-directory: compressor
         run: npm ci
-
-      - name: Export compression-test corpus
-        # 压缩测试语料 = 构建期默认参数替换后的最终代码（逐块），不是仓库里的原始 l 行
-        if: steps.compressor_scope.outputs.changed == 'true'
-        run: python scripts/export_segments.py
 
       - name: Run compressor tests
         if: steps.compressor_scope.outputs.changed == 'true'

@@ -126,7 +126,7 @@ compressor/src2/
 
 | # | 内容 | 验收 |
 |---|---|---|
-| M1 | IR 基座 + 透镜基座 | INV-1/2/3 单测；SSA 表与 analyze.js 对 964 语料交叉校验 |
+| M1 | IR 基座 + 透镜基座 | INV-1/2/3 单测；SSA 表与 analyze.js 对 tests2 固定语料交叉校验 |
 | M2 | alias 透镜端到端 + 调度雏形 | 语料子集 v2 ≤ v1；inject roundtrip 通过 |
 | M3 | normalize + encode 改写族 | 分号 3 fail 转绿；v1 test.js/edge.js 全集在 v2 跑通 |
 | M4 | hoist + chain + factor SSA 透镜族 | member-chain/fwdnil-merge/declhoist 4 失败转绿；幂等 50 项通过 |
@@ -144,13 +144,9 @@ compressor/src2/
 - `core2.js compress(src,{search,beamWidth})`：贪心 + beam 默认开（束宽 4），fixpoint ≤3 轮。
 - `tests2/unit/search_inverse.js`：8 构造用例，**6 个 inv 真实触发**（源内全局/调用链/
   混合选择/成员/薄包装撤销 + 贪心覆盖对照）；等价断言走 canonical2 差量口径。
-- `tests2/corpus/search_compare.js`：804 段 v2 搜索总量 **352989 ≤ 353485**（−496）。
-- `tests2/corpus/perf.js`：5 个最大段对录制基线报告（v1 规则 860 / v1 搜索 11024 parses）。
-  **产出全部 ≤ v1**（8087~8091/3437/3437/2720/2993~3007 vs 8092/3452/3452/2744/3022）；
-  parse 数 v2 < v1 search（同等工作量口径，优化后约 2993~5257 对 11024）；
-  「对 v1 无搜索基线降 50%」在全量重建 IR 下不可达——§9.1 已备案，增量重建属 M7。
-- `tests2/corpus/snapshot_compare.js`（户主硬性规则）：门禁模式 unit+remote+repo-seg，
-  全量模式 `SNAPSHOT_FULL=1` 含 bulk 152 整文件（规则 c：bulk 总和严格小于）。
+- `tests2/corpus/search_compare.js`：tests2 固定语料逐段验证 beam 搜索结果不长于纯规则结果，且保持 canonical 等价。
+- `tests2/corpus/perf.js`：5 个 tests2 固定性能形态，使用确定性的 parse 总数绊线；不读取项目业务代码。
+- `tests2/corpus/snapshot_compare.js`：默认只比较 unit；全量模式 `SNAPSHOT_FULL=1` 再包含 tests2 下的 remote/bulk，并要求 bulk 152 整文件总量严格小于历史 v1 基线。历史 `repo-seg:` 项不再参与。
 - 白名单清零且反超：M5 遗留 4 段（丢雷佬#9/勇往直前#10/自选双子#7/子弹时间#11）
   与 M6 新增 3 段（御灵术#8/灵感#22/勇往直前#10 再现 +5）全部消除——
   当前 v2 在这 6 段上 5 段**严格短于 v1**、1 段持平（最大 −28）。

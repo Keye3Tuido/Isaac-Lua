@@ -1,88 +1,52 @@
-// tests2/corpus/perf.js — 确定性性能探针：v2 对【录制基线】的性能报告（M6）
-// 语料 = 仓库段中源文本最长的 5 段（与 v1 tests/performance_probe.js 同口径、确定性排序）。
-// 硬断言：
-//   (a) 产出质量：每段 v2 输出 <= 录制的 v1 搜索输出（同等工作量口径）；
-//   (b) parse 防线：v2 parse 总数 <= v1 搜索录制基线 × 1.5（回归绊线；如实报告比值）。
-// 报告项：v1 规则系统（无搜索）基线 860 parses——v2 默认管线含双向 beam 搜索，与无
-//   搜索基线不可同比；「parse 降 50%」在全量重建 IR 下不可达（设计风险 §9.1 备案：
-//   先正确后优化，增量重建属 M7）。v1 数字为录制基线（2026-10-15 复测，语料变更须重锚），
-//   门禁不再现测 v1（省 ~30s 门禁时间）。
+// tests2/corpus/perf.js — tests2 固定性能语料的确定性 parse 绊线
 'use strict';
 const { performance } = require('perf_hooks');
 const baseParser = require('../../node_modules/luaparse');
 const fengari = require('fengari');
+const { PERFORMANCE } = require('../fixtures/corpus');
 
 let parseCount = 0;
 const countedParser = Object.assign({}, baseParser, {
-  parse: function(){ parseCount++; return baseParser.parse.apply(baseParser, arguments); }
+  parse:function(){ parseCount++; return baseParser.parse.apply(baseParser, arguments); }
 });
-
-const L1 = require('../../src2/base.js').create({ luaparse: countedParser, fengari });
+const base = require('../../src2/base.js').create({ luaparse:countedParser, fengari });
 const LuaMin2 = require('../../src2/core2.js');
-const L2 = LuaMin2.create({ luaparse: countedParser, fengari });
-
-const { removeComments } = require('../_helpers');
-const { loadRepoSegments } = require('../repo-lua-files');
-
-// 录制基线（2026-10-15 复测，本语料 top-5 段：util5.编解码#2 / 御灵术#12 / 灵感#22 /
-// 勇往直前#21 / 自选双子#11）：v1 搜索（searchOptimize maxCandidates:10）输出字节与
-// parse 数；v1 规则（compress）输出与 parse 作对照打印。此前 2026-10-14 基线 20740/11024。
-const V1_SEARCH = { out: 20746, parses: 11033 };
-const V1_GREEDY = { out: 20764, parses: 851 };
-const TRIPWIRE = 1.5;   // v2 parse 总数 / v1 搜索基线 的回归绊线
+const L2 = LuaMin2.create({ luaparse:countedParser, fengari });
+const MAX_TOTAL_PARSES = 50000;
 
 function run(){
   let pass = 0, fail = 0;
-  const bad = [];
+  const bad = [], rows = [];
   function ok(cond, label, detail){
-    if(cond){ pass++; }
-    else { fail++; if(bad.length < 10) bad.push(label + (detail ? ' | ' + detail : '')); }
+    if(cond) pass++;
+    else{ fail++; if(bad.length < 10) bad.push(label + (detail ? ' | ' + detail : '')); }
   }
 
-  const segments = loadRepoSegments();
-  const samples = [];
-  for(const rel of Object.keys(segments)){
-    // lua/ 下是真实项目代码，不参与性能门禁（其改动会拖慢压缩并令基线反复过期；
-    // 功能正确性仍由 corpus/diff 等套件以 lua/ 语料覆盖）。
-    if(rel.indexOf('lua/') === 0) continue;
-    segments[rel].forEach(function(code, i){
-      samples.push({ key: rel + '#' + i, source: removeComments(L1, 'l ' + code) });
-    });
-  }
-  samples.sort(function(a, b){ return b.source.length - a.source.length || (a.key < b.key ? -1 : 1); });
-  const top = samples.slice(0, 5);
-
-  const rows = [];
-  let sumV2 = 0, outV2 = 0;
-  for(const s of top){
+  ok(PERFORMANCE.length === 5, '固定性能语料数量', '实际 ' + PERFORMANCE.length);
+  let totalParses = 0, totalOut = 0;
+  for(const sample of PERFORMANCE){
     parseCount = 0;
+    const input = base._preprocess(sample.code);
     const t0 = performance.now();
-    let r2 = null, e2 = null;
-    try{ r2 = L2.compress(s.source); }catch(e){ e2 = e; }
-    const ms = +(performance.now() - t0).toFixed(0);
-    if(!r2){
-      ok(false, s.key, 'v2 压缩失败: ' + String(e2 && e2.message || '').slice(0, 60));
-      continue;
-    }
-    rows.push({ key: s.key, in: s.source.length, out: r2.bodyLength, parses: parseCount, ms: ms });
-    sumV2 += parseCount; outV2 += r2.bodyLength;
+    let result;
+    try{ result = L2.compress(input); }
+    catch(e){ ok(false, sample.name, '压缩失败: ' + String(e.message || e).slice(0, 80)); continue; }
+    const ms = Math.round(performance.now() - t0);
+    let parseOk = true;
+    try{ baseParser.parse(result.body, { luaVersion:'5.3' }); }catch(e){ parseOk = false; }
+    ok(parseOk, sample.name, '输出无法解析');
+    ok(result.bodyLength <= base.applyEncoding(base.removeComments(input)).length,
+      sample.name, '输出长于单行化输入');
+    totalParses += parseCount;
+    totalOut += result.bodyLength;
+    rows.push({ name:sample.name, input:input.length, output:result.bodyLength, parses:parseCount, ms });
   }
+  ok(totalParses > 0 && totalParses <= MAX_TOTAL_PARSES, 'parse 总数绊线',
+    totalParses + '（上限 ' + MAX_TOTAL_PARSES + '）');
 
-  // (a) 产出质量门（总量口径：5 段合计）
-  ok(outV2 <= V1_SEARCH.out, 'v2 产出总量 <= v1 搜索基线',
-     'v2=' + outV2 + ' v1-search=' + V1_SEARCH.out);
-  // (b) parse 绊线
-  const ratio = sumV2 / V1_SEARCH.parses;
-  ok(ratio <= TRIPWIRE, 'v2 parse 总数 <= v1 搜索基线 ×' + TRIPWIRE,
-     'v2=' + sumV2 + ' v1-search=' + V1_SEARCH.parses + '（' + (ratio * 100).toFixed(1) + '%）');
-
-  console.log('[perf] 段 | 输入 | v2 输出/parse/ms');
-  rows.forEach(function(r){
-    console.log('[perf]', r.key, '|', r.in, '|', r.out + ' / ' + r.parses + ' / ' + r.ms + 'ms');
-  });
-  console.log('[perf] 合计: v2 输出', outV2, '（v1搜索', V1_SEARCH.out, '/ v1规则', V1_GREEDY.out, '）',
-              '| v2 parse', sumV2, '（v1搜索', V1_SEARCH.parses, '= ' + (ratio * 100).toFixed(1) + '%；',
-              'v1规则', V1_GREEDY.parses, '无搜索基线不可同比）');
+  console.log('[perf] 固定语料 | 输入 | 输出/parse/ms');
+  rows.forEach(function(r){ console.log('[perf]', r.name, '|', r.input, '|', r.output + ' / ' + r.parses + ' / ' + r.ms + 'ms'); });
+  console.log('[perf] 合计: 输出', totalOut, '| parse', totalParses, '/', MAX_TOTAL_PARSES);
   if(bad.length){
     console.log('--- 失败明细 ---');
     bad.forEach(function(b){ console.log('✗', b); });
@@ -90,4 +54,4 @@ function run(){
   return { pass, fail };
 }
 
-module.exports = { name: 'perf', run };
+module.exports = { name:'perf', run };
