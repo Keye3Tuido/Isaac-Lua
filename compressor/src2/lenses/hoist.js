@@ -646,14 +646,18 @@
       });
       return found;
     }
-    // tryDemoteMerge(group, bi, src, info) -> cand|null：合并+降级候选（见 match 内注释）。
-    // 安全条件：组内全对齐（免多值截断风险）；无重名；每个被降级 init 与其原始顺序
-    // 之后的保留 init 不得双双含调用（降级把被降级 init 移到全部保留 init 之后求值）。
-    function tryDemoteMerge(group, bi, src, info){
+    // tryDemoteMerge(group, bi, src, ir) -> cand|null：合并+降级候选（见 match 内注释）。
+    // 安全条件：允许语句尾部存在可证明为 nil 的缺省槽；末位调用/变参产生的展开槽拒绝；
+    // 无重名；每个被降级 init 与其原始顺序之后的保留 init 不得双双含调用。
+    function tryDemoteMerge(group, bi, src, ir){
+      var info = ir.info;
       if(group.length < 2) return null;
       for(var gi=0; gi<group.length; gi++){
-        var st = group[gi];
-        if((st.init || []).length !== st.variables.length) return null;
+        var st = group[gi], inits = st.init || [];
+        if(inits.length > st.variables.length) return null;
+        // `local a,b=f()` 的 b 可能来自 f() 的第二返回值，并非 nil，不能按缺省槽搬动。
+        if(inits.length < st.variables.length && inits.length
+           && isMultiValueExpr(inits[inits.length - 1])) return null;
       }
       var declared = new Set(), declaredBinds = new Set(), nVars = 0;
       group.forEach(function(st){
@@ -664,34 +668,69 @@
         });
       });
       if(declared.size !== nVars) return null;   // 重名（遮蔽）拒判
-      var slots = [];   // {name, initText, initNode, bind, demote, hasCall}
+      // initNode=null 表示该名字是语句尾部的隐式 nil 槽。引用合并组绑定的 RHS
+      // 先尝试用 AliasEnv 常量代值；成功则可留在合并声明中，不必降级为后置赋值。
+      var slots = [];   // {name, initText, initNode, bind, demote, substituted, hasCall}
       group.forEach(function(st){
         for(var vi=0; vi<st.variables.length; vi++){
-          var v = st.variables[vi], ie = st.init[vi];
+          var v = st.variables[vi], ie = (st.init || [])[vi] || null;
+          var initText = ie ? src.slice(ie.range[0], ie.range[1]) : null;
+          var dep = !!ie && refsBinding(ie, info, declaredBinds), substituted = false;
+          if(dep){
+            var sub = substHeaderConsts(ie, declaredBinds, info, ir, src);
+            if(sub && sub.changed){ initText = sub.text; dep = false; substituted = true; }
+          }
           slots.push({ name: src.slice(v.range[0], v.range[1]),
-                       initText: src.slice(ie.range[0], ie.range[1]), initNode: ie,
-                       bind: info.varOf.get(v),
-                       demote: refsBinding(ie, info, declaredBinds),
-                       hasCall: hasCallExpr(ie) });
+                       initText: initText, initNode: ie,
+                       bind: info.varOf.get(v), demote: dep, substituted: substituted,
+                       hasCall: !!ie && hasCallExpr(ie) });
         }
       });
-      var anyDemote = slots.some(function(s){ return s.demote; });
-      if(!anyDemote) return null;
+      var anyRewrite = slots.some(function(s){ return s.demote || s.substituted; });
+      if(!anyRewrite) return null;
       for(var p=0; p<slots.length; p++){
         if(!slots[p].demote || !slots[p].hasCall) continue;
         for(var q=p+1; q<slots.length; q++)
           if(!slots[q].demote && slots[q].hasCall) return null;
       }
-      // 保留槽位在合并声明里仍处末位；其后再接降级变量（占位目标）时，末位括号承载
-      // 截断语义（`local s,a,b=f(),(f()) b=s`——括号丢了 f() 会展开填满 a、b）。
-      var keepVars = [], keepSlots = [], demoteVars = [], demoteAssigns = [];
+      var demoteVars = [], demoteAssigns = [];
       slots.forEach(function(s){
         if(s.demote){ demoteVars.push(s.name); demoteAssigns.push(s); }
-        else{ keepVars.push(s.name); keepSlots.push(s); }
       });
-      var keepInits = keepSlots.map(function(s, si){
-        return initSourceText(src, s.initNode, si === keepSlots.length - 1 && demoteVars.length > 0);
-      });
+      var hasImplicitNil = slots.some(function(s){ return !s.initNode; });
+      function renderInit(s, truncate){
+        var baseText = src.slice(s.initNode.range[0], s.initNode.range[1]);
+        var text = s.substituted ? s.initText : initSourceText(src, s.initNode, truncate);
+        // 原语句末位调用在新增尾槽前必须截为单值；源码没有现成分组括号时主动补上。
+        if(truncate && isMultiValueExpr(s.initNode)
+           && (s.substituted || text === baseText)) text = '(' + text + ')';
+        return text;
+      }
+      var mergedVars, keepInits;
+      if(hasImplicitNil){
+        // 有隐式 nil 时保持原声明顺序：canonical 的 binding 编号与闭包引用依赖此顺序。
+        // 中间被降级/缺省的空槽若后面仍有保留值，用显式 nil 占位；尾部空槽直接省略。
+        mergedVars = slots.map(function(s){ return s.name; });
+        var lastKeep = -1;
+        for(var ksi=0; ksi<slots.length; ksi++)
+          if(slots[ksi].initNode && !slots[ksi].demote) lastKeep = ksi;
+        keepInits = [];
+        for(var ki=0; ki<=lastKeep; ki++){
+          var ks = slots[ki];
+          if(!ks.initNode || ks.demote){ keepInits.push('nil'); continue; }
+          var truncate = ki === lastKeep && lastKeep < slots.length - 1;
+          keepInits.push(renderInit(ks, truncate));
+        }
+      }else{
+        // 全对齐时沿用旧策略：保留槽移到前部、降级槽移到尾部，避免插入显式 nil。
+        var keepSlots = [];
+        slots.forEach(function(s){ if(!s.demote) keepSlots.push(s); });
+        mergedVars = keepSlots.map(function(s){ return s.name; }).concat(demoteVars);
+        keepInits = keepSlots.map(function(s, si){
+          if(s.substituted) return s.initText;
+          return initSourceText(src, s.initNode, si === keepSlots.length - 1 && demoteVars.length > 0);
+        });
+      }
       // 降级赋值形态：任一降级 init 引用其他降级变量时必须逐条独立赋值（RHS 先求值
       // 语义）；无交叉引用则并为一条多目标赋值（与 v1 mixed 路径同形态、更短）。
       var demoteBinds = new Set();
@@ -700,7 +739,7 @@
       var assignText = crossRef
         ? demoteAssigns.map(function(s){ return s.name + '=' + s.initText; }).join(' ')
         : (demoteVars.length ? [demoteVars.join(',') + '=' + demoteAssigns.map(function(s){ return s.initText; }).join(',')] : []).join('');
-      var merged = 'local ' + keepVars.concat(demoteVars).join(',')
+      var merged = 'local ' + mergedVars.join(',')
                  + (keepInits.length ? '=' + keepInits.join(',') : '');
       var text = merged + (assignText ? ' ' + assignText : '');
       return { id:'localsMergeDemote@' + bi + ':' + group[0].range[0],
@@ -752,7 +791,7 @@
                 // 下的 `local ` 覆盖占位成本还有余（实证：勇往直前#10 的
                 // `local m=_Data` 与别名头合并，v1 产物即占位+赋值形态）。
                 if(!nameClash && !hazardBreak){
-                  var dc = tryDemoteMerge(cur.concat([st]), bi, src, ir.info);
+                  var dc = tryDemoteMerge(cur.concat([st]), bi, src, ir);
                   if(dc) demoteCands.push({ cand: dc, breakerIdx: r });
                 }
                 if(cur.length >= 2){ groups.push(cur); groupStartIdx.push(curStart); }
