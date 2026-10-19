@@ -1,12 +1,12 @@
 // tests2/regression/mutable_globals.js — 全局变量黑白名单（别名快照安全闸门）回归套件
 // 背景：alias.global 对「代码内未赋值」的全局做 local 别名（local a=AAA），把运行时
 // 动态读取固化为声明时快照——控制台手改/其他代码重赋值后行为不等价。
-// 防线：opts.mutableGlobals（可变全局黑名单）→ buildIR 并入 assignedGlobals →
-// 各「新建快照」透镜（alias.global / chain.cse）的 assignedGlobals 闸门拦截。
+// 防线：opts.constantGlobals / mutableGlobals（统一二态选择）→ buildIR 覆盖 assignedGlobals →
+// 各「新建快照」透镜（alias.global / chain.cse）的 assignedGlobals 闸门执行最终选择。
 // 形态约定：已有 local d=G.F（用户自写快照）不受名单约束（用户语义自选）；
 // 仅「没有时新建快照」受闸。等价/幂等由 harness 硬检查。
 'use strict';
-const { runCases } = require('./_v2harness.js');
+const { runCases, L1, v2 } = require('./_v2harness.js');
 
 const NM = { noMetatable: true, search: false };
 
@@ -66,4 +66,39 @@ const cases = [
     mustContain: "'AddCallback'", mustNotMatch: /local [A-Za-z_][A-Za-z_0-9]*=[A-Za-z_][A-Za-z_0-9]* / },
 ];
 
-module.exports = { name: 'mutable_globals', run: function(){ return runCases(cases); } };
+module.exports = { name: 'mutable_globals', run: function(){
+  const result = runCases(cases);
+  const src = "l _CodeEnding={}local I=Isaac local C=function()for _,v in ipairs(_CodeEnding)do _G[v]=nil end _CodeEnding=nil end print(I,C)";
+  try{
+    const pre = L1._preprocess(src);
+    const ast = L1._parse(pre);
+    const info = L1._analyze(ast);
+    const globals = L1._collectGlobalNames(ast, info);
+    const checks = [
+      ['_CodeEnding 被列入全部全局名', globals.has('_CodeEnding')],
+      ['Isaac 被列入全部全局名', globals.has('Isaac')],
+      ['_G 被列入全部全局名', globals.has('_G')],
+      ['局部 I 不进入全局列表', !globals.has('I')],
+      ['分析器仍记录代码内赋值证据', info.assignedGlobals.has('_CodeEnding')]
+    ];
+    const engine = v2({});
+    const optionCode = 'l G={}print(G)print(G)print(G)';
+    const auto = engine.compress(optionCode, { search:false });
+    const forcedConstant = engine.compress(optionCode, { search:false, constantGlobals:['G'] });
+    const mutableWins = engine.compress(optionCode,
+      { search:false, constantGlobals:['G'], mutableGlobals:['G'] });
+    checks.push(
+      ['代码赋值默认仍推断为可变', auto._ir.info.assignedGlobals.has('G')],
+      ['恒定选择可覆盖代码赋值推断', !forcedConstant._ir.info.assignedGlobals.has('G')],
+      ['恒定与可变重叠时可变优先', mutableWins._ir.info.assignedGlobals.has('G')]
+    );
+    checks.forEach(function(c){
+      if(c[1]) result.pass++;
+      else{ result.fail++; console.log('✗', c[0]); }
+    });
+  }catch(e){
+    result.fail++;
+    console.log('✗ 全局分类 API 抛错:', e.message);
+  }
+  return result;
+} };

@@ -65,7 +65,7 @@ window.tjEvent = function(action, label){
         <button class="ghost" id="clear">清空</button>
       </div>
       <div id="globalsPanel" style="display:none">
-        <div class="globals-hint">代码中的全局变量（点击标签切换）：<b class="gw">恒定</b>＝折叠为 local 别名，代码更短；<b class="gb">可变</b>＝保持动态读取，控制台手改后仍生效</div>
+        <div class="globals-hint">代码中的全局变量（点击标签切换）：<b class="gw">恒定</b>＝允许折叠为 local 别名；<b class="gb">可变</b>＝保持动态读取。所有变量首次均默认恒定</div>
         <span id="globalsList"></span>
       </div>
       <textarea id="in" spellcheck="false" placeholder="把正常格式的 Lua 代码贴进来，可带 l / lua 控制台前缀、换行、缩进与注释。&#10;整个输入会被当作【一段】代码压进一行。"></textarea>
@@ -105,7 +105,7 @@ window.tjEvent = function(action, label){
 <script src="src2/base.js?v=1"></script>
 <!-- LuaMin v2 引擎：src2 各模块自注册到 window.__LuaMin2Modules（base 门面须已加载：词法/parse/analyze/canonical/encode 助手经它复用）。
      加载序须满足依赖图：ir → lens → canonical2 → lenses/*(alias 最先，chain/factor 依赖它) → schedule → search2 → core2 -->
-<script src="src2/ir.js?v=2"></script>
+<script src="src2/ir.js?v=3"></script>
 <script src="src2/lens.js?v=2"></script>
 <script src="src2/canonical2.js?v=2"></script>
 <script src="src2/lenses/alias.js?v=2"></script>
@@ -117,7 +117,7 @@ window.tjEvent = function(action, label){
 <script src="src2/lenses/block.js?v=2"></script>
 <script src="src2/schedule.js?v=2"></script>
 <script src="src2/search2.js?v=1"></script>
-<script src="src2/core2.js?v=2"></script>
+<script src="src2/core2.js?v=3"></script>
 <script>
 (function(){
   var lp = window.luaparse;
@@ -261,36 +261,40 @@ window.tjEvent = function(action, label){
       if(!/\S/.test(pre)) return [];
       var ast=baseLib._parse(pre);
       var info=baseLib._analyze(ast);
-      var all=baseLib._collectGlobalNames(ast, info);
-      var ro=[];
-      all.forEach(function(nm){ if(!info.assignedGlobals.has(nm)) ro.push(nm); });
-      return ro.sort();
+      return Array.from(baseLib._collectGlobalNames(ast, info)).sort();
     }catch(e){ return null; }   // 编辑中语法不完整：保持旧列表，不闪烁
   }
   function refreshGlobals(){
     var names=scanGlobals($in.value);
     if(names===null) return;
-    if(lastGlobalNames && names.join('|')===lastGlobalNames.join('|')) return;
+    if(lastGlobalNames&&names.join('|')===lastGlobalNames.join('|')) return;
     lastGlobalNames=names;
     if(!names.length){ $globalsPanel.style.display='none'; return; }
     $globalsPanel.style.display='';
     $globalsList.innerHTML='';
     names.forEach(function(nm){
-      if(!(nm in globalModes)) globalModes[nm]='white';   // 默认全部白名单（恒定）
+      // 所有全局使用完全相同的二态开关与首次默认值。
+      if(!(nm in globalModes)) globalModes[nm]='white';
       var tag=document.createElement('span');
-      tag.className='gtag '+globalModes[nm];
-      tag.textContent=nm+(globalModes[nm]==='white'?'·恒定':'·可变');
-      tag.title=globalModes[nm]==='white' ? '恒定：折叠为 local 别名，代码更短（点击改为可变）' : '可变：保持动态读取，控制台手改后仍生效（点击改为恒定）';
-      tag.onclick=function(){
-        globalModes[nm]=(globalModes[nm]==='white')?'black':'white';
+      function renderTag(){
         tag.className='gtag '+globalModes[nm];
         tag.textContent=nm+(globalModes[nm]==='white'?'·恒定':'·可变');
-        tag.title=globalModes[nm]==='white' ? '恒定：折叠为 local 别名，代码更短（点击改为可变）' : '可变：保持动态读取，控制台手改后仍生效（点击改为恒定）';
+        tag.title=globalModes[nm]==='white' ? '恒定：允许折叠为 local 别名（点击改为可变）' : '可变：保持动态读取（点击改为恒定）';
+      }
+      tag.onclick=function(){
+        globalModes[nm]=(globalModes[nm]==='white')?'black':'white';
+        renderTag();
       };
+      renderTag();
       $globalsList.appendChild(tag);
     });
   }
-  function mutableGlobals(){ return (lastGlobalNames||[]).filter(function(n){ return globalModes[n]==='black'; }); }
+  function mutableGlobals(){
+    return (lastGlobalNames||[]).filter(function(n){ return globalModes[n]==='black'; });
+  }
+  function constantGlobals(){
+    return (lastGlobalNames||[]).filter(function(n){ return globalModes[n]==='white'; });
+  }
   $in.addEventListener('input', function(){ clearTimeout(globalsTimer); globalsTimer=setTimeout(refreshGlobals, 400); });
 
   document.getElementById('clear').onclick=function(){ $in.value=''; $out.value=''; $outStat.textContent=''; $badge.innerHTML=''; $badge.className='badge'; clearMsg(); updateInStat(); refreshGlobals(); resetCopyBtn(); $stagesCard.style.display='none'; $stages.innerHTML=''; };
@@ -438,7 +442,8 @@ window.tjEvent = function(action, label){
     engine.compressAsync(input, {
       search: useSearch,            // 0 级 = 纯规则系统（贪心不动点）；N 级 = beamWidth N
       beamWidth: searchLevel,
-      mutableGlobals: mutableGlobals(),   // 黑名单：可变全局，禁止别名快照
+      mutableGlobals: mutableGlobals(),   // 可变：保持动态读取
+      constantGlobals: constantGlobals(), // 恒定：允许快照别名化（可覆盖代码内赋值推断）
       noMetatable: noMetatable,
       iterate: iterate,
       recordStages: true,

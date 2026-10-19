@@ -70,12 +70,15 @@
       var nm = (opts.noMetatable !== undefined) ? !!opts.noMetatable : fullDeps.noMetatable;
       var th = (opts.threshold !== undefined) ? opts.threshold : fullDeps.threshold;
       var mf = opts.memberFold !== false;   // v1 同口径：memberFold=false 关闭成员字段折叠
-      // 可变全局黑名单（UI 黑白名单）：并入 buildIR 的 assignedGlobals，缓存键含名单签名
+      // 全局变量黑白名单：constantGlobals 可覆盖代码内赋值推断，mutableGlobals 最终优先；
+      // 两份名单都进入调度器缓存键，确保切换后不会复用旧配置。
       var mg = (opts.mutableGlobals && opts.mutableGlobals.length) ? opts.mutableGlobals.slice().sort() : null;
-      var key = (nm ? 'nm' : '') + '|' + th + '|' + (mf ? 'mf' : '') + '|' + (mg ? mg.join(',') : '');
+      var cg = (opts.constantGlobals && opts.constantGlobals.length) ? opts.constantGlobals.slice().sort() : null;
+      var key = (nm ? 'nm' : '') + '|' + th + '|' + (mf ? 'mf' : '')
+              + '|m:' + (mg ? mg.join(',') : '') + '|c:' + (cg ? cg.join(',') : '');
       if(!schedCache[key]){
         var d = { luaparse: fullDeps.luaparse, fengari: fullDeps.fengari, base: base,
-                  threshold: th, noMetatable: nm, mutableGlobals: mg };
+                  threshold: th, noMetatable: nm, mutableGlobals: mg, constantGlobals: cg };
         var ls = aliasMod.createAliasLenses(d)
           .concat(chainMod.createChainLenses(d))
           .concat(factorMod.createFactorLenses(d))
@@ -107,7 +110,8 @@
       for(var ti=0; ti<thresholds.length; ti++){
         try{
           var cfg = schedulerFor({ noMetatable: opts.noMetatable, memberFold: opts.memberFold,
-                                   mutableGlobals: opts.mutableGlobals, threshold: thresholds[ti] });
+                                   mutableGlobals: opts.mutableGlobals, constantGlobals: opts.constantGlobals,
+                                   threshold: thresholds[ti] });
           var ir0 = irMod.buildIR(pre, cfg.deps);
           // 全局门禁随调用注入（原文逐次不同）：每个提交态与原文 canonical 比对（§6.5）
           var res = cfg.scheduler.runGreedy(ir0, { src: pre, canon2: canonMod });
@@ -284,7 +288,8 @@
           var th = thresholds[ti++];
           try{
             var cfg = schedulerFor({ noMetatable: opts.noMetatable, memberFold: opts.memberFold,
-                                     mutableGlobals: opts.mutableGlobals, threshold: th });
+                                     mutableGlobals: opts.mutableGlobals, constantGlobals: opts.constantGlobals,
+                                     threshold: th });
             var ir0 = irMod.buildIR(pre, cfg.deps);
             var log = [];
             var gate = { src: pre, canon2: canonMod };

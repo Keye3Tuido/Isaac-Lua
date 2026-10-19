@@ -309,9 +309,11 @@
     var base = getBase(deps);
     var ast = base._parse(src);
     var info = base._analyze(ast);
-    // 用户声明的可变全局（UI 黑白名单，deps.mutableGlobals）：并入 assignedGlobals——
-    // 凡查 assignedGlobals 的透镜（alias.global 等）自动将其排除出别名候选，
-    // 与「代码内赋值」同口径拦截；快照型别名（local a=G）只对恒定全局成立。
+    // UI 对所有全局统一提供“恒定/可变”选择：恒定先移出代码赋值推断集合，
+    // 可变再加入，故名单重叠时可变优先。未传名单时保持静态分析的安全默认值。
+    if(deps && deps.constantGlobals){
+      for(var cg=0; cg<deps.constantGlobals.length; cg++) info.assignedGlobals.delete(deps.constantGlobals[cg]);
+    }
     if(deps && deps.mutableGlobals){
       for(var mg=0; mg<deps.mutableGlobals.length; mg++) info.assignedGlobals.add(deps.mutableGlobals[mg]);
     }
