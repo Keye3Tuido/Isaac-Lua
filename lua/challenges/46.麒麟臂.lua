@@ -1,14 +1,11 @@
 --麒麟臂
 --使用"掉落键"进行射击
 --建议使用单人角色游玩（不要使用 雅各&以扫、遗骸 等角色）
---要求: 
---1. 禁止鼠标操作 (代码未关闭鼠标控制开关)
---2. 只使用左手进行游戏
+--要求: 只使用左手进行游戏
 
 --[[
-说明：攻击键无法攻击
+模板: no-attack
 ]]
-l Isaac.AddCallback({},ModCallbacks.MC_INPUT_ACTION,function(i,p,h,a)i=Input p=p and p:ToPlayer()p=p and 3<a and a<8 and(h>1 and i.GetActionValue or h<1 and i.IsActionPressed or i.IsActionTriggered)(a,p.ControllerIndex)if p and(h<2 or p>0)then return h>1 and 0 end end)
 
 --[[
 说明: 按掉落键时，角色会向前方攻击
