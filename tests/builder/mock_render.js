@@ -142,6 +142,10 @@ const ALL_FILES = {
         id: 'TMPL', key: 'uTMPL', title: '占位框架', fname: 'TMPL.占位框架.lua', isChallenge: false,
         header: [], blocks: [{ num: 0, comment: '占位说明框架。', code: 'ZFW()' }],
     },
+    'uidea': {
+        id: 'idea', key: 'uidea', title: '灵感', fname: 'idea.灵感.lua', isChallenge: false,
+        header: [], blocks: [{ num: 0, comment: '灵感占位。', code: 'IDEA()' }],
+    },
 };
 const TEMPLATES = {
     'tpl-x': {
@@ -298,11 +302,10 @@ const searchHtml = () => named.searchList.innerHTML;
 check('工具文件行链接为 #u1', named.otherList.innerHTML.indexOf('href="#u1"') !== -1);
 check('挑战文件行链接为 #c1', named.challengeList.innerHTML.indexOf('href="#c1"') !== -1);
 
-// ⑨ 分区排序：键为 u<编号>，直接字符串排会把 u10 排到 u2 之前（回归）；
-// 非数字编号 uTMPL 排在同分区末尾，与构建期 collect_lua_entries 的条目顺序一致
+// ⑨ 分区排序：数字工具按升序排列，两个非数字例外按键名字典序排在末尾。
 const listKeys = el => (el.innerHTML.match(/href="#[^"]+"/g) || []).map(s => s.slice(7, -1));
-check('库分区按编号数值升序（u0,u1,u2,u10,u22,uTMPL）',
-    listKeys(named.otherList).join(',') === 'u0,u1,u2,u10,u22,uTMPL');
+check('库分区按编号数值升序，uTMPL 与 uidea 排在末尾',
+    listKeys(named.otherList).join(',') === 'u0,u1,u2,u10,u22,uTMPL,uidea');
 check('库分区 u2 在 u10 之前（字符串序回归）',
     listKeys(named.otherList).indexOf('u2') < listKeys(named.otherList).indexOf('u10'));
 check('挑战分区按编号数值升序', listKeys(named.challengeList).join(',') === 'c1');

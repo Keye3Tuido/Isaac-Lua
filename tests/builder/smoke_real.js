@@ -138,10 +138,10 @@ const numOf = k => (/^\d+$/.test(String(ALL_FILES[k].id)) ? Number(ALL_FILES[k].
 const utilKeys = listKeys(named.otherList);
 const challengeKeys = listKeys(named.challengeList);
 check('库分区行数 = 工具文件数', utilKeys.length === Object.keys(ALL_FILES).filter(k => !ALL_FILES[k].isChallenge).length);
-check('库分区按编号数值升序（非数字编号排末尾）',
-    utilKeys.every((k, i) => i === 0 || numOf(utilKeys[i - 1]) <= numOf(k)) &&
-    utilKeys.slice(0, -1).every(k => Number.isFinite(numOf(k))) &&
-    !Number.isFinite(numOf(utilKeys[utilKeys.length - 1])));
+check('库分区数字 ID 升序，字母例外排在末尾',
+    utilKeys.filter(k => Number.isFinite(numOf(k))).every((k, i, keys) =>
+        i === 0 || numOf(keys[i - 1]) <= numOf(k)) &&
+    utilKeys.filter(k => !Number.isFinite(numOf(k))).join(',') === 'uTMPL,uidea');
 check('库分区 u2 在 u10 之前（字符串序回归）',
     utilKeys.indexOf('u2') !== -1 && utilKeys.indexOf('u2') < utilKeys.indexOf('u10'));
 check('挑战分区按编号数值升序',

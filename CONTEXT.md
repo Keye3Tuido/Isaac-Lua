@@ -27,7 +27,7 @@ _Avoid_: 注释掉的代码、注销块；指代说明文字时用"说明"
 _Avoid_: 作品文件、关卡文件
 
 **工具文件**:
-`lua/utils/` 下的代码文件，自由格式（无骨架约束），是模板代码的唯一宿主目录。文件名一律 `<数字>.<中文标题>.lua`，编号在 utils 内连续唯一（框架文件 `TMPL.挑战代码框架.lua` 保留原名）：`0.灵感.lua` 收技巧性/实验性模板，其余按**功能面**细分——一个功能面一个文件（如 `1.安全包装`、`2.回调清理`、`9.随机道具池`、`19.编解码与绘图`、`23.音效音量`），不再有"合辑"式大杂烩文件。同一系统或互相引用的模板进同一文件（safe-wrap 两版、随机池与其 D4 使用方、回调清理模板与其引用块）。**灵感文件只放未被引用的模板**：一旦某模板被挑战引用，就把它内联进引用方（转成带 `参数定义` 的自定义参数块，默认值 = 引用处指定的值；说明保留引用方覆盖值，否则用模板说明渲染结果）并从灵感文件移除——灵感文件是创意池，不是共享模板库。新增模板按所属功能面并入既有文件；确实自成一类时，从当前最大编号往后新建。
+`lua/utils/` 根目录下的 `.lua` 文件，是模板代码的唯一宿主。除 `idea.灵感.lua` 和 `TMPL.挑战代码框架.lua` 两个固定例外外，文件名必须使用 `<十进制数字>.<中文标题>.lua`。构建器取首个点前的数字生成 `key=u<数字>`；标题只影响展示，不改变数字 ID、URL 或 key。一个文件只放职责紧密相关、共享接口或必须保持顺序的模板，其他模板按职责细分为独立文件。两个例外均固定在根目录，绝不拆分。
 _Avoid_: 库文件、模板文件、合辑
 
 **文件头（元信息）**:
@@ -63,7 +63,7 @@ _Avoid_: 作用域、可见性
 _Avoid_: 序号、编号值
 
 **文件键（锚点）**:
-文件在站点里的唯一标识与 URL 锚点前缀，形如 `c<编号>`（挑战）或 `u<编号>`（工具），段锚点再续 `s<块编号>`（如 `#c1s3`、`#u1s0`）。两类目录**各自独立编号**，故 `lua/challenges/1.御灵术.lua` 与 `lua/utils/1.灵感.lua` 可共存（键 `c1` / `u1`）；同一目录内编号必须唯一，否则构建报错。文件名的编号段以 `s`/`l`+数字结尾（如 `util1`）时与段锚点在字符串上可能歧义，前端按「整串先当文件键、不中再剥段锚点」解析。
+挑战文件使用 `c<编号>`；工具文件使用数字 ID，获得 `id=<数字>` 与 `u<数字>` 键，例如 `1.安全包装.lua` → `#u1`、`52.二维码与图像绘制.lua` → `#u52`。只有 `idea.灵感.lua` 与 `TMPL.挑战代码框架.lua` 分别使用 `#uidea`、`#uTMPL`。标题取文件名首个点后的部分，标题改名不改变 ID、URL/key。段锚点继续使用 `s<块编号>`。工具先按数字 ID 升序排列，非数字例外 `uTMPL`、`uidea` 按键名字典序排在末尾；前端列表显示文件 ID 与标题。解析时先把整串当文件键，再尝试段锚点。
 _Avoid_: 文件 id、编号键
 
 ## 需求与决策清单（用户确认，改动代码后必须逐条对照）
@@ -77,7 +77,7 @@ _Avoid_: 文件 id、编号键
 6. 模板依赖编译期校验（2026-10-08）：引用带依赖的模板，引用方必须同文件提供该依赖；模板的依赖基准为空时报错。
 7. 引用方说明：省略 = 复用模板说明插值结果；填写 = 整段覆盖（不做部分替换）。引用块的参数可省略，未指定的参数取模板默认值（2026-09 起放宽，此前强制显式指定全部参数）——注意模板默认值变更会作用于所有未显式指定的引用方；模板参数未定义默认值且引用方未提供时构建报错。
 8. 替换在构建期；前端、复制、下载、kb.json 输出的注释与代码一律是替换后的最终内容；块头对读者不可见。
-9. kb.json 结构化输出：文件级信息（id/title/key/fname/isChallenge/tags/source/header；id 为文件名编号仅作展示，key 为全局唯一锚点键）+ blocks（每块 num/comment/code 及可选 region/deps/name/tpl/tplDef/params/values/body/commentTpl）+ 整文件 text（剥 `l ` 前缀）/code（组装格式）。可自定义块（模板引用/模板定义/块内参数）的 body（含 `Pn` 占位符）/commentTpl（含 `{Pn}` 插值槽）/params（默认/说明/性质/类型）自包含，下游可复现“注释 + 代码双自定义”，让使用者明白代码如何使用。
+9. kb.json 结构化输出：文件级信息（id/title/key/fname/path/isChallenge/tags/source/header；id 为文件名编号仅作展示，key 为全局唯一锚点键，path 为 `lua/` 下的分类路径）+ blocks（每块 num/comment/code 及可选 region/deps/name/tpl/tplDef/params/values/body/commentTpl）+ 整文件 text（剥 `l ` 前缀）/code（组装格式）。可自定义块（模板引用/模板定义/块内参数）的 body（含 `Pn` 占位符）/commentTpl（含 `{Pn}` 插值槽）/params（默认/说明/性质/类型）自包含，下游可复现“注释 + 代码双自定义”，让使用者明白代码如何使用。
 10. 多行注释（`--[[ ]]` 块、`--[[ 注释 ]]代码` 同行内联）全链路正确解析与显示。
 11. 只认新格式，不留旧格式兼容层；不要求自动压缩代码。
 12. clean-globals 尾置块构建期自动生成（2026-10-10）：扫描正文（body，**模板展开后**）代码中创建的全局变量（覆盖模板自身泄漏，如 ITEMS、SetTimeScale 家族、_Data 家族等），有则自动生成 clean-globals 引用块，插入重开块之后、random-string 引用块之前；无全局变量则不生成；挑战文件已手写 clean-globals 引用时尊重手写、不重复添加。允许良性误报——释放不存在的全局变量无害。源文件不再手写（8 个挑战的手写块已移除）。
@@ -115,14 +115,14 @@ D4. 控制台粘贴行长约束（2026-10-13，根因未定位）：游戏控制
 28. 详情页展开状态持久化（2026-10-10）：每文件把当前展开的条目集合存 `sessionStorage`（键 `isaac:open:<文件键>`），自动刷新整页重载后整组恢复（连带展开所属分组、重算参数输入框高度）；条目 id 失效（内容改版）自动跳过；标签页关闭即清除，不影响他人打开分享链接的默认折叠状态。**点击折叠不改地址栏**——hash 仅来自分享链接/搜索直达入口，保留给刷新后 route() 定位：hash 指向的条目在整组恢复后额外滚动到位。
 29. `#kb` 下载入口：地址栏 hash 为 `#kb` 时触发下载 kb.json（下载后回到列表页）。
 30. 前端模板注册表：page.js 内的 `__ALL_TEMPLATES__` 占位符由 GenerateHtml.py 替换为模板注册表 JSON；page.js 尚未包含占位符时跳过不报错（前端并行开发约定）。
-31. 主页分区排序（2026-10-17 修复）：挑战 / 库两分区各自按文件名编号**数值升序**，非数字编号（框架文件 TMPL，键 `uTMPL`）排在同分区末尾，与构建期 collect_lua_entries / kb.json 的条目顺序一致。禁止按文件键字符串排——键形如 `c1`/`u1`，字符串序会把 `u10` 排到 `u2` 之前（曾导致库分区显示 0,1,10,…,19,2,20,21,22,3…）。
+31. 主页分区排序：挑战按文件名编号数值升序；工具先按数字 ID 升序，非数字例外 `uTMPL`、`uidea` 按键名字典序排在末尾。除 `idea.灵感.lua` 与 `TMPL.挑战代码框架.lua` 外，工具文件必须使用 `<十进制数字>.<中文标题>.lua`；标题变化不得改变 ID、路由、分享或详情分片；列表显示文件 ID 与标题。
 32. 统计口径（2026-10-17）：自动刷新（URL 带 `?_r=`）的整页重载不算一次新的进入——构建期在页头按 `_r`、于加载 hm.js 前 `_setAutoPageview(false)` 关闭自动 PV；page.js 以 `AUTO_REFRESH_LOAD` 在本次加载期间静默 `tjPage`/`tjEvent`（`route()` 结束后恢复，刷新后的用户操作照常统计），并跳过短链 HEAD 预热、`#kb` 重载不再重复下载 kb.json。真实进入仍由 hm.js 自动上报；详情页直达原先的「补记带 hash 的 PV」已删（自动 PV 已含 hash，保留会双计）。刷新功能本身不变（仍每 60 秒整页重载）。
 
 ### 内容归属（已确认的个案）
 A1. 段 0 结构：safe-wrap-mec 引用（名称： 安全包装）→ MEC() 自定义 → clean-anon-callbacks 引用（名称： 清理回调）→ 自动清理 自定义块（依赖 [安全包装, 清理回调]，不配参数：1e4/10秒 两头都字面化）→ lock-achievements 引用。规则：被依赖的工具代码（CLM/MEC 定义）才是模板；依赖于其他代码的代码（自动清理这类调用方）不做模板。
 A2. 数据保存：24.拖家带口用模板 persistent-data；15.勇往直前变体保留自定义（名称： 数据保存）。
 A3. 御灵术"按人数生成道具"用 multi-choice-spawn（P1='c653'）；curse-immune 模板不支持配置，28号"免疫混乱"为自定义；15号开图保留自定义变体（比模板多 VisitedCount 保留逻辑——模板版会清 visited 位，可能破坏"每房仅进一次"），说明必须与模板区分。
-A4. 回调包装四条（callback-wrap）保留为 TMPL.挑战代码模板.lua 里的自定义代码，不做模板。
+A4. 回调包装四条（callback-wrap）保留为 `TMPL.挑战代码框架.lua` 里的自定义代码，不做模板。
 A5. open-map-red-rooms 属灵感文件；restart 双模板（restart-game 无参 / restart-as-character 带角色参数）。
 A6. stats-switch 已参数化（展开多一空格可接受，验收门豁免字符串外空白）。
 A7. 御灵术 wisp-soul-system 的说明必须清理（（射速）等语义占位与数值插值混杂视为乱码）。
@@ -143,7 +143,7 @@ B1. 只发布构建产物目录：`python scripts/build_site.py` 组装 `_site/`
 B2. 资源清单自动推导：发布脚本从构建产物（index.html / page.js / style.css / compressor 页面与脚本）中提取 `assets/...` 引用，逐个校验存在性，缺一即失败；仓库 assets/ 里未被引用的资源会被点名。禁止再手写资源拷贝清单——曾漏拷 `content-divider.webp` / `challenge-divider.webp` 导致线上「行间分隔线」消失。
 B3. 构建自足：GenerateHtml.py 零第三方依赖（块头自解析，2026-09 起移除 pyyaml）；build_site.py 缺压缩器 node_modules 时自动 `npm ci`，使静态托管平台只配一条构建命令即可。
 B4. 入库原则：第三方库能由构建期取得的就不入库——`compressor/luaparse.js`、`compressor/fengari-web.js` 改由 build_site.py 从 node_modules 拷贝；`jszip.min.js` 不在 npm 清单中（加入需重生成 package-lock）暂留入库，下载 zip 时本地优先、cdnjs 回退。压缩器测试基线（`_snapshot.json` 等）为回归输入，属必要文件，保留入库。
-B5. 主页数据架构（2026-10-16）：**元数据内嵌 + 详情分片懒加载**。index.html 内嵌的 `__ALL_FILES__` 只是元数据——文件级 {id,key,title,fname,isChallenge,blocks}，每块仅 {num,comment,name?,tpl?,tplDef?,region?}，只够列表渲染与搜索索引；详情全量数据（header、含 code 的 blocks、deps/values/params/body/commentTpl 等）逐文件输出为 `kb/<文件键>.json` 分片（GenerateHtml.py 生成到项目根 `kb/`，已 gitignore，build_site.py 整目录发布），page.js 进入详情页时 `loadDetail(fileId)` 懒加载（`DETAIL_CACHE` 内存缓存，fetch 带 `?v=window.__BUILD_TS__` 击穿旧版本缓存，BUILD_TS 由构建嵌入 index.html），先 loading 态后渲染，失败显示错误与重试。复制全部/下载 zip/参数组装以分片数据（`currentDetail`）为准；60 秒整页自动刷新不变，刷新后 route() 重走懒加载（BUILD_TS 未变时命中浏览器 HTTP 缓存）。`kb.json` 保留不变，仍是 `#kb` 下载入口的全量出口（与分片同源、互不影响）。
+B5. 主页数据架构（2026-10-16）：**元数据内嵌 + 详情分片懒加载**。index.html 内嵌的 `__ALL_FILES__` 只是元数据——文件级 {id,key,title,fname,path,isChallenge,blocks}，每块仅 {num,comment,name?,tpl?,tplDef?,region?}，只够列表渲染与搜索索引；详情全量数据（header、含 code 的 blocks、deps/values/params/body/commentTpl 等）逐文件输出为 `kb/<文件键>.json` 分片（GenerateHtml.py 生成到项目根 `kb/`，已 gitignore，build_site.py 整目录发布），page.js 进入详情页时 `loadDetail(fileId)` 懒加载（`DETAIL_CACHE` 内存缓存，fetch 带 `?v=window.__BUILD_TS__` 击穿旧版本缓存，BUILD_TS 由构建嵌入 index.html），先 loading 态后渲染，失败显示错误与重试。复制全部/下载 zip/参数组装以分片数据（`currentDetail`）为准；60 秒整页自动刷新不变，刷新后 route() 重走懒加载（BUILD_TS 未变时命中浏览器 HTTP 缓存）。`kb.json` 保留不变，仍是 `#kb` 下载入口的全量出口（与分片同源、互不影响）。
 
 ## 文档索引
 - `docs/design/template-system-design.md` — 模板代码系统设计定稿，实施的唯一依据；任何偏离先回本文档修订。

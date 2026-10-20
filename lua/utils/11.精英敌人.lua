@@ -1,4 +1,4 @@
---精英化与种子：精英怪权重与彩蛋种子固定。
+--精英敌人。
 
 --[[
 作为模板: true
@@ -35,13 +35,3 @@
   P26: {类型: "描述", 默认: "按权重表强制非精英敌人变为指定类型精英怪（表中0和1可替换为非负整数表示权重，0=排除）。", 性质: "局部", 说明: "说明文本末尾的一行文字说明"}
 ]]
 l local A,I,C={[0]=P0,[1]=P1,[2]=P2,[3]=P3,[4]=P4,[5]=P5,[6]=P6,[7]=P7,[8]=P8,[9]=P9,[10]=P10,[11]=P11,[12]=P12,[13]=P13,[14]=P14,[15]=P15,[16]=P16,[17]=P17,[18]=P18,[19]=P19,[20]=P20,[21]=P21,[22]=P22,[23]=P23,[24]=P24,[25]=P25},'InitSeed',{}for k,v in pairs(A)do for _=1,v do C[#C+1]=k end end Isaac.AddCallback({},ModCallbacks.MC_NPC_UPDATE,function(_,e)if e:IsVulnerableEnemy()and e:IsActiveEnemy(false)and not e:IsBoss()and not e:IsInvincible()and not e:IsChampion()then e:MakeChampion(e[I],C[e[I]%#C+1])end end)
-
---[[
-作为模板: true
-模板id: seed-fixed
-说明: |-
-  固定开启指定彩蛋种子。
-参数:
-  P1: {类型: "彩蛋种子列表", 默认: "SeedEffect.SEED_G_FUEL", 性质: "局部", 说明: "SeedEffect枚举列表"}
-]]
-l local S={P1}Isaac.AddCallback({},ModCallbacks.MC_POST_UPDATE,function()local D,f=Game():GetSeeds()for _,d in pairs(S)do if D:CanAddSeedEffect(d)then D:AddSeedEffect(d)f=true end end if f then Isaac.ExecuteCommand'restart'end end)
